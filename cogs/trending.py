@@ -1,12 +1,14 @@
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 from discord import app_commands
 from bs4 import BeautifulSoup
 import requests
+from datetime import datetime
 
 class Trending(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.auto_post_trends.start()
 
     @app_commands.command(name="trending", description="📊 Show top trending players (Risers/Fallers)")
     @app_commands.describe(direction="Risers or Fallers")
@@ -16,10 +18,12 @@ class Trending(commands.Cog):
     ])
     async def trending(self, interaction: discord.Interaction, direction: app_commands.Choice[str]):
         await interaction.response.defer()
+        embed = await self.fetch_trending_embed(direction.value)
+        await interaction.followup.send(embed=embed)
 
-        # Check latest page dynamically if needed
+    async def fetch_trending_embed(self, direction):
         max_page = 76
-        pages = range(max_page, 0, -1) if direction.value == "riser" else range(1, max_page + 1)
+        pages = range(max_page, 0, -1) if direction == "riser" else range(1, max_page + 1)
         all_players = []
 
         for page in pages:
@@ -51,8 +55,8 @@ class Trending(commands.Cog):
                 price = "?"
                 coin_tag = block.find("img", alt="Coin")
                 if coin_tag and coin_tag.parent:
-                    parent_text = coin_tag.parent.get_text(strip=True).replace("Coin", "").strip()
-                    price = parent_text
+                    price_text = coin_tag.parent.get_text(strip=True).replace("Coin", "").strip()
+                    price = price_text
 
                 all_players.append({
                     "name": name,
@@ -62,13 +66,15 @@ class Trending(commands.Cog):
                     "trend": trend
                 })
 
-        if direction.value == "riser":
+        if direction == "riser":
             all_players = sorted(all_players, key=lambda x: x["trend"], reverse=True)
-        top10 = all_players[:10]
+        else:
+            all_players = sorted(all_players, key=lambda x: x["trend"])
 
-        emoji = "📈" if direction.value == "riser" else "📉"
-        title = f"{emoji} Top 10 {direction.name} (🎮 Console)"
-        embed = discord.Embed(title=title, color=discord.Color.green() if direction.value == "riser" else discord.Color.red())
+        top10 = all_players[:10]
+        emoji = "📈" if direction == "riser" else "📉"
+        title = f"{emoji} Top 10 {'Risers' if direction == 'riser' else 'Fallers'} (🎮 Console)"
+        embed = discord.Embed(title=title, color=discord.Color.green() if direction == "riser" else discord.Color.red(), timestamp=datetime.utcnow())
 
         if not top10:
             embed.description = "No trending players found."
@@ -84,7 +90,25 @@ class Trending(commands.Cog):
                     inline=False
                 )
 
-        await interaction.followup.send(embed=embed)
+        return embed
+
+    @tasks.loop(hours=24)
+    async def auto_post_trends(self):
+        channel_id = YOUR_CHANNEL_ID_HERE  # Replace with actual channel ID
+        channel = self.bot.get_channel(channel_id)
+        if not channel:
+            return
+
+        for direction in ["riser", "faller"]:
+            try:
+                embed = await self.fetch_trending_embed(direction)
+                await channel.send(embed=embed)
+            except Exception as e:
+                print(f"Auto-post error ({direction}): {e}")
+
+    @auto_post_trends.before_loop
+    async def before_auto_post(self):
+        await self.bot.wait_until_ready()
 
 async def setup(bot):
     await bot.add_cog(Trending(bot))
