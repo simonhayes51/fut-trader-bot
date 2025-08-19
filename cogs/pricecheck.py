@@ -82,7 +82,7 @@ class PriceCheck(commands.Cog):
         embed.add_field(name="🎮 Platform", value=f"Console" if platform == "console" else "PC", inline=False)
         embed.add_field(name="💰 Price", value=f"{price} 🪙", inline=False)
         embed.add_field(name="📊 Range", value=price_range, inline=False)
-        embed.add_field(name=f"{trend_label_emoji} Trend", value=trend, inline=False)
+        embed.add_field(name=f"{trend_label_emoji} Trend", value=clean_trend, inline=False)
         embed.add_field(name="🏟️ Club", value=match.get("club", "Unknown"), inline=True)
         embed.add_field(name="🌍 Nation", value=match.get("nation", "Unknown"), inline=True)
         embed.add_field(name="🧩 Position", value=match.get("position", "Unknown"), inline=True)
