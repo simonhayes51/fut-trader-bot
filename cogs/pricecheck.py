@@ -58,8 +58,10 @@ class PriceCheck(commands.Cog):
             price = f"{int(price):,}" if price.isdigit() else price
 
             trend_tag = price_box.find("div", class_="price-box-trend")
-            trend = trend_tag.text.strip().replace("Trend:", "") if trend_tag else "-"
-            trend_emoji = "📉" if "-" in trend else "📈"
+            raw_trend = trend_tag.text.strip().replace("Trend:", "") if trend_tag else "-"
+            clean_trend = raw_trend.replace("📉", "").replace("📈", "").strip()
+            trend_emoji = "📉" if "-" in clean_trend else "📈"
+            trend = f"{trend_emoji} {clean_trend}"
 
             range_tag = price_box.find("div", class_="price-pr")
             price_range = range_tag.text.strip().replace("PR:", "") if range_tag else "-"
