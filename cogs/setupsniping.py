@@ -5,6 +5,7 @@ import json
 import os
 
 FILE_PATH = "sniping_channels.json"
+ALLOWED_ROLE_NAMES = ["Admin", "Owner"]  # 👈 You can add more role names here if needed
 
 class SetupSniping(commands.Cog):
     def __init__(self, bot):
@@ -21,10 +22,25 @@ class SetupSniping(commands.Cog):
         with open(FILE_PATH, "w") as f:
             json.dump(self.sniping_channels, f, indent=4)
 
+    def is_owner_or_admin(self, user: discord.Member):
+        # Always allow server owner
+        if user.guild and user.id == user.guild.owner_id:
+            return True
+        # Check for role match
+        user_roles = [role.name.lower() for role in user.roles]
+        for allowed in ALLOWED_ROLE_NAMES:
+            if allowed.lower() in user_roles:
+                return True
+        return False
+
     @app_commands.command(name="setupsniping", description="📍 Set the channel for sniping filter posts.")
     @app_commands.describe(channel="The channel where filters should be posted")
-    @app_commands.checks.has_permissions(manage_guild=True)
     async def setupsniping(self, interaction: discord.Interaction, channel: discord.TextChannel):
+        # Check for admin or owner permission
+        if not self.is_owner_or_admin(interaction.user):
+            await interaction.response.send_message("❌ You must be the server owner or have an Admin/Owner role to use this command.", ephemeral=True)
+            return
+
         guild_id = str(interaction.guild_id)
         self.sniping_channels[guild_id] = channel.id
         self.save_channels()
