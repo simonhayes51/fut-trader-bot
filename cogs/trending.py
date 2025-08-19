@@ -1,89 +1,81 @@
 import discord
-from discord.ext import commands, tasks
+from discord.ext import commands
 from discord import app_commands
-from datetime import datetime
-import asyncio
-import requests
 from bs4 import BeautifulSoup
+import requests
 
 class Trending(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    def scrape_trending(self, trend_type: str):
-        players = []
-        headers = {"User-Agent": "Mozilla/5.0"}
-
-        if trend_type == "riser":
-            pages = range(75, 0, -1)  # Reverse order for risers
-        else:
-            pages = range(1, 76)      # Normal order for fallers
-
-        for page in pages:
-            url = f"https://www.fut.gg/players/momentum/?page={page}"
-            response = requests.get(url, headers=headers)
-            soup = BeautifulSoup(response.text, "html.parser")
-            cards = soup.select('a[href*="/players/"]')
-
-            for card in cards:
-                try:
-                    alt = card.find("img").get("alt", "Unknown - ? - ?")
-                    name, rating, card_type = alt.split(" - ")
-
-                    # Get trend
-                    trend_tag = card.select_one("div.font-bold.text-xs.text-green-500, div.font-bold.text-xs.text-red-500")
-                    trend = trend_tag.text.strip() if trend_tag else "?"
-
-                    if trend_type == "riser" and not trend.startswith("+"):
-                        continue
-                    if trend_type == "faller" and not trend.startswith("-"):
-                        continue
-
-                    # Get price
-                    price_tag = card.select_one('div.flex.items-center.justify-center.grow.shrink-0.gap-[0.1em]')
-                    price = price_tag.get_text(strip=True) if price_tag else "?"
-
-                    players.append({
-                        "name": name,
-                        "rating": rating,
-                        "card_type": card_type,
-                        "price": price,
-                        "trend": trend
-                    })
-
-                    if len(players) == 10:
-                        return players
-                except Exception as e:
-                    continue
-
-        return players
-
-    @app_commands.command(name="trending", description="📊 Show top trending FUT players (console only)")
-    @app_commands.choices(trend_type=[
+    @app_commands.command(name="trending", description="📊 Show top trending players (Risers/Fallers)")
+    @app_commands.describe(direction="Risers or Fallers")
+    @app_commands.choices(direction=[
         app_commands.Choice(name="📈 Risers", value="riser"),
         app_commands.Choice(name="📉 Fallers", value="faller")
     ])
-    async def trending(self, interaction: discord.Interaction, trend_type: app_commands.Choice[str]):
+    async def trending(self, interaction: discord.Interaction, direction: app_commands.Choice[str]):
         await interaction.response.defer()
-        players = self.scrape_trending(trend_type.value)
 
-        emoji = "📈" if trend_type.value == "riser" else "📉"
-        embed = discord.Embed(
-            title=f"{emoji} Top 10 {emoji} {'Risers' if trend_type.value == 'riser' else 'Fallers'} (🎮 Console)",
-            color=discord.Color.green() if trend_type.value == "riser" else discord.Color.red(),
-            timestamp=datetime.utcnow()
-        )
+        pages = range(75, 0, -1) if direction.value == "riser" else range(1, 76)
+        collected = []
 
-        if not players:
+        for page in pages:
+            url = f"https://www.fut.gg/players/momentum/?page={page}"
+            headers = {"User-Agent": "Mozilla/5.0"}
+            response = requests.get(url, headers=headers)
+            soup = BeautifulSoup(response.text, "html.parser")
+
+            player_blocks = soup.select("a[href^='/players/'][class*='group/player']")
+            for block in player_blocks:
+                # NAME, RATING, CARD TYPE FROM ALT
+                name_tag = block.find("img", alt=True)
+                if not name_tag:
+                    continue
+                alt = name_tag["alt"].strip()
+                split_alt = alt.split(" - ")
+                if len(split_alt) != 3:
+                    continue
+                name, rating, card_type = split_alt
+
+                # TREND %
+                trend_tag = block.select_one("div.text-green-500, div.text-red-500")
+                trend = trend_tag.text.strip() if trend_tag else "?"
+
+                # PRICE (coin image next_sibling)
+                price_tag = block.find("img", alt="Coin")
+                price = price_tag.next_sibling.strip() if price_tag and price_tag.next_sibling else "?"
+
+                print(f"DEBUG: {name} | {rating} | {card_type} | {price} | {trend}")
+
+                collected.append({
+                    "name": name,
+                    "rating": rating,
+                    "card_type": card_type,
+                    "price": price,
+                    "trend": trend
+                })
+
+                if len(collected) >= 10:
+                    break
+
+            if len(collected) >= 10:
+                break
+
+        emoji = "📈" if direction.value == "riser" else "📉"
+        title = f"{emoji} Top 10 {direction.name} (🎮 Console)"
+        embed = discord.Embed(title=title, color=discord.Color.green() if direction.value == "riser" else discord.Color.red())
+
+        if not collected:
             embed.description = "No trending players found."
         else:
-            for player in players:
+            for p in collected:
                 embed.add_field(
-                    name=f"{player['name']} ({player['rating']})",
+                    name=f"{p['name']} ({p['rating']})",
                     value=(
-                        f"{player['card_type']}\n"
-                        f"💰 {player['price']}\n"
-                        f"{emoji} {player['trend']}"
+                        f"{p['card_type']}\n"
+                        f"💰 {p['price']}\n"
+                        f"{emoji} {p['trend']}"
                     ),
                     inline=False
                 )
