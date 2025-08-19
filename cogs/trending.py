@@ -1,19 +1,14 @@
 import discord
 from discord.ext import commands, tasks
 from discord import app_commands
-from bs4 import BeautifulSoup
+from datetime import datetime
 import requests
+from bs4 import BeautifulSoup
+import asyncio
 import json
 import os
-from datetime import datetime
-import asyncio
 
 CONFIG_FILE = "autotrend_config.json"
-
-HEADERS = {"User-Agent": "Mozilla/5.0"}
-MOMENTUM_URL = "https://www.fut.gg/players/momentum/"
-
-RARITY_ORDER = ["Bronze", "Silver", "Gold"]  # fallback order
 
 
 def load_config():
@@ -35,85 +30,78 @@ class Trending(commands.Cog):
         self.config = load_config()
         self.auto_post_trends.start()
 
-    def scrape_momentum(self):
-        response = requests.get(MOMENTUM_URL, headers=HEADERS)
+    def scrape_trending_players(self):
+        url = "https://www.fut.gg/players/momentum/"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        response = requests.get(url, headers=headers)
         soup = BeautifulSoup(response.text, "html.parser")
-        cards = soup.select("a.group\\/player")
+
+        player_cards = soup.find_all("a", class_="group/player")
         risers, fallers = [], []
 
-        for card in cards:
-            try:
-                name_rating = card.find("img")["alt"]  # e.g., "Touré - 87 - UT Heroes"
-                name, rating, *_ = name_rating.split(" - ")
-                rating = int(rating.strip())
+        for card in player_cards:
+            name_tag = card.find("img")
+            name = name_tag["alt"] if name_tag else "Unknown"
+            rating = name.split(" - ")[1] if " - " in name else "?"
+            price_tag = card.find("div", class_="flex items-center justify-center gap-[0.2em] grow shrink-0")
+            price = price_tag.get_text(strip=True) if price_tag else "?"
+            trend_tag = card.find("div", class_="font-bold text-xs text-green-500")
+            trend = trend_tag.get_text(strip=True) if trend_tag else "?"
+            position_tag = card.find("span", class_="text-[0.7em] text-black font-black leading-[1.2em]")
+            position = position_tag.get_text(strip=True) if position_tag else "?"
+            image_url = name_tag["src"] if name_tag else None
 
-                position = card.select_one(".text-black").text.strip()
-                price = card.select_one(".text-numbers-bold").find_next("div").text.strip()
-                trend_text = card.select_one(".text-green-500, .text-red-500").text.strip().replace("%", "")
-                trend = float(trend_text)
+            player = {
+                "name": name.split(" - ")[0],
+                "rating": rating,
+                "price": price,
+                "trend": trend,
+                "position": position,
+                "image": image_url
+            }
 
-                club = card.select_one(".text-gray-100").text.strip()
+            if trend.startswith("-"):
+                fallers.append(player)
+            elif trend.startswith("+") or not trend.startswith("-"):
+                risers.append(player)
 
-                data = {
-                    "name": name,
-                    "rating": rating,
-                    "position": position,
-                    "price": price,
-                    "trend": trend,
-                    "club": club,
-                }
-                if trend >= 0:
-                    risers.append(data)
-                else:
-                    fallers.append(data)
-
-            except Exception:
-                continue
+            if len(risers) >= 10 and len(fallers) >= 10:
+                break
 
         return risers[:10], fallers[:10]
 
-    def build_embed(self, players, trend_type):
-        emoji = "📈" if trend_type == "riser" else "📉"
-        title = f"{emoji} Daily Top 10 {'Risers' if trend_type == 'riser' else 'Fallers'} (🎮 Console)"
-        color = discord.Color.green() if trend_type == "riser" else discord.Color.red()
-
-        embed = discord.Embed(title=title, color=color, timestamp=datetime.utcnow())
-
+    def build_embed(self, players, title, emoji, color):
+        embed = discord.Embed(
+            title=title,
+            color=color,
+            timestamp=datetime.utcnow()
+        )
         if not players:
             embed.description = "No trending players found."
-            return embed
-
-        for player in players:
-            embed.add_field(
-                name=f"{player['name']} ({player['rating']})",
-                value=(
-                    f"{emoji} `{player['trend']}%`\n"
-                    f"💰 `{player['price']}`\n"
-                    f"🧭 {player['position']} – {player['club']}"
-                ),
-                inline=False
-            )
+        else:
+            for p in players:
+                embed.add_field(
+                    name=f"{p['name']} ({p['rating']})",
+                    value=(
+                        f"{emoji} `{p['trend']}`\n"
+                        f"💰 `{p['price']}`\n"
+                        f"🧭 {p['position']}"
+                    ),
+                    inline=False
+                )
         return embed
 
-    @app_commands.command(name="trending", description="📊 Show today's top trending FUT players")
-    async def trending(self, interaction: discord.Interaction):
-        await interaction.response.defer()
-        risers, fallers = self.scrape_momentum()
-
-        await interaction.followup.send(embed=self.build_embed(risers, "riser"))
-        await interaction.followup.send(embed=self.build_embed(fallers, "faller"))
-
-    @app_commands.command(name="setupautotrending", description="🛠️ Set auto-post channel & time for trending data")
-    @app_commands.describe(channel="Channel to post in", post_time="Time in 24h format (e.g. 21:00)")
+    @app_commands.command(name="setupautotrending", description="🛠️ Set daily auto-post channel and time (HH:MM, 24h)")
+    @app_commands.describe(channel="Channel to send posts in", post_time="Time in 24h format (e.g. 09:00)")
     async def setupautotrending(self, interaction: discord.Interaction, channel: discord.TextChannel, post_time: str):
         if not interaction.user.guild_permissions.manage_guild:
-            await interaction.response.send_message("❌ You need Manage Server permission.", ephemeral=True)
+            await interaction.response.send_message("❌ You need 'Manage Server' permission to use this.", ephemeral=True)
             return
 
         try:
             datetime.strptime(post_time, "%H:%M")
         except ValueError:
-            await interaction.response.send_message("❌ Invalid time format. Use HH:MM.", ephemeral=True)
+            await interaction.response.send_message("❌ Invalid time format. Use HH:MM (24-hour)", ephemeral=True)
             return
 
         guild_id = str(interaction.guild.id)
@@ -122,7 +110,17 @@ class Trending(commands.Cog):
             "time": post_time
         }
         save_config(self.config)
-        await interaction.response.send_message(f"✅ Auto-posting set for **{post_time}** in {channel.mention}")
+        await interaction.response.send_message(f"✅ Auto-trending set to post daily at **{post_time}** in {channel.mention}")
+
+    @app_commands.command(name="trending", description="📊 Show top 10 risers and fallers")
+    async def trending(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        risers, fallers = self.scrape_trending_players()
+
+        riser_embed = self.build_embed(risers, "📈 Top 10 Risers (🎮 Console)", "📈", discord.Color.green())
+        faller_embed = self.build_embed(fallers, "📉 Top 10 Fallers (🎮 Console)", "📉", discord.Color.red())
+
+        await interaction.followup.send(embeds=[riser_embed, faller_embed])
 
     @tasks.loop(minutes=1)
     async def auto_post_trends(self):
@@ -135,17 +133,16 @@ class Trending(commands.Cog):
             if not channel:
                 continue
 
-            risers, fallers = self.scrape_momentum()
-
+            risers, fallers = self.scrape_trending_players()
             try:
-                await channel.send(embed=self.build_embed(risers, "riser"))
-                await asyncio.sleep(2)
-                await channel.send(embed=self.build_embed(fallers, "faller"))
+                await channel.send(embed=self.build_embed(risers, "📈 Daily Top 10 Risers (🎮 Console)", "📈", discord.Color.green()))
+                await asyncio.sleep(1)
+                await channel.send(embed=self.build_embed(fallers, "📉 Daily Top 10 Fallers (🎮 Console)", "📉", discord.Color.red()))
             except Exception as e:
-                print(f"Error posting in guild {guild_id}: {e}")
+                print(f"Error posting to {channel.id}: {e}")
 
     @auto_post_trends.before_loop
-    async def before_posting(self):
+    async def before_auto_post(self):
         await self.bot.wait_until_ready()
 
 
