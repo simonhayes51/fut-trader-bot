@@ -34,12 +34,6 @@ async def on_ready():
         logging.error(f"❌ Failed to load pricecheck cog: {e}")
 
     try:
-        await bot.load_extension("cogs.pricecheckgg")
-        logging.info("📦 Loaded pricecheckgg cog")
-    except Exception as e:
-        logging.error(f"❌ Failed to load pricecheckgg cog: {e}")
-
-    try:
         synced = await bot.tree.sync()
         logging.info(f"🔁 Globally synced {len(synced)} slash command(s).")
     except Exception as e:
