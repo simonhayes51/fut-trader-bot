@@ -5,6 +5,7 @@ import requests
 from bs4 import BeautifulSoup
 import json
 import logging
+import re
 
 log = logging.getLogger("fut-pricecheck")
 log.setLevel(logging.INFO)
