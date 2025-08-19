@@ -17,7 +17,9 @@ class Trending(commands.Cog):
     async def trending(self, interaction: discord.Interaction, direction: app_commands.Choice[str]):
         await interaction.response.defer()
 
-        pages = range(75, 0, -1) if direction.value == "riser" else range(1, 76)
+        # Check latest page dynamically if needed
+        max_page = 76
+        pages = range(max_page, 0, -1) if direction.value == "riser" else range(1, max_page + 1)
         all_players = []
 
         for page in pages:
@@ -28,7 +30,6 @@ class Trending(commands.Cog):
 
             player_blocks = soup.select("a[href^='/players/'][class*='group/player']")
             for block in player_blocks:
-                # NAME, RATING, CARD TYPE FROM ALT
                 name_tag = block.find("img", alt=True)
                 if not name_tag:
                     continue
@@ -38,7 +39,6 @@ class Trending(commands.Cog):
                     continue
                 name, rating, card_type = split_alt
 
-                # TREND %
                 trend_tag = block.select_one("div.text-green-500, div.text-red-500")
                 if not trend_tag:
                     continue
@@ -48,11 +48,11 @@ class Trending(commands.Cog):
                 except ValueError:
                     continue
 
-                # PRICE (after coin image)
                 price = "?"
                 coin_tag = block.find("img", alt="Coin")
                 if coin_tag and coin_tag.parent:
-                    price = coin_tag.parent.get_text(strip=True).replace("Coin", "").strip()
+                    parent_text = coin_tag.parent.get_text(strip=True).replace("Coin", "").strip()
+                    price = parent_text
 
                 all_players.append({
                     "name": name,
@@ -62,7 +62,6 @@ class Trending(commands.Cog):
                     "trend": trend
                 })
 
-        # Sort and slice after collecting all
         if direction.value == "riser":
             all_players = sorted(all_players, key=lambda x: x["trend"], reverse=True)
         top10 = all_players[:10]
