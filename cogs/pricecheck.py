@@ -60,9 +60,9 @@ class PriceCheck(commands.Cog):
 
             trend_tag = price_box.find("div", class_="price-box-trend")
             raw_trend = trend_tag.get_text(strip=True).replace("Trend:", "") if trend_tag else "-"
-            # Remove any existing emojis or icons (📉📈 or <i> tags etc.)
             clean_trend = re.sub(r"[📉📈]", "", raw_trend).strip()
             trend_emoji = "📉" if "-" in clean_trend else "📈"
+            trend_label_emoji = trend_emoji
             trend = f"{trend_emoji} {clean_trend}"
 
             range_tag = price_box.find("div", class_="price-pr")
@@ -73,7 +73,7 @@ class PriceCheck(commands.Cog):
 
         except Exception as e:
             log.warning(f"[WARN] Could not parse price elements: {e}")
-            price, trend, trend_emoji, price_range, updated = "N/A", "-", "❓", "-", "-"
+            price, trend, trend_label_emoji, price_range, updated = "N/A", "-", "❓", "-", "-"
 
         embed = discord.Embed(
             title=f"{match['name']} ({match['rating']})",
@@ -82,7 +82,7 @@ class PriceCheck(commands.Cog):
         embed.add_field(name="🎮 Platform", value=f"Console" if platform == "console" else "PC", inline=False)
         embed.add_field(name="💰 Price", value=f"{price} 🪙", inline=False)
         embed.add_field(name="📊 Range", value=price_range, inline=False)
-        embed.add_field(name="📈 Trend", value=f"{trend_emoji} {trend}", inline=False)
+        embed.add_field(name=f"{trend_label_emoji} Trend", value=trend, inline=False)
         embed.add_field(name="🏟️ Club", value=match.get("club", "Unknown"), inline=True)
         embed.add_field(name="🌍 Nation", value=match.get("nation", "Unknown"), inline=True)
         embed.add_field(name="🧩 Position", value=match.get("position", "Unknown"), inline=True)
