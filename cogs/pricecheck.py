@@ -14,8 +14,9 @@ class PriceCheck(commands.Cog):
     def load_players(self):
         try:
             with open("players_temp.json", "r", encoding="utf-8") as f:
+                players = json.load(f)
                 logging.info("[LOAD] players_temp.json loaded successfully.")
-                return json.load(f)
+                return players
         except Exception as e:
             logging.error(f"[ERROR] Couldn't load players: {e}")
             return []
@@ -27,10 +28,12 @@ class PriceCheck(commands.Cog):
         app_commands.Choice(name="PC", value="pc")
     ])
     async def pricecheck(self, interaction: discord.Interaction, player: str, platform: app_commands.Choice[str]):
-        logging.info(f"✪ /pricecheck triggered by {interaction.user.display_name} for {player} on {platform.name}")
         await interaction.response.defer()
 
         try:
+            logging.info(f"🧪 /pricecheck triggered by {interaction.user.name} for {player} on {platform.name}")
+
+            # Match player from local list
             matched_player = next(
                 (p for p in self.players if f"{p['name'].lower()} {p['rating']}" == player.lower()), None
             )
@@ -45,7 +48,8 @@ class PriceCheck(commands.Cog):
             slug = player_name.replace(" ", "-").lower()
 
             futbin_url = f"https://www.futbin.com/25/player/{player_id}/{slug}"
-            logging.info(f"🔗 Scraping URL: {futbin_url}")
+            logging.info(f"[PRICECHECK] URL: {futbin_url}")
+
             price = self.get_price(futbin_url)
 
             embed = discord.Embed(
@@ -65,22 +69,17 @@ class PriceCheck(commands.Cog):
             headers = {"User-Agent": "Mozilla/5.0"}
             response = requests.get(url, headers=headers)
             logging.info(f"🌐 [GET] {url} returned status {response.status_code}")
-
             soup = BeautifulSoup(response.text, "html.parser")
 
-            # New target div for specific card version price
             price_div = soup.find("div", class_="price inline-with-icon lowest-price-1")
             if not price_div:
-                logging.warning("❌ Couldn't find price div with class 'lowest-price-1'")
+                logging.error("❌ Could not find the main price block")
                 return "N/A"
 
-            price_text = price_div.text.strip().replace(",", "").replace("\n", "")
-            logging.info(f"💰 Scraped raw price: {price_text}")
+            price_text = price_div.get_text(strip=True).replace(",", "")
+            logging.info(f"💰 Found visible price: {price_text}")
 
-            if price_text.isdigit():
-                return f"{int(price_text):,}"
-            else:
-                return price_text
+            return f"{int(price_text):,}"  # format with commas
 
         except Exception as e:
             logging.error(f"[SCRAPE ERROR] {e}")
