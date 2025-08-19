@@ -58,8 +58,9 @@ class PriceCheck(commands.Cog):
             price = f"{int(price):,}" if price.isdigit() else price
 
             trend_tag = price_box.find("div", class_="price-box-trend")
-            raw_trend = trend_tag.text.strip().replace("Trend:", "") if trend_tag else "-"
-            clean_trend = raw_trend.replace("📉", "").replace("📈", "").strip()
+            raw_trend = trend_tag.get_text(strip=True).replace("Trend:", "") if trend_tag else "-"
+            # Remove any existing emojis or icons (📉📈 or <i> tags etc.)
+            clean_trend = re.sub(r"[📉📈]", "", raw_trend).strip()
             trend_emoji = "📉" if "-" in clean_trend else "📈"
             trend = f"{trend_emoji} {clean_trend}"
 
