@@ -1,14 +1,20 @@
 import discord
 from discord.ext import commands, tasks
 from discord import app_commands
-from datetime import datetime
+from bs4 import BeautifulSoup
 import requests
-import asyncio
 import json
 import os
-from bs4 import BeautifulSoup
+from datetime import datetime
+import asyncio
 
 CONFIG_FILE = "autotrend_config.json"
+
+HEADERS = {"User-Agent": "Mozilla/5.0"}
+MOMENTUM_URL = "https://www.fut.gg/players/momentum/"
+
+RARITY_ORDER = ["Bronze", "Silver", "Gold"]  # fallback order
+
 
 def load_config():
     if not os.path.exists(CONFIG_FILE):
@@ -17,9 +23,11 @@ def load_config():
     with open(CONFIG_FILE, "r") as f:
         return json.load(f)
 
+
 def save_config(data):
     with open(CONFIG_FILE, "w") as f:
         json.dump(data, f, indent=2)
+
 
 class Trending(commands.Cog):
     def __init__(self, bot):
@@ -27,121 +35,119 @@ class Trending(commands.Cog):
         self.config = load_config()
         self.auto_post_trends.start()
 
-    def scrape_momentum(self, duration: str = "24h"):
-        url = "https://www.fut.gg/players/momentum/"
-        headers = {"User-Agent": "Mozilla/5.0"}
-        try:
-            resp = requests.get(url, headers=headers, timeout=10)
-            if resp.status_code != 200:
-                print(f"[ERROR] FUT.GG Momentum status {resp.status_code}")
-                return []
-            soup = BeautifulSoup(resp.text, "html.parser")
-        except Exception as e:
-            print(f"[ERROR] Momentum scraping failed: {e}")
-            return []
+    def scrape_momentum(self):
+        response = requests.get(MOMENTUM_URL, headers=HEADERS)
+        soup = BeautifulSoup(response.text, "html.parser")
+        cards = soup.select("a.group\\/player")
+        risers, fallers = [], []
 
-        # Note: The actual HTML structure may vary. Below is a placeholder layout.
-        rows = soup.select("div.momentum-card")  # Adjust selector to match actual site
-        players = []
-        for row in rows[:10]:
+        for card in cards:
             try:
-                name = row.select_one(".player-name").text.strip()
-                rating = row.select_one(".player-rating").text.strip()
-                trend = row.select_one(".player-trend").text.strip()
-                diff = row.select_one(".player-diff").text.strip()
-                position = row.select_one(".player-position").text.strip()
-                club = row.select_one(".player-club").text.strip()
-            except Exception as e:
-                print(f"[DEBUG] Momentum row parse error: {e}")
+                name_rating = card.find("img")["alt"]  # e.g., "Touré - 87 - UT Heroes"
+                name, rating, *_ = name_rating.split(" - ")
+                rating = int(rating.strip())
+
+                position = card.select_one(".text-black").text.strip()
+                price = card.select_one(".text-numbers-bold").find_next("div").text.strip()
+                trend_text = card.select_one(".text-green-500, .text-red-500").text.strip().replace("%", "")
+                trend = float(trend_text)
+
+                club = card.select_one(".text-gray-100").text.strip()
+
+                data = {
+                    "name": name,
+                    "rating": rating,
+                    "position": position,
+                    "price": price,
+                    "trend": trend,
+                    "club": club,
+                }
+                if trend >= 0:
+                    risers.append(data)
+                else:
+                    fallers.append(data)
+
+            except Exception:
                 continue
 
-            players.append({
-                "name": name,
-                "rating": rating,
-                "trend": trend,
-                "diff": diff,
-                "position": position,
-                "club": club
-            })
-        return players
+        return risers[:10], fallers[:10]
 
-    @app_commands.command(name="momentum", description="Show top momentum movers from FUT.GG")
-    async def momentum(self, interaction: discord.Interaction):
-        await interaction.response.defer()
-        players = self.scrape_momentum()
+    def build_embed(self, players, trend_type):
+        emoji = "📈" if trend_type == "riser" else "📉"
+        title = f"{emoji} Daily Top 10 {'Risers' if trend_type == 'riser' else 'Fallers'} (🎮 Console)"
+        color = discord.Color.green() if trend_type == "riser" else discord.Color.red()
 
-        embed = discord.Embed(
-            title="FUT.GG Momentum Trends (24h)",
-            color=discord.Color.purple(),
-            timestamp=datetime.utcnow()
-        )
+        embed = discord.Embed(title=title, color=color, timestamp=datetime.utcnow())
 
         if not players:
-            embed.description = "No data found — structure may have changed."
-        else:
-            for p in players:
-                embed.add_field(
-                    name=f"{p['name']} ({p['rating']})",
-                    value=f"{p['trend']} | {p['diff']} | {p['position']} – {p['club']}",
-                    inline=False
-                )
+            embed.description = "No trending players found."
+            return embed
 
-        await interaction.followup.send(embed=embed)
+        for player in players:
+            embed.add_field(
+                name=f"{player['name']} ({player['rating']})",
+                value=(
+                    f"{emoji} `{player['trend']}%`\n"
+                    f"💰 `{player['price']}`\n"
+                    f"🧭 {player['position']} – {player['club']}"
+                ),
+                inline=False
+            )
+        return embed
 
-    @app_commands.command(name="setupautotrending", description="Set auto momentum post channel & time (UTC HH:MM)")
-    @app_commands.describe(
-        channel="Where to post",
-        post_time="HH:MM 24h UTC"
-    )
+    @app_commands.command(name="trending", description="📊 Show today's top trending FUT players")
+    async def trending(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        risers, fallers = self.scrape_momentum()
+
+        await interaction.followup.send(embed=self.build_embed(risers, "riser"))
+        await interaction.followup.send(embed=self.build_embed(fallers, "faller"))
+
+    @app_commands.command(name="setupautotrending", description="🛠️ Set auto-post channel & time for trending data")
+    @app_commands.describe(channel="Channel to post in", post_time="Time in 24h format (e.g. 21:00)")
     async def setupautotrending(self, interaction: discord.Interaction, channel: discord.TextChannel, post_time: str):
         if not interaction.user.guild_permissions.manage_guild:
-            return await interaction.response.send_message("You need Manage Server perms.", ephemeral=True)
+            await interaction.response.send_message("❌ You need Manage Server permission.", ephemeral=True)
+            return
 
         try:
             datetime.strptime(post_time, "%H:%M")
         except ValueError:
-            return await interaction.response.send_message("Use HH:MM (24h UTC).", ephemeral=True)
+            await interaction.response.send_message("❌ Invalid time format. Use HH:MM.", ephemeral=True)
+            return
 
-        self.config[str(interaction.guild.id)] = {"channel_id": channel.id, "time": post_time}
+        guild_id = str(interaction.guild.id)
+        self.config[guild_id] = {
+            "channel_id": channel.id,
+            "time": post_time
+        }
         save_config(self.config)
-        await interaction.response.send_message(f"Auto momentum set for **{post_time} UTC** in {channel.mention}", ephemeral=True)
+        await interaction.response.send_message(f"✅ Auto-posting set for **{post_time}** in {channel.mention}")
 
     @tasks.loop(minutes=1)
     async def auto_post_trends(self):
-        now = datetime.utcnow().strftime("%H:%M")
-        for gid, cfg in self.config.items():
-            if cfg.get("time") != now:
+        now = datetime.now().strftime("%H:%M")
+        for guild_id, settings in self.config.items():
+            if settings.get("time") != now:
                 continue
 
-            channel = self.bot.get_channel(cfg["channel_id"])
+            channel = self.bot.get_channel(settings["channel_id"])
             if not channel:
                 continue
 
-            players = self.scrape_momentum()
-            embed = discord.Embed(
-                title="Daily Momentum Movers (24h)",
-                color=discord.Color.green(),
-                timestamp=datetime.utcnow()
-            )
-            if not players:
-                embed.description = "No momentum data found."
-            else:
-                for p in players:
-                    embed.add_field(
-                        name=f"{p['name']} ({p['rating']})",
-                        value=f"{p['trend']} | {p['diff']} | {p['position']} – {p['club']}",
-                        inline=False
-                    )
+            risers, fallers = self.scrape_momentum()
 
             try:
-                await channel.send(embed=embed)
+                await channel.send(embed=self.build_embed(risers, "riser"))
                 await asyncio.sleep(2)
+                await channel.send(embed=self.build_embed(fallers, "faller"))
             except Exception as e:
-                print(f"[ERROR] Momentum post error: {e}")
+                print(f"Error posting in guild {guild_id}: {e}")
 
     @auto_post_trends.before_loop
-    async def before_auto_post(self):
+    async def before_posting(self):
         await self.bot.wait_until_ready()
+
 
 async def setup(bot):
     await bot.add_cog(Trending(bot))
