@@ -110,8 +110,11 @@ class Trending(commands.Cog):
 
                 price = "?"
                 coin_tag = block.find("img", alt="Coin")
-                if coin_tag and coin_tag.next_sibling:
-                    price = coin_tag.next_sibling.strip()
+                if coin_tag:
+                    price_div = coin_tag.find_parent("div")
+                    if price_div:
+                        price = price_div.get_text(strip=True).replace("Coin", "").strip()
+
 
                 all_players.append({
                     "name": name,
