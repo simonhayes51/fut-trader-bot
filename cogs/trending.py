@@ -3,11 +3,27 @@ from discord.ext import commands, tasks
 from discord import app_commands
 from bs4 import BeautifulSoup
 import requests
+import json
+import os
 from datetime import datetime
+
+CONFIG_FILE = "autotrend_config.json"
+
+def load_config():
+    if not os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, "w") as f:
+            json.dump({}, f)
+    with open(CONFIG_FILE, "r") as f:
+        return json.load(f)
+
+def save_config(data):
+    with open(CONFIG_FILE, "w") as f:
+        json.dump(data, f, indent=2)
 
 class Trending(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.config = load_config()
         self.auto_post_trends.start()
 
     @app_commands.command(name="trending", description="📊 Show top trending players (Risers/Fallers)")
@@ -18,10 +34,50 @@ class Trending(commands.Cog):
     ])
     async def trending(self, interaction: discord.Interaction, direction: app_commands.Choice[str]):
         await interaction.response.defer()
-        embed = await self.fetch_trending_embed(direction.value)
+        embed = await self.generate_trend_embed(direction.value)
         await interaction.followup.send(embed=embed)
 
-    async def fetch_trending_embed(self, direction):
+    @app_commands.command(name="setupautotrending", description="🛠️ Set daily auto-post channel and time (HH:MM 24hr)")
+    @app_commands.describe(channel="Channel to send posts in", post_time="Time in 24h format (e.g. 09:00)")
+    async def setupautotrending(self, interaction: discord.Interaction, channel: discord.TextChannel, post_time: str):
+        if not interaction.user.guild_permissions.manage_guild:
+            await interaction.response.send_message("❌ You need 'Manage Server' permission to use this.", ephemeral=True)
+            return
+
+        try:
+            datetime.strptime(post_time, "%H:%M")
+        except ValueError:
+            await interaction.response.send_message("❌ Invalid time format. Use HH:MM (24-hour)", ephemeral=True)
+            return
+
+        guild_id = str(interaction.guild.id)
+        self.config[guild_id] = {
+            "channel_id": channel.id,
+            "time": post_time
+        }
+        save_config(self.config)
+        await interaction.response.send_message(f"✅ Auto-trending set to post daily at **{post_time}** in {channel.mention}")
+
+    @tasks.loop(minutes=1)
+    async def auto_post_trends(self):
+        now = datetime.now().strftime("%H:%M")
+        for guild_id, settings in self.config.items():
+            if settings.get("time") != now:
+                continue
+
+            channel = self.bot.get_channel(settings["channel_id"])
+            if not channel:
+                continue
+
+            for direction in ["riser", "faller"]:
+                embed = await self.generate_trend_embed(direction)
+                await channel.send(embed=embed)
+
+    @auto_post_trends.before_loop
+    async def before_auto_post(self):
+        await self.bot.wait_until_ready()
+
+    async def generate_trend_embed(self, direction: str) -> discord.Embed:
         max_page = 76
         pages = range(max_page, 0, -1) if direction == "riser" else range(1, max_page + 1)
         all_players = []
@@ -54,9 +110,8 @@ class Trending(commands.Cog):
 
                 price = "?"
                 coin_tag = block.find("img", alt="Coin")
-                if coin_tag and coin_tag.parent:
-                    price_text = coin_tag.parent.get_text(strip=True).replace("Coin", "").strip()
-                    price = price_text
+                if coin_tag and coin_tag.next_sibling:
+                    price = coin_tag.next_sibling.strip()
 
                 all_players.append({
                     "name": name,
@@ -66,15 +121,12 @@ class Trending(commands.Cog):
                     "trend": trend
                 })
 
-        if direction == "riser":
-            all_players = sorted(all_players, key=lambda x: x["trend"], reverse=True)
-        else:
-            all_players = sorted(all_players, key=lambda x: x["trend"])
-
+        all_players = sorted(all_players, key=lambda x: x["trend"], reverse=(direction == "riser"))
         top10 = all_players[:10]
+
         emoji = "📈" if direction == "riser" else "📉"
         title = f"{emoji} Top 10 {'Risers' if direction == 'riser' else 'Fallers'} (🎮 Console)"
-        embed = discord.Embed(title=title, color=discord.Color.green() if direction == "riser" else discord.Color.red(), timestamp=datetime.utcnow())
+        embed = discord.Embed(title=title, color=discord.Color.green() if direction == "riser" else discord.Color.red())
 
         if not top10:
             embed.description = "No trending players found."
@@ -82,33 +134,11 @@ class Trending(commands.Cog):
             for p in top10:
                 embed.add_field(
                     name=f"{p['name']} ({p['rating']})",
-                    value=(
-                        f"{p['card_type']}\n"
-                        f"💰 {p['price']}\n"
-                        f"{emoji} {p['trend']}%"
-                    ),
+                    value=f"{p['card_type']}\n💰 {p['price']}\n{emoji} {p['trend']}%",
                     inline=False
                 )
 
         return embed
-
-    @tasks.loop(hours=24)
-    async def auto_post_trends(self):
-        channel_id = YOUR_CHANNEL_ID_HERE  # Replace with actual channel ID
-        channel = self.bot.get_channel(channel_id)
-        if not channel:
-            return
-
-        for direction in ["riser", "faller"]:
-            try:
-                embed = await self.fetch_trending_embed(direction)
-                await channel.send(embed=embed)
-            except Exception as e:
-                print(f"Auto-post error ({direction}): {e}")
-
-    @auto_post_trends.before_loop
-    async def before_auto_post(self):
-        await self.bot.wait_until_ready()
 
 async def setup(bot):
     await bot.add_cog(Trending(bot))
