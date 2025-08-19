@@ -1,57 +1,63 @@
 import os
-import discord
-import logging
+import sys
 import asyncio
+import discord
 from discord.ext import commands
 from discord import app_commands
 from dotenv import load_dotenv
 
-# Load environment variables
 load_dotenv()
 
-# Setup logging
-logging.basicConfig(level=logging.INFO)
-log = logging.getLogger("futbot")
-
-# Discord bot setup
 intents = discord.Intents.default()
 intents.message_content = True
+
 bot = commands.Bot(command_prefix="!", intents=intents)
+
+async def heartbeat():
+    while True:
+        sys.stdout.write("\U0001F493 Bot is still alive...\n")
+        sys.stdout.flush()
+        await asyncio.sleep(30)
 
 @bot.event
 async def on_ready():
-    log.info(f"✅ Logged in as {bot.user.name}")
+    sys.stdout.write(f"\n\u2705 Logged in as {bot.user.name}\n")
+    sys.stdout.flush()
 
     try:
         await bot.load_extension("cogs.pricecheck")
-        log.info("📦 Loaded pricecheck cog")
+        sys.stdout.write("\U0001F4E6 Loaded pricecheck cog\n")
     except Exception as e:
-        log.error(f"❌ Failed to load pricecheck cog: {e}")
+        sys.stdout.write(f"\u274C Failed to load pricecheck cog: {e}\n")
+    sys.stdout.flush()
 
     try:
         await bot.load_extension("cogs.pricecheckgg")
-        log.info("📦 Loaded pricecheckgg cog")
+        sys.stdout.write("\U0001F4E6 Loaded pricecheckgg cog\n")
     except Exception as e:
-        log.error(f"❌ Failed to load pricecheckgg cog: {e}")
+        sys.stdout.write(f"\u274C Failed to load pricecheckgg cog: {e}\n")
+    sys.stdout.flush()
 
     try:
         synced = await bot.tree.sync()
-        log.info(f"🔁 Globally synced {len(synced)} slash command(s).")
+        sys.stdout.write(f"\U0001F501 Synced {len(synced)} slash command(s)\n")
     except Exception as e:
-        log.error(f"❌ Failed to sync slash commands: {e}")
-
-    # Heartbeat to keep logs alive
-    async def heartbeat():
-        while True:
-            log.info("💓 Bot is still alive...")
-            await asyncio.sleep(30)
+        sys.stdout.write(f"\u274C Failed to sync slash commands: {e}\n")
+    sys.stdout.flush()
 
     bot.loop.create_task(heartbeat())
 
-# Simple ping command
 @bot.tree.command(name="ping", description="Replies with pong!")
 async def ping(interaction: discord.Interaction):
-    await interaction.response.send_message("🏓 Pong!")
+    sys.stdout.write("\u2705 Ping command triggered\n")
+    sys.stdout.flush()
+    await interaction.response.send_message("\U0001F3D3 Pong!")
 
-# Run the bot using the token from environment variables
-bot.run(os.getenv("DISCORD_TOKEN"))
+# Validate and run bot
+TOKEN = os.getenv("DISCORD_TOKEN")
+if not TOKEN:
+    sys.stdout.write("\u274C DISCORD_TOKEN not found in environment!\n")
+    sys.stdout.flush()
+    exit(1)
+
+bot.run(TOKEN)
