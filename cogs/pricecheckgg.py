@@ -69,7 +69,7 @@ class PriceCheckGG(commands.Cog):
             app_commands.Choice(name=f"{p['name']} {p['rating']}", value=f"{p['name']} {p['rating']}")
             for p in self.players if current in f"{p['name']} {p['rating']}".lower()
         ][:25]
-            return suggestions
+        return suggestions
         except Exception as e:
             print(f"[AUTOCOMPLETE ERROR] {e}")
             return []
