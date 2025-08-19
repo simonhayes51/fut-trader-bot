@@ -6,6 +6,9 @@ from bs4 import BeautifulSoup
 import json
 import logging
 
+log = logging.getLogger("fut-pricecheck")
+log.setLevel(logging.INFO)
+
 class PriceCheck(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -15,20 +18,20 @@ class PriceCheck(commands.Cog):
         try:
             with open("players_temp.json", "r", encoding="utf-8") as f:
                 players = json.load(f)
-                logging.info("[LOAD] players_temp.json loaded successfully.")
+                log.info("[LOAD] players_temp.json loaded successfully.")
                 return players
         except Exception as e:
-            logging.error(f"[LOAD ERROR] Could not load players: {e}")
+            log.error(f"[ERROR] Couldn't load players: {e}")
             return []
 
     @app_commands.command(name="pricecheck", description="Check the current FUTBIN price of a player")
-    @app_commands.describe(player="Enter player name and rating (e.g. Lamine Yamal 99)", platform="Choose platform")
+    @app_commands.describe(player="Enter player name and rating (e.g. Lamine Yamal 97)", platform="Choose platform")
     @app_commands.choices(platform=[
         app_commands.Choice(name="Console", value="console"),
         app_commands.Choice(name="PC", value="pc")
     ])
     async def pricecheck(self, interaction: discord.Interaction, player: str, platform: app_commands.Choice[str]):
-        logging.info(f"🧪 /pricecheck triggered by {interaction.user} for {player} on {platform.name}")
+        log.info(f"🧪 /pricecheck triggered by {interaction.user.name} for {player} on {platform.name}")
         await interaction.response.defer()
 
         try:
@@ -44,45 +47,59 @@ class PriceCheck(commands.Cog):
             player_name = matched_player["name"]
             rating = matched_player["rating"]
             slug = player_name.replace(" ", "-").lower()
-            futbin_url = f"https://www.futbin.com/25/player/{player_id}/{slug}"
 
-            logging.info(f"🔗 Scraping URL: {futbin_url}")
-            price = self.get_price(futbin_url)
+            futbin_url = f"https://www.futbin.com/25/player/{player_id}/{slug}"
+            log.info(f"🔗 Scraping URL: {futbin_url}")
+            data = self.get_price_details(futbin_url, platform.value)
+
+            if data["price"] == "N/A":
+                await interaction.followup.send("❌ Failed to fetch price.")
+                return
 
             embed = discord.Embed(
                 title=f"{player_name} ({rating})",
-                description=f"**Platform:** {platform.name}\n**Price:** {price} 🪙",
+                description=(
+                    f"**Platform:** {platform.name}\n"
+                    f"**Price:** {data['price']} 🪙\n"
+                    f"📉 **Trend:** {data['trend']}\n"
+                    f"📊 **Range:** {data['range']}\n"
+                    f"⏱ **Updated:** {data['updated']}"
+                ),
                 color=discord.Color.green()
             )
             embed.set_footer(text="Data from FUTBIN")
             await interaction.followup.send(embed=embed)
 
         except Exception as e:
-            logging.error(f"[ERROR] pricecheck: {e}")
+            log.error(f"[ERROR] pricecheck: {e}")
             await interaction.followup.send("⚠️ An error occurred while fetching the price.")
 
-    def get_price(self, url):
+    def get_price_details(self, url, platform):
         try:
             headers = {"User-Agent": "Mozilla/5.0"}
             response = requests.get(url, headers=headers)
-            logging.info(f"🌐 [GET] {url} returned status {response.status_code}")
+            log.info(f"🌐 [GET] {url} returned status {response.status_code}")
             soup = BeautifulSoup(response.text, "html.parser")
 
-            price_element = soup.find("div", class_="price inline-with-icon lowest-price-1")
-            if not price_element:
-                logging.warning("⚠️ Could not find the main price element (lowest-price-1).")
-                return "N/A"
+            price_box = soup.find("div", class_="price-box")
+            trend = soup.select_one(".price-box-trend .semi-bold")
+            updated = soup.select_one(".prices-updated")
+            pr_range = soup.select_one(".price-pr")
+            main_price = soup.find("div", class_="price inline-with-icon lowest-price-1")
 
-            raw_price = price_element.text.strip().replace(",", "").replace("\n", "")
-            logging.info(f"📦 Scraped visible price: {raw_price}")
+            data = {
+                "price": main_price.text.strip().replace(",", "") if main_price else "N/A",
+                "trend": trend.text.strip() if trend else "N/A",
+                "updated": updated.text.strip().replace("Price Updated:", "") if updated else "N/A",
+                "range": pr_range.text.replace("PR:", "").strip() if pr_range else "N/A"
+            }
 
-            if raw_price.isdigit():
-                return f"{int(raw_price):,}"
-            return "N/A"
+            log.info(f"📦 Final scrape: Price={data['price']}, Trend={data['trend']}, Range={data['range']}, Updated={data['updated']}")
+            return data
 
         except Exception as e:
-            logging.error(f"[SCRAPE ERROR] {e}")
-            return "N/A"
+            log.error(f"[SCRAPE ERROR] {e}")
+            return {"price": "N/A", "trend": "N/A", "updated": "N/A", "range": "N/A"}
 
     @pricecheck.autocomplete("player")
     async def player_autocomplete(self, interaction: discord.Interaction, current: str):
@@ -94,7 +111,7 @@ class PriceCheck(commands.Cog):
             ][:25]
             return suggestions
         except Exception as e:
-            logging.error(f"[AUTOCOMPLETE ERROR] {e}")
+            log.error(f"[AUTOCOMPLETE ERROR] {e}")
             return []
 
 async def setup(bot):
