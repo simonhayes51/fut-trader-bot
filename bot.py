@@ -45,6 +45,18 @@ async def on_ready():
     except Exception as e:
         logging.error(f"❌ Failed to sync slash commands: {e}")
 
+    try:
+        await bot.load_extension("cogs.taxcalc")
+        logging.info("📦 Loaded taxcalc cog")
+    except Exception as e:
+        logging.error(f"❌ Failed to load taxcalc cog: {e}")
+
+    try:
+        await bot.load_extension("cogs.submitdeal")
+        logging.info("📦 Loaded submitdeal cog")
+    except Exception as e:
+        logging.error(f"❌ Failed to load submitdeal cog: {e}")
+
 # Test command
 @bot.tree.command(name="ping", description="Replies with pong!")
 async def ping(interaction: discord.Interaction):
