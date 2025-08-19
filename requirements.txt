@@ -3,3 +3,4 @@ requests
 undetected-chromedriver
 beautifulsoup4
 python-dotenv
+flask
