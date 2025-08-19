@@ -6,8 +6,6 @@ from bs4 import BeautifulSoup
 import json
 import logging
 
-# Setup logger
-logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("fut-pricecheck")
 
 class PriceCheck(commands.Cog):
@@ -18,8 +16,9 @@ class PriceCheck(commands.Cog):
     def load_players(self):
         try:
             with open("players_temp.json", "r", encoding="utf-8") as f:
+                players = json.load(f)
                 log.info("[LOAD] players_temp.json loaded successfully.")
-                return json.load(f)
+                return players
         except Exception as e:
             log.error(f"[ERROR] Couldn't load players: {e}")
             return []
@@ -31,7 +30,6 @@ class PriceCheck(commands.Cog):
         app_commands.Choice(name="PC", value="pc")
     ])
     async def pricecheck(self, interaction: discord.Interaction, player: str, platform: app_commands.Choice[str]):
-        log.info(f"🧪 /pricecheck triggered by {interaction.user} for {player} on {platform.name}")
         await interaction.response.defer()
 
         try:
@@ -41,7 +39,6 @@ class PriceCheck(commands.Cog):
             )
 
             if not matched_player:
-                log.warning(f"❌ Player '{player}' not found in local data.")
                 await interaction.followup.send("❌ Player not found in local data.")
                 return
 
@@ -51,10 +48,9 @@ class PriceCheck(commands.Cog):
             slug = player_name.replace(" ", "-").lower()
 
             futbin_url = f"https://www.futbin.com/25/player/{player_id}/{slug}"
-            log.info(f"🔗 Scraping URL: {futbin_url}")
+            log.info(f"[PRICECHECK] URL: {futbin_url}")
 
             price = self.get_price(futbin_url, platform.value)
-            log.info(f"💰 Final scraped price: {price}")
 
             embed = discord.Embed(
                 title=f"{player_name} ({rating})",
@@ -72,49 +68,55 @@ class PriceCheck(commands.Cog):
         try:
             headers = {"User-Agent": "Mozilla/5.0"}
             response = requests.get(url, headers=headers)
-            log.info(f"🌐 [GET] {url} returned status {response.status_code}")
             soup = BeautifulSoup(response.text, "html.parser")
 
             prices_wrapper = soup.find("div", class_="lowest-prices-wrapper")
             if not prices_wrapper:
-                log.warning("[WARNING] Could not find prices wrapper on the page.")
+                log.error("[SCRAPE ERROR] Could not find prices wrapper")
                 return "N/A"
+
+            # DEBUG: Print out what we found
+            log.info("[DEBUG] Found prices wrapper block")
+            log.debug(prices_wrapper.prettify()[:1000])  # Only log the first 1000 characters
 
             price_elements = prices_wrapper.find_all("div", class_="lowest-price")
 
             def get_price_text(index):
                 if len(price_elements) > index:
-                    raw = price_elements[index].text.strip()
-                    log.info(f"📦 Price element at index {index}: {raw}")
-                    return raw.replace(",", "").replace("\n", "")
+                    return price_elements[index].text.strip().replace(",", "").replace("\n", "")
                 return "0"
 
             if platform == "console":
                 ps_price = get_price_text(0)
                 xbox_price = get_price_text(1)
                 price = ps_price if ps_price != "0" else xbox_price
-                log.info(f"🎮 PS Price: {ps_price} | Xbox Price: {xbox_price}")
             elif platform == "pc":
                 price = get_price_text(2)
-                log.info(f"🖥️ PC Price: {price}")
             else:
                 return "N/A"
 
             if price == "0" or price == "":
                 return "N/A"
 
+            log.info(f"[SCRAPE SUCCESS] Platform: {platform}, Price: {price}")
             return f"{int(price):,}"  # Adds commas
+
         except Exception as e:
             log.error(f"[SCRAPE ERROR] {e}")
             return "N/A"
 
     @pricecheck.autocomplete("player")
     async def player_autocomplete(self, interaction: discord.Interaction, current: str):
-        current = current.lower()
-        return [
-            app_commands.Choice(name=f"{p['name']} {p['rating']}", value=f"{p['name']} {p['rating']}")
-            for p in self.players if current in f"{p['name']} {p['rating']}".lower()
-        ][:25]
+        try:
+            current = current.lower()
+            suggestions = [
+                app_commands.Choice(name=f"{p['name']} {p['rating']}", value=f"{p['name']} {p['rating']}")
+                for p in self.players if current in f"{p['name']} {p['rating']}".lower()
+            ][:25]
+            return suggestions
+        except Exception as e:
+            log.error(f"[AUTOCOMPLETE ERROR] {e}")
+            return []
 
 async def setup(bot):
     await bot.add_cog(PriceCheck(bot))
