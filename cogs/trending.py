@@ -18,7 +18,7 @@ class Trending(commands.Cog):
         await interaction.response.defer()
 
         pages = range(75, 0, -1) if direction.value == "riser" else range(1, 76)
-        collected = []
+        all_players = []
 
         for page in pages:
             url = f"https://www.fut.gg/players/momentum/?page={page}"
@@ -40,15 +40,21 @@ class Trending(commands.Cog):
 
                 # TREND %
                 trend_tag = block.select_one("div.text-green-500, div.text-red-500")
-                trend = trend_tag.text.strip() if trend_tag else "?"
+                if not trend_tag:
+                    continue
+                trend_text = trend_tag.text.strip().replace('%', '').replace('+', '').replace('−', '-')
+                try:
+                    trend = float(trend_text)
+                except ValueError:
+                    continue
 
-                # PRICE (coin image next_sibling)
-                price_tag = block.find("img", alt="Coin")
-                price = price_tag.next_sibling.strip() if price_tag and price_tag.next_sibling else "?"
+                # PRICE (after coin image)
+                price = "?"
+                coin_tag = block.find("img", alt="Coin")
+                if coin_tag and coin_tag.parent:
+                    price = coin_tag.parent.get_text(strip=True).replace("Coin", "").strip()
 
-                print(f"DEBUG: {name} | {rating} | {card_type} | {price} | {trend}")
-
-                collected.append({
+                all_players.append({
                     "name": name,
                     "rating": rating,
                     "card_type": card_type,
@@ -56,26 +62,25 @@ class Trending(commands.Cog):
                     "trend": trend
                 })
 
-                if len(collected) >= 10:
-                    break
-
-            if len(collected) >= 10:
-                break
+        # Sort and slice after collecting all
+        if direction.value == "riser":
+            all_players = sorted(all_players, key=lambda x: x["trend"], reverse=True)
+        top10 = all_players[:10]
 
         emoji = "📈" if direction.value == "riser" else "📉"
         title = f"{emoji} Top 10 {direction.name} (🎮 Console)"
         embed = discord.Embed(title=title, color=discord.Color.green() if direction.value == "riser" else discord.Color.red())
 
-        if not collected:
+        if not top10:
             embed.description = "No trending players found."
         else:
-            for p in collected:
+            for p in top10:
                 embed.add_field(
                     name=f"{p['name']} ({p['rating']})",
                     value=(
                         f"{p['card_type']}\n"
                         f"💰 {p['price']}\n"
-                        f"{emoji} {p['trend']}"
+                        f"{emoji} {p['trend']}%"
                     ),
                     inline=False
                 )
