@@ -34,12 +34,6 @@ async def on_ready():
         logging.error(f"❌ Failed to load pricecheck cog: {e}")
 
     try:
-        synced = await bot.tree.sync()
-        logging.info(f"🔁 Globally synced {len(synced)} slash command(s).")
-    except Exception as e:
-        logging.error(f"❌ Failed to sync slash commands: {e}")
-
-    try:
         await bot.load_extension("cogs.taxcalc")
         logging.info("📦 Loaded taxcalc cog")
     except Exception as e:
@@ -50,6 +44,12 @@ async def on_ready():
         logging.info("📦 Loaded submitdeal cog")
     except Exception as e:
         logging.error(f"❌ Failed to load submitdeal cog: {e}")
+
+    try:
+        synced = await bot.tree.sync()
+        logging.info(f"🔁 Globally synced {len(synced)} slash command(s).")
+    except Exception as e:
+        logging.error(f"❌ Failed to sync slash commands: {e}")
 
 # Test command
 @bot.tree.command(name="ping", description="Replies with pong!")
