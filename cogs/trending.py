@@ -1,73 +1,68 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
-from bs4 import BeautifulSoup
 import requests
+from bs4 import BeautifulSoup
 
 class Trending(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    def fetch_players(self, trend_type: str):
-        # Risers are at the end (pages 70-75), Fallers at start
-        pages = range(75, 69, -1) if trend_type == "riser" else range(1, 6)
+    def fetch_trending(self, trend_type):
+        # Use correct page depending on trend type
+        page = 1 if trend_type == "fallers" else 75
+        url = f"https://www.fut.gg/players/momentum/?page={page}"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        response = requests.get(url, headers=headers)
+        soup = BeautifulSoup(response.text, "html.parser")
+
+        cards = soup.find_all("a", class_="group/player")
         players = []
 
-        for page in pages:
-            url = f"https://www.fut.gg/players/momentum/?page={page}"
-            headers = {"User-Agent": "Mozilla/5.0"}
-            res = requests.get(url, headers=headers)
-            soup = BeautifulSoup(res.text, "html.parser")
+        for card in cards:
+            alt_text = card.find("img")['alt'] if card.find("img") else None
+            if not alt_text:
+                continue
 
-            cards = soup.select("a.group\\/player")
-            for card in cards:
-                alt = card.find("img")['alt']
-                try:
-                    name, rating, version = alt.split(" - ", 2)
-                except ValueError:
-                    continue  # Skip malformed
+            try:
+                name_rating, card_type = alt_text.split(" - ", 1)
+                if " - " in card_type:
+                    card_type = card_type.split(" - ")[0].strip()
+            except ValueError:
+                continue
 
-                # Trend %
-                trend_tag = card.select_one(".text-green-500, .text-red-500")
-                if not trend_tag:
-                    continue
-                trend = trend_tag.text.strip()
+            # Pull trend %
+            trend_div = card.find("div", class_="text-green-500") or card.find("div", class_="text-red-500")
+            trend = trend_div.get_text(strip=True) if trend_div else "?"
 
-                # Price
-                price_tag = card.select_one("img[alt='Coin'] + div")
-                price = price_tag.text.strip() if price_tag else "?"
+            # Pull price
+            coin_img = card.find("img", {"alt": "Coin"})
+            price = coin_img.next_sibling.strip() if coin_img and coin_img.next_sibling else "?"
 
-                players.append({
-                    "name": name,
-                    "rating": rating,
-                    "version": version,
-                    "price": price,
-                    "trend": trend
-                })
+            players.append({
+                "name": name_rating,
+                "type": card_type,
+                "price": price,
+                "trend": trend
+            })
 
-                if len(players) >= 10:
-                    break
-            if len(players) >= 10:
-                break
+        return players[:10]  # Top 10 only
 
-        return players
-
-    @app_commands.command(name="trending", description="📊 Show top 10 Risers or Fallers on console")
+    @app_commands.command(name="trending", description="📊 Show top trending players on console")
     @app_commands.choices(
         trend_type=[
-            app_commands.Choice(name="📈 Risers", value="riser"),
-            app_commands.Choice(name="📉 Fallers", value="faller")
+            app_commands.Choice(name="📈 Risers", value="risers"),
+            app_commands.Choice(name="📉 Fallers", value="fallers")
         ]
     )
     async def trending(self, interaction: discord.Interaction, trend_type: app_commands.Choice[str]):
         await interaction.response.defer()
+        players = self.fetch_trending(trend_type.value)
 
-        players = self.fetch_players(trend_type.value)
-        emoji = "📈" if trend_type.value == "riser" else "📉"
-
+        emoji = "📈" if trend_type.value == "risers" else "📉"
         embed = discord.Embed(
-            title=f"{emoji} Top 10 {trend_type.name} (🎮 Console)",
-            color=discord.Color.green() if trend_type.value == "riser" else discord.Color.red()
+            title=f"{emoji} Top 10 {trend_type.name} (\U0001F3AE Console)",
+            color=discord.Color.green() if trend_type.value == "risers" else discord.Color.red()
         )
 
         if not players:
@@ -75,9 +70,9 @@ class Trending(commands.Cog):
         else:
             for player in players:
                 embed.add_field(
-                    name=f"{player['name']} ({player['rating']})",
+                    name=f"{player['name']}",
                     value=(
-                        f"{player['version']}\n"
+                        f"{player['type']}\n"
                         f"💰 {player['price']}\n"
                         f"{emoji} {player['trend']}"
                     ),
