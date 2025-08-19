@@ -4,6 +4,11 @@ from discord.ext import commands
 import requests
 from bs4 import BeautifulSoup
 import json
+import logging
+
+# Setup logger
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger("fut-pricecheck")
 
 class PriceCheck(commands.Cog):
     def __init__(self, bot):
@@ -13,9 +18,10 @@ class PriceCheck(commands.Cog):
     def load_players(self):
         try:
             with open("players_temp.json", "r", encoding="utf-8") as f:
+                log.info("[LOAD] players_temp.json loaded successfully.")
                 return json.load(f)
         except Exception as e:
-            print(f"[ERROR] Couldn't load players: {e}")
+            log.error(f"[ERROR] Couldn't load players: {e}")
             return []
 
     @app_commands.command(name="pricecheck", description="Check the current FUTBIN price of a player")
@@ -25,15 +31,17 @@ class PriceCheck(commands.Cog):
         app_commands.Choice(name="PC", value="pc")
     ])
     async def pricecheck(self, interaction: discord.Interaction, player: str, platform: app_commands.Choice[str]):
-        print(f"🧪 /pricecheck triggered by {interaction.user} for {player} on {platform.name}")
+        log.info(f"🧪 /pricecheck triggered by {interaction.user} for {player} on {platform.name}")
         await interaction.response.defer()
 
         try:
+            # Match player from local list
             matched_player = next(
                 (p for p in self.players if f"{p['name'].lower()} {p['rating']}" == player.lower()), None
             )
 
             if not matched_player:
+                log.warning(f"❌ Player '{player}' not found in local data.")
                 await interaction.followup.send("❌ Player not found in local data.")
                 return
 
@@ -43,9 +51,10 @@ class PriceCheck(commands.Cog):
             slug = player_name.replace(" ", "-").lower()
 
             futbin_url = f"https://www.futbin.com/25/player/{player_id}/{slug}"
-            print(f"🔗 Scraping URL: {futbin_url}")
+            log.info(f"🔗 Scraping URL: {futbin_url}")
 
             price = self.get_price(futbin_url, platform.value)
+            log.info(f"💰 Final scraped price: {price}")
 
             embed = discord.Embed(
                 title=f"{player_name} ({rating})",
@@ -56,59 +65,47 @@ class PriceCheck(commands.Cog):
             await interaction.followup.send(embed=embed)
 
         except Exception as e:
-            print(f"[ERROR] pricecheck: {e}")
+            log.error(f"[ERROR] pricecheck: {e}")
             await interaction.followup.send("⚠️ An error occurred while fetching the price.")
 
     def get_price(self, url, platform):
         try:
             headers = {"User-Agent": "Mozilla/5.0"}
             response = requests.get(url, headers=headers)
+            log.info(f"🌐 [GET] {url} returned status {response.status_code}")
             soup = BeautifulSoup(response.text, "html.parser")
-
-            print(f"🌐 [GET] Status: {response.status_code}")
-            print(f"📄 Page Title: {soup.title.string if soup.title else 'N/A'}")
 
             prices_wrapper = soup.find("div", class_="lowest-prices-wrapper")
             if not prices_wrapper:
-                print("[ERROR] Could not find prices wrapper")
+                log.warning("[WARNING] Could not find prices wrapper on the page.")
                 return "N/A"
 
-            print("🧱 Matched container HTML:", str(prices_wrapper)[:300], "...")
-
             price_elements = prices_wrapper.find_all("div", class_="lowest-price")
-            print(f"💬 Found {len(price_elements)} price elements:")
-            for i, el in enumerate(price_elements):
-                print(f"  [{i}] {el.text.strip()}")
 
             def get_price_text(index):
                 if len(price_elements) > index:
-                    raw_text = price_elements[index].text.strip()
-                    print(f"🔎 Raw price @ index {index}: {raw_text}")
-                    return raw_text.replace(",", "").replace("\n", "")
+                    raw = price_elements[index].text.strip()
+                    log.info(f"📦 Price element at index {index}: {raw}")
+                    return raw.replace(",", "").replace("\n", "")
                 return "0"
 
             if platform == "console":
                 ps_price = get_price_text(0)
                 xbox_price = get_price_text(1)
                 price = ps_price if ps_price != "0" else xbox_price
-                print(f"🎮 Selected Console Price: {price}")
+                log.info(f"🎮 PS Price: {ps_price} | Xbox Price: {xbox_price}")
             elif platform == "pc":
                 price = get_price_text(2)
-                print(f"💻 Selected PC Price: {price}")
+                log.info(f"🖥️ PC Price: {price}")
             else:
-                print(f"[ERROR] Unknown platform: {platform}")
                 return "N/A"
 
             if price == "0" or price == "":
-                print("[WARN] Price is zero or blank")
                 return "N/A"
 
-            formatted_price = f"{int(price):,}"
-            print(f"✅ Final formatted price: {formatted_price}")
-            return formatted_price
-
+            return f"{int(price):,}"  # Adds commas
         except Exception as e:
-            print(f"[SCRAPE ERROR] {e}")
+            log.error(f"[SCRAPE ERROR] {e}")
             return "N/A"
 
     @pricecheck.autocomplete("player")
