@@ -49,8 +49,5 @@ class TaxCalc(commands.Cog):
 
         await interaction.response.send_message(embed=embed)
 
-    async def cog_load(self):
-        self.tree.add_command(self.taxcalc)
-
 async def setup(bot):
     await bot.add_cog(TaxCalc(bot))
