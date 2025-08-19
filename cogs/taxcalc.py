@@ -5,8 +5,6 @@ from discord import app_commands
 class TaxCalc(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-
-        # Create a Group for this cog's commands (optional)
         self.tree = bot.tree
 
     @app_commands.command(name="taxcalc", description="📊 Calculate EA tax, ROI and break-even for a FUT trade")
@@ -40,4 +38,19 @@ class TaxCalc(commands.Cog):
         )
 
         embed.add_field(name="🛒 Buy Price", value=f"{buy_price:,} coins", inline=True)
-        embed.add_field(name="🏷️ Sell Price", value=f"{sell_price:,} coins", inline=Tru
+        embed.add_field(name="🏷️ Sell Price", value=f"{sell_price:,} coins", inline=True)
+        embed.add_field(name="💰 EA Tax (5%)", value=f"{tax:,} coins", inline=True)
+        embed.add_field(name="💵 After-Tax Sale", value=f"{after_tax:,} coins", inline=True)
+        embed.add_field(name="📈 Profit / Loss", value=f"{profit:,} coins ({result_emoji})", inline=True)
+        embed.add_field(name="📊 ROI", value=f"{roi:.2f}%", inline=True)
+        embed.add_field(name="🔄 Break-even Sale Price", value=f"{breakeven_price:,} coins", inline=False)
+        embed.set_footer(text="EA always takes their cut. Trade smarter. ⚽")
+        embed.timestamp = interaction.created_at
+
+        await interaction.response.send_message(embed=embed)
+
+    async def cog_load(self):
+        self.tree.add_command(self.taxcalc)
+
+async def setup(bot):
+    await bot.add_cog(TaxCalc(bot))
