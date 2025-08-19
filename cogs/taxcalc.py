@@ -23,7 +23,7 @@ class TaxCalc(commands.Cog):
         except ZeroDivisionError:
             roi = 0
 
-        # Break-even price (what you need to sell for to make 0 profit)
+        # Break-even price
         breakeven_price = int(round(buy_price / 0.95))
 
         # Emoji based on result
@@ -37,7 +37,7 @@ class TaxCalc(commands.Cog):
         # Embed
         embed = discord.Embed(
             title="💸 FUT Tax Calculator",
-            description=f"Here's your full trade breakdown:",
+            description="Here's your full trade breakdown:",
             color=discord.Color.green() if profit > 0 else discord.Color.red() if profit < 0 else discord.Color.greyple()
         )
 
@@ -53,6 +53,9 @@ class TaxCalc(commands.Cog):
         embed.set_footer(text="EA always takes their cut. Trade smarter. ⚽")
 
         await interaction.response.send_message(embed=embed)
+
+    async def cog_load(self):
+        self.bot.tree.add_command(self.taxcalc)
 
 async def setup(bot):
     await bot.add_cog(TaxCalc(bot))
