@@ -5,7 +5,6 @@ import json
 import os
 
 SNIPING_FILE = "sniping_channels.json"
-FILTER_ALERT_ROLE_ID = 123456789012345678  # 🔁 Replace with your actual Filter Alerts role ID
 
 class SubmitFilter(commands.Cog):
     def __init__(self, bot):
@@ -48,22 +47,30 @@ class SubmitFilter(commands.Cog):
     ):
         await interaction.response.defer()
 
-        # Load channel ID
+        # Load settings (channel + role)
         guild_id = str(interaction.guild_id)
         if os.path.exists(SNIPING_FILE):
             with open(SNIPING_FILE, "r") as f:
-                sniping_data = json.load(f)
-                target_channel_id = sniping_data.get(guild_id)
+                data = json.load(f)
+                settings = data.get(guild_id)
         else:
-            target_channel_id = None
+            settings = None
 
-        if not target_channel_id:
+        if not settings:
             await interaction.followup.send(
-                "⚠️ No sniping channel has been set yet. Use `/setupsniping` to configure it.",
+                "⚠️ No sniping setup found. Use `/setupsniping` to configure the post channel and ping role.",
                 ephemeral=True
             )
             return
 
+        channel = self.bot.get_channel(settings["channel_id"])
+        role_mention = f"<@&{settings['role_id']}>"
+
+        if not channel:
+            await interaction.followup.send("⚠️ Could not find the sniping channel.", ephemeral=True)
+            return
+
+        # Build the embed
         embed = discord.Embed(
             title=f"📢 New Sniping Filter by {interaction.user.display_name}",
             description=f"🔍 **{filter_name}**",
@@ -91,12 +98,8 @@ class SubmitFilter(commands.Cog):
 
         embed.set_footer(text="Use this to find quick snipes before prices change.")
 
-        channel = self.bot.get_channel(int(target_channel_id))
-        if channel:
-            await channel.send(content=f"<@&{FILTER_ALERT_ROLE_ID}>", embed=embed)
-            await interaction.followup.send("✅ Your sniping filter has been submitted!", ephemeral=True)
-        else:
-            await interaction.followup.send("⚠️ Could not find the sniping channel.", ephemeral=True)
+        await channel.send(content=role_mention, embed=embed)
+        await interaction.followup.send("✅ Your sniping filter has been submitted!", ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(SubmitFilter(bot))
