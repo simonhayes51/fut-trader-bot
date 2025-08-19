@@ -6,6 +6,7 @@ import requests
 import asyncio
 import json
 import os
+from bs4 import BeautifulSoup
 
 CONFIG_FILE = "autotrend_config.json"
 
@@ -26,143 +27,117 @@ class Trending(commands.Cog):
         self.config = load_config()
         self.auto_post_trends.start()
 
-    def get_trending_players(self, trend_type: str, rarity: str):
-        sort = "trend_desc" if trend_type == "riser" else "trend_asc"
-        url = f"https://www.fut.gg/api/fc/players/?sort={sort}&platform=ps"
+    def scrape_trending_html(self, trend_type: str):
+        """
+        Scrapes the FUT.GG Trending Players HTML page.
+        trend_type: 'riser' or 'faller' (assumed same listing separated?)
+        """
+        url = "https://www.fut.gg/players/trending/"
         headers = {"User-Agent": "Mozilla/5.0"}
-        response = requests.get(url, headers=headers)
-        data = response.json()
+        try:
+            res = requests.get(url, headers=headers, timeout=10)
+            if res.status_code != 200:
+                print(f"[ERROR] HTTP {res.status_code} from FUT.GG trends")
+                return []
+            soup = BeautifulSoup(res.text, "html.parser")
+        except Exception as e:
+            print(f"[ERROR] Failed scraping FUT.GG: {e}")
+            return []
 
-        # DEBUG: Log sample player
-        if "players" in data and data["players"]:
-            print("[DEBUG] Sample player object:")
-            print(json.dumps(data["players"][0], indent=2))
-        else:
-            print("[DEBUG] No players key or empty list in response")
-
+        # Parse player rows — this will vary depending on page structure
         players = []
-        for player in data.get("players", []):
-            # Temporarily disable rarity filtering for debugging
-            # if rarity != "all" and player.get("rarity", "").lower() != rarity:
-            #     continue
+        rows = soup.select("div.trending-card")  # update selector as needed
+        for row in rows[:10]:
+            try:
+                name = row.select_one(".player-name").text.strip()
+                rating = row.select_one(".player-rating").text.strip()
+                price = row.select_one(".player-price").text.strip()
+                trend = row.select_one(".player-trend").text.strip()
+                position = row.select_one(".player-position").text.strip()
+                club = row.select_one(".player-club").text.strip()
+            except Exception:
+                continue
+
             players.append({
-                "name": player.get("name"),
-                "rating": player.get("rating"),
-                "price": player.get("price"),
-                "trend": player.get("priceTrend"),
-                "club": player.get("clubName"),
-                "position": player.get("position")
+                "name": name,
+                "rating": rating,
+                "price": price,
+                "trend": trend,
+                "position": position,
+                "club": club
             })
-            if len(players) >= 10:
-                break
+
         return players
 
-    @app_commands.command(name="trending", description="\ud83d\udcca Show top trending players on console")
-    @app_commands.choices(
-        trend_type=[
-            app_commands.Choice(name="\ud83d\udcc8 Risers", value="riser"),
-            app_commands.Choice(name="\ud83d\udcc9 Fallers", value="faller")
-        ],
-        rarity=[
-            app_commands.Choice(name="\ud83c\udf10 All", value="all"),
-            app_commands.Choice(name="\ud83d\udd2b Bronze", value="bronze"),
-            app_commands.Choice(name="\u26aa Silver", value="silver"),
-            app_commands.Choice(name="\ud83d\udfe1 Gold", value="gold"),
-            app_commands.Choice(name="\ud83d\udd23 Special", value="special")
-        ]
-    )
-    async def trending(
-        self,
-        interaction: discord.Interaction,
-        trend_type: app_commands.Choice[str],
-        rarity: app_commands.Choice[str]
-    ):
+    @app_commands.command(name="trending", description="Show top trending players (scraped from FUT.GG)")
+    async def trending(self, interaction: discord.Interaction):
         await interaction.response.defer()
-        players = self.get_trending_players(trend_type.value, rarity.value)
+        players = self.scrape_trending_html(trend_type="riser")
 
-        emoji = "\ud83d\udcc8" if trend_type.value == "riser" else "\ud83d\udcc9"
         embed = discord.Embed(
-            title=f"{emoji} Top 10 {trend_type.name} ({rarity.name} \u2013 \ud83c\udfae Console)",
-            color=discord.Color.green() if trend_type.value == "riser" else discord.Color.red()
+            title="Trending Players (from FUT.GG)",
+            color=discord.Color.blue(),
+            timestamp=datetime.utcnow()
         )
 
         if not players:
-            embed.description = "No players found for this filter."
+            embed.description = "No trending data found or page payload has changed."
         else:
-            for player in players:
+            for p in players:
                 embed.add_field(
-                    name=f"{player['name']} ({player['rating']})",
-                    value=(
-                        f"{emoji} `{player['trend']}%`\n"
-                        f"\ud83d\udcb0 `{player['price']:,} coins`\n"
-                        f"\ud83e\udeed {player['position']} \u2013 {player['club']}"
-                    ),
+                    name=f"{p['name']} ({p['rating']})",
+                    value=f" {p['trend']} | {p['price']} | {p['position']} – {p['club']}",
                     inline=False
                 )
 
         await interaction.followup.send(embed=embed)
 
-    @app_commands.command(name="setupautotrending", description="\ud83d\udee0\ufe0f Set daily auto-post channel and time (HH:MM)")
-    @app_commands.describe(channel="Channel to send posts in", post_time="Time in 24h format (e.g. 09:00)")
+    @app_commands.command(name="setupautotrending", description="Set auto-trending daily (HH:MM UTC)")
+    @app_commands.describe(
+        channel="Channel to post in",
+        post_time="Time in HH:MM (UTC)"
+    )
     async def setupautotrending(self, interaction: discord.Interaction, channel: discord.TextChannel, post_time: str):
         if not interaction.user.guild_permissions.manage_guild:
-            await interaction.response.send_message("\u274c You need 'Manage Server' permission to use this.", ephemeral=True)
+            await interaction.response.send_message("You need Manage Server permission.", ephemeral=True)
             return
-
-        # Validate time format
         try:
             datetime.strptime(post_time, "%H:%M")
         except ValueError:
-            await interaction.response.send_message("\u274c Invalid time format. Use HH:MM (24-hour)", ephemeral=True)
+            await interaction.response.send_message("Use HH:MM 24-hour format.", ephemeral=True)
             return
 
-        guild_id = str(interaction.guild.id)
-        self.config[guild_id] = {
-            "channel_id": channel.id,
-            "time": post_time
-        }
+        gid = str(interaction.guild.id)
+        self.config[gid] = {"channel_id": channel.id, "time": post_time}
         save_config(self.config)
-        await interaction.response.send_message(f"\u2705 Auto-trending set to post daily at **{post_time}** in {channel.mention}")
+        await interaction.response.send_message(f"Auto-trending set at **{post_time} UTC** in {channel.mention}", ephemeral=True)
 
     @tasks.loop(minutes=1)
     async def auto_post_trends(self):
         now = datetime.utcnow().strftime("%H:%M")
-        for guild_id, settings in self.config.items():
-            if settings.get("time") != now:
+        for gid, settings in self.config.items():
+            if settings["time"] != now:
                 continue
-
             channel = self.bot.get_channel(settings["channel_id"])
             if not channel:
                 continue
-
-            for trend_type in ["riser", "faller"]:
-                players = self.get_trending_players(trend_type, "all")
-                emoji = "\ud83d\udcc8" if trend_type == "riser" else "\ud83d\udcc9"
-                embed = discord.Embed(
-                    title=f"{emoji} Daily Top 10 {trend_type.title()}s (\ud83c\udfae Console)",
-                    color=discord.Color.green() if trend_type == "riser" else discord.Color.red(),
-                    timestamp=datetime.utcnow()
-                )
-
-                if not players:
-                    embed.description = "No trending players found."
-                else:
-                    for player in players:
-                        embed.add_field(
-                            name=f"{player['name']} ({player['rating']})",
-                            value=(
-                                f"{emoji} `{player['trend']}%`\n"
-                                f"\ud83d\udcb0 `{player['price']:,} coins`\n"
-                                f"\ud83e\udeed {player['position']} \u2013 {player['club']}"
-                            ),
-                            inline=False
-                        )
-
-                try:
-                    await channel.send(embed=embed)
-                    await asyncio.sleep(2)
-                except Exception as e:
-                    print(f"Error posting to {channel.id}: {e}")
+            players = self.scrape_trending_html("riser")
+            embed = discord.Embed(
+                title="Daily Trending Players",
+                color=discord.Color.green(),
+                timestamp=datetime.utcnow()
+            )
+            if not players:
+                embed.description = "No trending data available."
+            else:
+                for p in players:
+                    embed.add_field(
+                        name=f"{p['name']} ({p['rating']})",
+                        value=f" {p['trend']} | {p['price']} | {p['position']} – {p['club']}",
+                        inline=False
+                    )
+            await channel.send(embed=embed)
+            await asyncio.sleep(2)
 
     @auto_post_trends.before_loop
     async def before_auto_post(self):
