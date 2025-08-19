@@ -20,6 +20,13 @@ def save_config(data):
     with open(CONFIG_FILE, "w") as f:
         json.dump(data, f, indent=2)
 
+def is_admin_or_owner(member: discord.Member) -> bool:
+    if member.guild and member.id == member.guild.owner_id:
+        return True
+    allowed_roles = ["Admin", "Owner"]
+    role_names = [role.name.lower() for role in member.roles]
+    return any(allowed.lower() in role_names for allowed in allowed_roles)
+
 class Trending(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -40,8 +47,8 @@ class Trending(commands.Cog):
     @app_commands.command(name="setupautotrending", description="🛠️ Set daily auto-post channel and time (HH:MM 24hr)")
     @app_commands.describe(channel="Channel to send posts in", post_time="Time in 24h format (e.g. 09:00)")
     async def setupautotrending(self, interaction: discord.Interaction, channel: discord.TextChannel, post_time: str):
-        if not interaction.user.guild_permissions.manage_guild:
-            await interaction.response.send_message("❌ You need 'Manage Server' permission to use this.", ephemeral=True)
+        if not is_admin_or_owner(interaction.user):
+            await interaction.response.send_message("❌ Only the server owner or users with the 'Admin' or 'Owner' role can use this command.", ephemeral=True)
             return
 
         try:
@@ -114,7 +121,6 @@ class Trending(commands.Cog):
                     price_div = coin_tag.find_parent("div")
                     if price_div:
                         price = price_div.get_text(strip=True).replace("Coin", "").strip()
-
 
                 all_players.append({
                     "name": name,
