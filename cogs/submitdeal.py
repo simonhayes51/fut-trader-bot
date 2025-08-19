@@ -58,8 +58,5 @@ class SubmitDeal(commands.Cog):
         await interaction.response.send_message("✅ Deal submitted!", ephemeral=True)
         await interaction.channel.send(embed=embed)
 
-    async def cog_load(self):
-        self.tree.add_command(self.submitdeal)
-
 async def setup(bot):
     await bot.add_cog(SubmitDeal(bot))
