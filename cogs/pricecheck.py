@@ -4,98 +4,97 @@ from discord import app_commands
 import requests
 from bs4 import BeautifulSoup
 import json
+import logging
+
+# Set up logging
+log = logging.getLogger("fut-pricecheck")
+log.setLevel(logging.INFO)
+handler = logging.StreamHandler()
+formatter = logging.Formatter("[%(asctime)s] %(levelname)s:%(name)s: %(message)s")
+handler.setFormatter(formatter)
+log.addHandler(handler)
 
 class PriceCheck(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.players = self.load_players()
 
-    @app_commands.command(name="pricecheck", description="Check the price of a FUT player")
-    @app_commands.describe(player_name="The name of the player")
-    async def pricecheck(self, interaction: discord.Interaction, player_name: str):
-        await interaction.response.defer(thinking=True)
+    def load_players(self):
+        try:
+            with open("players_temp.json", "r", encoding="utf-8") as f:
+                players = json.load(f)
+                log.info("[LOAD] players_temp.json loaded successfully.")
+                return players
+        except Exception as e:
+            log.error(f"[ERROR] Failed to load players: {e}")
+            return []
+
+    @app_commands.command(name="pricecheck", description="Check a player's current FUTBIN price.")
+    @app_commands.describe(player="Enter the name of the player", platform="Select platform (console or pc)")
+    async def pricecheck(self, interaction: discord.Interaction, player: str, platform: str = "console"):
+        log.info(f"🧪 /pricecheck triggered by {interaction.user.name} for {player} on {platform}")
+        match = next((p for p in self.players if f"{p['name']} {p['rating']}".lower() == player.lower()), None)
+
+        if not match:
+            await interaction.response.send_message("❌ Player not found.", ephemeral=True)
+            return
+
+        url = match["url"]
+        log.info(f"🔗 Scraping URL: {url}")
 
         try:
-            # Search Futbin for the player
-            search_url = f"https://www.futbin.com/search?year=24&term={player_name}"
-            headers = {
-                "User-Agent": "Mozilla/5.0",
-                "X-Requested-With": "XMLHttpRequest"
-            }
-
-            search_response = requests.get(search_url, headers=headers)
-            if search_response.status_code != 200:
-                await interaction.followup.send("❌ Failed to fetch data from Futbin.")
-                return
-
-            results = search_response.json()
-            if not results:
-                await interaction.followup.send("❌ No results found for that player.")
-                return
-
-            player = results[0]
-            player_id = player["id"]
-            player_name = player["name"]
-            player_image = f"https://cdn.futbin.com/content/fifa24/img/players/{player_id}.png"
-            player_url = f"https://www.futbin.com/24/player/{player_id}"
-
-            # Get player page
-            player_response = requests.get(player_url, headers=headers)
-            if player_response.status_code != 200:
-                await interaction.followup.send("❌ Failed to fetch player details.")
-                return
-
-            soup = BeautifulSoup(player_response.text, "html.parser")
-            price_data = soup.find("div", class_="price-graph-tab price-graph-tab-0")
-
-            if price_data is None:
-                await interaction.followup.send("❌ Couldn't find price data.")
-                return
-
-            # Extract price data
-            ps_data = json.loads(price_data.get("data-ps-data", "[]"))
-            pc_data = json.loads(price_data.get("data-pc-data", "[]"))
-
-            latest_ps_price = ps_data[-1][1] if ps_data else "N/A"
-            latest_pc_price = pc_data[-1][1] if pc_data else "N/A"
-
-            # Format and send the embed
-            embed = discord.Embed(
-                title=f"{player_name} Price Check",
-                url=player_url,
-                description=f"[View on Futbin]({player_url})",
-                color=discord.Color.gold()
-            )
-            embed.set_thumbnail(url=player_image)
-            embed.add_field(name="🎮 Console Price", value=f"{int(latest_ps_price):,} coins" if isinstance(latest_ps_price, int) else latest_ps_price, inline=True)
-            embed.add_field(name="🖥️ PC Price", value=f"{int(latest_pc_price):,} coins" if isinstance(latest_pc_price, int) else latest_pc_price, inline=True)
-
-            await interaction.followup.send(embed=embed)
-
+            response = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
+            log.info(f"🌐 [GET] {url} returned status {response.status_code}")
         except Exception as e:
-            await interaction.followup.send(f"❌ An error occurred: `{str(e)}`")
+            log.error(f"[SCRAPE ERROR] {e}")
+            await interaction.response.send_message("❌ Failed to fetch price data.", ephemeral=True)
+            return
 
-    @pricecheck.autocomplete("player_name")
-    async def autocomplete_player(self, interaction: discord.Interaction, current: str):
+        soup = BeautifulSoup(response.text, "html.parser")
+
         try:
-            search_url = f"https://www.futbin.com/search?year=24&term={current}"
-            headers = {
-                "User-Agent": "Mozilla/5.0",
-                "X-Requested-With": "XMLHttpRequest"
-            }
+            price_box = soup.find("div", class_="price-box-original-player")
+            price_tag = price_box.find("div", class_="price inline-with-icon lowest-price-1")
+            price = price_tag.text.strip().replace(",", "")
+            trend = price_box.find("div", class_="price-box-trend")
+            price_range = price_box.find("div", class_="price-pr")
+            updated = price_box.find("div", class_="prices-updated")
 
-            search_response = requests.get(search_url, headers=headers)
-            if search_response.status_code != 200:
-                return []
+            trend_value = trend.text.strip().replace("Trend:", "") if trend else "-"
+            price_range_text = price_range.text.strip().replace("PR:", "") if price_range else "-"
+            updated_text = updated.text.strip().replace("Price Updated:", "") if updated else "-"
 
-            results = search_response.json()
-            choices = [
-                app_commands.Choice(name=player["name"], value=player["name"])
-                for player in results[:25]
-            ]
-            return choices
-
+            log.info(f"💰 Scraped price: {price}")
         except Exception as e:
-            print(f"[AUTOCOMPLETE ERROR] {e}")
+            log.warning(f"[WARN] Could not find full price details: {e}")
+            price = "N/A"
+            trend_value = "-"
+            price_range_text = "-"
+            updated_text = "-"
+
+        embed = discord.Embed(
+            title=f"{match['name']} ({match['rating']})",
+            description=f"Platform: {platform.capitalize()}",
+            color=0xFFD700
+        )
+        embed.add_field(name="Price", value=f"{int(price):,} 🪙" if price.isdigit() else price, inline=True)
+        embed.add_field(name="Trend", value=trend_value, inline=True)
+        embed.add_field(name="Price Range", value=price_range_text, inline=True)
+        embed.set_footer(text=f"Updated: {updated_text} • Data from FUTBIN")
+        embed.set_thumbnail(url=f"https://cdn.futbin.com/content/fifa25/img/players/{match['id']}.png")
+
+        await interaction.response.send_message(embed=embed)
+
+    @pricecheck.autocomplete("player")
+    async def price_autocomplete(self, interaction: discord.Interaction, current: str):
+        try:
+            suggestions = [
+                app_commands.Choice(name=f"{p['name']} {p['rating']}", value=f"{p['name']} {p['rating']}")
+                for p in self.players if current.lower() in f"{p['name']} {p['rating']}".lower()
+            ][:25]
+            return suggestions
+        except Exception as e:
+            log.error(f"[AUTOCOMPLETE ERROR] {e}")
             return []
 
 async def setup(bot):
