@@ -9,7 +9,6 @@ import os
 
 CONFIG_FILE = "autotrend_config.json"
 
-
 def load_config():
     if not os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, "w") as f:
@@ -17,11 +16,9 @@ def load_config():
     with open(CONFIG_FILE, "r") as f:
         return json.load(f)
 
-
 def save_config(data):
     with open(CONFIG_FILE, "w") as f:
         json.dump(data, f, indent=2)
-
 
 class Trending(commands.Cog):
     def __init__(self, bot):
@@ -34,22 +31,20 @@ class Trending(commands.Cog):
         url = f"https://www.fut.gg/api/fc/players/?sort={sort}&platform=ps"
         headers = {"User-Agent": "Mozilla/5.0"}
         response = requests.get(url, headers=headers)
+        data = response.json()
 
-        try:
-            data = response.json()
-        except json.JSONDecodeError:
-            return []
+        # DEBUG: Log sample player
+        if "players" in data and data["players"]:
+            print("[DEBUG] Sample player object:")
+            print(json.dumps(data["players"][0], indent=2))
+        else:
+            print("[DEBUG] No players key or empty list in response")
 
         players = []
         for player in data.get("players", []):
-            # FUT.GG may not have a rarity field; logging for debug:
-            # print(json.dumps(player, indent=2))
-
-            if rarity != "all":
-                card_type = player.get("cardType", "").lower()
-                if rarity not in card_type:
-                    continue
-
+            # Temporarily disable rarity filtering for debugging
+            # if rarity != "all" and player.get("rarity", "").lower() != rarity:
+            #     continue
             players.append({
                 "name": player.get("name"),
                 "rating": player.get("rating"),
@@ -73,7 +68,7 @@ class Trending(commands.Cog):
             app_commands.Choice(name="\ud83d\udd2b Bronze", value="bronze"),
             app_commands.Choice(name="\u26aa Silver", value="silver"),
             app_commands.Choice(name="\ud83d\udfe1 Gold", value="gold"),
-            app_commands.Choice(name="\ud83d\udef3 Special", value="special")
+            app_commands.Choice(name="\ud83d\udd23 Special", value="special")
         ]
     )
     async def trending(
@@ -87,7 +82,7 @@ class Trending(commands.Cog):
 
         emoji = "\ud83d\udcc8" if trend_type.value == "riser" else "\ud83d\udcc9"
         embed = discord.Embed(
-            title=f"{emoji} Top 10 {trend_type.name} ({rarity.name} – \ud83c\udfae Console)",
+            title=f"{emoji} Top 10 {trend_type.name} ({rarity.name} \u2013 \ud83c\udfae Console)",
             color=discord.Color.green() if trend_type.value == "riser" else discord.Color.red()
         )
 
@@ -99,8 +94,8 @@ class Trending(commands.Cog):
                     name=f"{player['name']} ({player['rating']})",
                     value=(
                         f"{emoji} `{player['trend']}%`\n"
-                        f"💰 `{player['price']:,} coins`\n"
-                        f"🧱 {player['position']} – {player['club']}"
+                        f"\ud83d\udcb0 `{player['price']:,} coins`\n"
+                        f"\ud83e\udeed {player['position']} \u2013 {player['club']}"
                     ),
                     inline=False
                 )
@@ -114,6 +109,7 @@ class Trending(commands.Cog):
             await interaction.response.send_message("\u274c You need 'Manage Server' permission to use this.", ephemeral=True)
             return
 
+        # Validate time format
         try:
             datetime.strptime(post_time, "%H:%M")
         except ValueError:
@@ -130,7 +126,7 @@ class Trending(commands.Cog):
 
     @tasks.loop(minutes=1)
     async def auto_post_trends(self):
-        now = datetime.utcnow().strftime("%H:%M")  # Server uses UTC
+        now = datetime.utcnow().strftime("%H:%M")
         for guild_id, settings in self.config.items():
             if settings.get("time") != now:
                 continue
@@ -156,8 +152,8 @@ class Trending(commands.Cog):
                             name=f"{player['name']} ({player['rating']})",
                             value=(
                                 f"{emoji} `{player['trend']}%`\n"
-                                f"💰 `{player['price']:,} coins`\n"
-                                f"🧱 {player['position']} – {player['club']}"
+                                f"\ud83d\udcb0 `{player['price']:,} coins`\n"
+                                f"\ud83e\udeed {player['position']} \u2013 {player['club']}"
                             ),
                             inline=False
                         )
@@ -171,7 +167,6 @@ class Trending(commands.Cog):
     @auto_post_trends.before_loop
     async def before_auto_post(self):
         await self.bot.wait_until_ready()
-
 
 async def setup(bot):
     await bot.add_cog(Trending(bot))
