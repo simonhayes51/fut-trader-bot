@@ -17,12 +17,8 @@ def load_config():
         return json.load(f)
 
 def save_config(data):
-    try:
-        with open(CONFIG_FILE, "w") as f:
-            json.dump(data, f, indent=2)
-        print(f"[DEBUG] Saved config: {data}")
-    except Exception as e:
-        print(f"[ERROR] Failed to save config: {e}")
+    with open(CONFIG_FILE, "w") as f:
+        json.dump(data, f, indent=2)
 
 class Trending(commands.Cog):
     def __init__(self, bot):
@@ -34,9 +30,9 @@ class Trending(commands.Cog):
         sort = "trend_desc" if trend_type == "riser" else "trend_asc"
         url = f"https://www.fut.gg/api/fc/players/?sort={sort}&platform=ps"
         headers = {"User-Agent": "Mozilla/5.0"}
+
         try:
             response = requests.get(url, headers=headers, timeout=10)
-            response.raise_for_status()
             data = response.json()
         except Exception as e:
             print(f"[ERROR] Failed to fetch trending players: {e}")
@@ -44,18 +40,22 @@ class Trending(commands.Cog):
 
         players = []
         for player in data.get("players", []):
-            if rarity != "all" and player.get("rarity", "").lower() != rarity:
+            player_rarity = player.get("rarity", "").lower()
+            if rarity != "all" and rarity != player_rarity:
                 continue
+
             players.append({
-                "name": player.get("name", "Unknown"),
-                "rating": player.get("rating", "N/A"),
-                "price": player.get("price", 0),
-                "trend": player.get("priceTrend", 0),
-                "club": player.get("clubName", "Unknown Club"),
-                "position": player.get("position", "N/A")
+                "name": player["name"],
+                "rating": player["rating"],
+                "price": player["price"],
+                "trend": player["priceTrend"],
+                "club": player["clubName"],
+                "position": player["position"]
             })
+
             if len(players) >= 10:
                 break
+
         return players
 
     @app_commands.command(name="trending", description="📊 Show top trending players on console")
@@ -66,10 +66,10 @@ class Trending(commands.Cog):
         ],
         rarity=[
             app_commands.Choice(name="🌐 All", value="all"),
-            app_commands.Choice(name="🟫 Bronze", value="bronze"),
+            app_commands.Choice(name="🚽 Bronze", value="bronze"),
             app_commands.Choice(name="⚪ Silver", value="silver"),
             app_commands.Choice(name="🟡 Gold", value="gold"),
-            app_commands.Choice(name="🟣 Special", value="special")
+            app_commands.Choice(name="🔣 Special", value="special")
         ]
     )
     async def trending(
@@ -96,7 +96,7 @@ class Trending(commands.Cog):
                     value=(
                         f"{emoji} `{player['trend']}%`\n"
                         f"💰 `{player['price']:,} coins`\n"
-                        f"🧭 {player['position']} – {player['club']}"
+                        f"🧱 {player['position']} – {player['club']}"
                     ),
                     inline=False
                 )
@@ -110,7 +110,6 @@ class Trending(commands.Cog):
             await interaction.response.send_message("❌ You need 'Manage Server' permission to use this.", ephemeral=True)
             return
 
-        # Validate time
         try:
             datetime.strptime(post_time, "%H:%M")
         except ValueError:
@@ -123,13 +122,11 @@ class Trending(commands.Cog):
             "time": post_time
         }
         save_config(self.config)
-        print(f"[DEBUG] Written config for guild {guild_id}: {self.config[guild_id]}")
-
         await interaction.response.send_message(f"✅ Auto-trending set to post daily at **{post_time}** in {channel.mention}")
 
     @tasks.loop(minutes=1)
     async def auto_post_trends(self):
-        now = datetime.utcnow().strftime("%H:%M")  # IMPORTANT: UTC TIME
+        now = datetime.now().strftime("%H:%M")
         for guild_id, settings in self.config.items():
             if settings.get("time") != now:
                 continue
@@ -156,7 +153,7 @@ class Trending(commands.Cog):
                             value=(
                                 f"{emoji} `{player['trend']}%`\n"
                                 f"💰 `{player['price']:,} coins`\n"
-                                f"🧭 {player['position']} – {player['club']}"
+                                f"🧱 {player['position']} – {player['club']}"
                             ),
                             inline=False
                         )
@@ -165,7 +162,7 @@ class Trending(commands.Cog):
                     await channel.send(embed=embed)
                     await asyncio.sleep(2)
                 except Exception as e:
-                    print(f"[ERROR] Posting failed in guild {guild_id}: {e}")
+                    print(f"Error posting to {channel.id}: {e}")
 
     @auto_post_trends.before_loop
     async def before_auto_post(self):
