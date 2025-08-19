@@ -1,0 +1,3362 @@
+[
+  {
+    "id": "60827",
+    "name": "Niamh Charles",
+    "rating": "99",
+    "position": "LB++",
+    "club": "Chelsea",
+    "nation": "England",
+    "league": "Barclays WSL",
+    "url": "https://www.futbin.com/25/player/60827/niamh-charles",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60856",
+    "name": "Georgia Stanway",
+    "rating": "99",
+    "position": "CDM++",
+    "club": "FC Bayern M\u00fcnchen",
+    "nation": "England",
+    "league": "GPFBL",
+    "url": "https://www.futbin.com/25/player/60856/georgia-stanway",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60860",
+    "name": "Lauren Hemp",
+    "rating": "99",
+    "position": "LW++",
+    "club": "Manchester City",
+    "nation": "England",
+    "league": "Barclays WSL",
+    "url": "https://www.futbin.com/25/player/60860/lauren-hemp",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60861",
+    "name": "Leah Williamson",
+    "rating": "99",
+    "position": "CB++",
+    "club": "Arsenal",
+    "nation": "England",
+    "league": "Barclays WSL",
+    "url": "https://www.futbin.com/25/player/60861/leah-williamson",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60899",
+    "name": "Virgil van Dijk",
+    "rating": "99",
+    "position": "CB++",
+    "club": "Liverpool",
+    "nation": "Netherlands",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/60899/virgil-van-dijk",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60916",
+    "name": "David Ginola",
+    "rating": "99",
+    "position": "ST++",
+    "club": "HERO",
+    "nation": "France",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/60916/david-ginola",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60918",
+    "name": "Alex Scott",
+    "rating": "99",
+    "position": "RB++",
+    "club": "HERO",
+    "nation": "England",
+    "league": "Barclays WSL",
+    "url": "https://www.futbin.com/25/player/60918/alex-scott",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60921",
+    "name": "Fara Williams",
+    "rating": "99",
+    "position": "CM++",
+    "club": "HERO",
+    "nation": "England",
+    "league": "Barclays WSL",
+    "url": "https://www.futbin.com/25/player/60921/fara-williams",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60939",
+    "name": "Kylian Mbapp\u00e9",
+    "rating": "99",
+    "position": "ST++",
+    "club": "Real Madrid",
+    "nation": "France",
+    "league": "LALIGA EA SPORTS",
+    "url": "https://www.futbin.com/25/player/60939/kylian-mbappe",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60940",
+    "name": "Lamine Yamal",
+    "rating": "99",
+    "position": "RW++",
+    "club": "FC Barcelona",
+    "nation": "Spain",
+    "league": "LALIGA EA SPORTS",
+    "url": "https://www.futbin.com/25/player/60940/lamine-yamal",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60949",
+    "name": "Edson Arantes Nascimento",
+    "rating": "99",
+    "position": "CAM++",
+    "club": "EA FC ICONS",
+    "nation": "Brazil",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/60949/edson-arantes-nascimento",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60966",
+    "name": "Nuno Alexandre Tavares Mendes",
+    "rating": "99",
+    "position": "LB++",
+    "club": "Paris SG",
+    "nation": "Portugal",
+    "league": "Ligue 1 Uber Eats",
+    "url": "https://www.futbin.com/25/player/60966/nuno-alexandre-tavares-mendes",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60967",
+    "name": "Lionel Messi",
+    "rating": "99",
+    "position": "RW++",
+    "club": "Inter Miami CF",
+    "nation": "Argentina",
+    "league": "MLS",
+    "url": "https://www.futbin.com/25/player/60967/lionel-messi",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60968",
+    "name": "Caroline Graham Hansen",
+    "rating": "99",
+    "position": "RW++",
+    "club": "FC Barcelona",
+    "nation": "Norway",
+    "league": "Liga F",
+    "url": "https://www.futbin.com/25/player/60968/caroline-graham-hansen",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60976",
+    "name": "Ronaldo Lu\u00eds Naz\u00e1rio de Lima",
+    "rating": "99",
+    "position": "ST++",
+    "club": "EA FC ICONS",
+    "nation": "Brazil",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/60976/ronaldo-luis-nazario-de-lima",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61002",
+    "name": "Johan Cruyff",
+    "rating": "99",
+    "position": "CAM++",
+    "club": "EA FC ICONS",
+    "nation": "Netherlands",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/61002/johan-cruyff",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61004",
+    "name": "Raphael Dias Belloli",
+    "rating": "99",
+    "position": "LW++",
+    "club": "FC Barcelona",
+    "nation": "Brazil",
+    "league": "LALIGA EA SPORTS",
+    "url": "https://www.futbin.com/25/player/61004/raphael-dias-belloli",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61005",
+    "name": "C. Ronaldo dos Santos Aveiro",
+    "rating": "99",
+    "position": "ST++",
+    "club": "Al Nassr",
+    "nation": "Portugal",
+    "league": "ROSHN Saudi League",
+    "url": "https://www.futbin.com/25/player/61005/c-ronaldo-dos-santos-aveiro",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61440",
+    "name": "Ruud Gullit",
+    "rating": "99",
+    "position": "CAM++",
+    "club": "EA FC ICONS",
+    "nation": "Netherlands",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/61440/ruud-gullit",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61442",
+    "name": "Aitana Bonmat\u00ed Conca",
+    "rating": "99",
+    "position": "CM++",
+    "club": "FC Barcelona",
+    "nation": "Spain",
+    "league": "Liga F",
+    "url": "https://www.futbin.com/25/player/61442/aitana-bonmati-conca",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61443",
+    "name": "Ousmane Demb\u00e9l\u00e9",
+    "rating": "99",
+    "position": "ST++",
+    "club": "Paris SG",
+    "nation": "France",
+    "league": "Ligue 1 Uber Eats",
+    "url": "https://www.futbin.com/25/player/61443/ousmane-dembele",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61496",
+    "name": "Alex Greenwood",
+    "rating": "99",
+    "position": "LB++",
+    "club": "Manchester City",
+    "nation": "England",
+    "league": "Barclays WSL",
+    "url": "https://www.futbin.com/25/player/61496/alex-greenwood",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61497",
+    "name": "Hannah Hampton",
+    "rating": "99",
+    "position": "GK++",
+    "club": "Chelsea",
+    "nation": "England",
+    "league": "Barclays WSL",
+    "url": "https://www.futbin.com/25/player/61497/hannah-hampton",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61498",
+    "name": "Lucy Bronze",
+    "rating": "99",
+    "position": "RB++",
+    "club": "Chelsea",
+    "nation": "England",
+    "league": "Barclays WSL",
+    "url": "https://www.futbin.com/25/player/61498/lucy-bronze",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61499",
+    "name": "Chloe Kelly",
+    "rating": "99",
+    "position": "LW++",
+    "club": "Arsenal",
+    "nation": "England",
+    "league": "Barclays WSL",
+    "url": "https://www.futbin.com/25/player/61499/chloe-kelly",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61500",
+    "name": "Beth Mead",
+    "rating": "99",
+    "position": "RW++",
+    "club": "Arsenal",
+    "nation": "England",
+    "league": "Barclays WSL",
+    "url": "https://www.futbin.com/25/player/61500/beth-mead",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61501",
+    "name": "Keira Walsh",
+    "rating": "99",
+    "position": "CDM++",
+    "club": "Chelsea",
+    "nation": "England",
+    "league": "Barclays WSL",
+    "url": "https://www.futbin.com/25/player/61501/keira-walsh",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61502",
+    "name": "Ella Toone",
+    "rating": "99",
+    "position": "CAM++",
+    "club": "Manchester Utd",
+    "nation": "England",
+    "league": "Barclays WSL",
+    "url": "https://www.futbin.com/25/player/61502/ella-toone",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61503",
+    "name": "Lauren James",
+    "rating": "99",
+    "position": "RW++",
+    "club": "Chelsea",
+    "nation": "England",
+    "league": "Barclays WSL",
+    "url": "https://www.futbin.com/25/player/61503/lauren-james",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61504",
+    "name": "Alessia Russo",
+    "rating": "99",
+    "position": "ST++",
+    "club": "Arsenal",
+    "nation": "England",
+    "league": "Barclays WSL",
+    "url": "https://www.futbin.com/25/player/61504/alessia-russo",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61505",
+    "name": "Grace Clinton",
+    "rating": "99",
+    "position": "CM++",
+    "club": "Manchester Utd",
+    "nation": "England",
+    "league": "Barclays WSL",
+    "url": "https://www.futbin.com/25/player/61505/grace-clinton",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61811",
+    "name": "D\u00e9sir\u00e9 Dou\u00e9",
+    "rating": "99",
+    "position": "LM++",
+    "club": "Paris SG",
+    "nation": "France",
+    "league": "Ligue 1 Uber Eats",
+    "url": "https://www.futbin.com/25/player/61811/desire-doue",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61812",
+    "name": "Andrea Pirlo",
+    "rating": "99",
+    "position": "CM++",
+    "club": "EA FC ICONS",
+    "nation": "Italy",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/61812/andrea-pirlo",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61813",
+    "name": "Beckenbauer",
+    "rating": "99",
+    "position": "CB++",
+    "club": "EA FC ICONS",
+    "nation": "Germany",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/61813/beckenbauer",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61814",
+    "name": "Cole Palmer",
+    "rating": "99",
+    "position": "RM++",
+    "club": "Chelsea",
+    "nation": "England",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/61814/cole-palmer",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61816",
+    "name": "Mohamed Salah",
+    "rating": "99",
+    "position": "RW++",
+    "club": "Liverpool",
+    "nation": "Egypt",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/61816/mohamed-salah",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61817",
+    "name": "Gareth Bale",
+    "rating": "99",
+    "position": "RW++",
+    "club": "EA FC ICONS",
+    "nation": "Wales",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/61817/gareth-bale",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "62292",
+    "name": "Kevin De Bruyne",
+    "rating": "99",
+    "position": "CAM++",
+    "club": "SSC Napoli",
+    "nation": "Belgium",
+    "league": "Serie A TIM",
+    "url": "https://www.futbin.com/25/player/62292/kevin-de-bruyne",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "62305",
+    "name": "Antoine Griezmann",
+    "rating": "99",
+    "position": "ST++",
+    "club": "Atl\u00e9tico de Madrid",
+    "nation": "France",
+    "league": "LALIGA EA SPORTS",
+    "url": "https://www.futbin.com/25/player/62305/antoine-griezmann",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "62342",
+    "name": "Laurent Blanc",
+    "rating": "99",
+    "position": "CB++",
+    "club": "EA FC ICONS",
+    "nation": "France",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/62342/laurent-blanc",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60629",
+    "name": "Ibrahima Konat\u00e9",
+    "rating": "98",
+    "position": "GK++",
+    "club": "Liverpool",
+    "nation": "France",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/60629/ibrahima-konate",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60631",
+    "name": "Antoine Griezmann",
+    "rating": "98",
+    "position": "CAM++",
+    "club": "Atl\u00e9tico de Madrid",
+    "nation": "France",
+    "league": "LALIGA EA SPORTS",
+    "url": "https://www.futbin.com/25/player/60631/antoine-griezmann",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60632",
+    "name": "Harry Kane",
+    "rating": "98",
+    "position": "CM++",
+    "club": "FC Bayern M\u00fcnchen",
+    "nation": "England",
+    "league": "Bundesliga",
+    "url": "https://www.futbin.com/25/player/60632/harry-kane",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60652",
+    "name": "Diego Maradona",
+    "rating": "98",
+    "position": "RW++",
+    "club": "EA FC ICONS",
+    "nation": "Argentina",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/60652/diego-maradona",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60683",
+    "name": "Rodrigo Hern\u00e1ndez Cascante",
+    "rating": "98",
+    "position": "CB++",
+    "club": "Manchester City",
+    "nation": "Spain",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/60683/rodrigo-hernandez-cascante",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60684",
+    "name": "Scott McTominay",
+    "rating": "98",
+    "position": "ST++",
+    "club": "SSC Napoli",
+    "nation": "Scotland",
+    "league": "Serie A TIM",
+    "url": "https://www.futbin.com/25/player/60684/scott-mctominay",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60685",
+    "name": "Alexia Putellas Segura",
+    "rating": "98",
+    "position": "ST++",
+    "club": "FC Barcelona",
+    "nation": "Spain",
+    "league": "Liga F",
+    "url": "https://www.futbin.com/25/player/60685/alexia-putellas-segura",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60711",
+    "name": "Johan Cruyff",
+    "rating": "98",
+    "position": "LM++",
+    "club": "EA FC ICONS",
+    "nation": "Netherlands",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/60711/johan-cruyff",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60779",
+    "name": "Kingsley Coman",
+    "rating": "98",
+    "position": "ST++",
+    "club": "FC Bayern M\u00fcnchen",
+    "nation": "France",
+    "league": "Bundesliga",
+    "url": "https://www.futbin.com/25/player/60779/kingsley-coman",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60780",
+    "name": "Alessia Russo",
+    "rating": "98",
+    "position": "RW++",
+    "club": "Arsenal",
+    "nation": "England",
+    "league": "Barclays WSL",
+    "url": "https://www.futbin.com/25/player/60780/alessia-russo",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60781",
+    "name": "Phil Foden",
+    "rating": "98",
+    "position": "LB++",
+    "club": "Manchester City",
+    "nation": "England",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/60781/phil-foden",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60803",
+    "name": "Irene Paredes Hern\u00e1ndez",
+    "rating": "98",
+    "position": "CB++",
+    "club": "FC Barcelona",
+    "nation": "Spain",
+    "league": "Liga F",
+    "url": "https://www.futbin.com/25/player/60803/irene-paredes-hernandez",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60807",
+    "name": "Salma Celeste Paralluelo Ayingono",
+    "rating": "98",
+    "position": "LW++",
+    "club": "FC Barcelona",
+    "nation": "Spain",
+    "league": "Liga F",
+    "url": "https://www.futbin.com/25/player/60807/salma-celeste-paralluelo-ayingono",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60819",
+    "name": "Kelly Smith",
+    "rating": "98",
+    "position": "LB++",
+    "club": "EA FC ICONS",
+    "nation": "England",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/60819/kelly-smith",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60820",
+    "name": "Eus\u00e9bio da Silva Ferreira",
+    "rating": "98",
+    "position": "LW++",
+    "club": "EA FC ICONS",
+    "nation": "Portugal",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/60820/eusebio-da-silva-ferreira",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60831",
+    "name": "J\u00e9r\u00e9my Doku",
+    "rating": "98",
+    "position": "ST++",
+    "club": "Manchester City",
+    "nation": "Belgium",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/60831/jeremy-doku",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60832",
+    "name": "Sakina Karchaoui",
+    "rating": "98",
+    "position": "ST++",
+    "club": "Paris SG",
+    "nation": "France",
+    "league": "D1 Arkema",
+    "url": "https://www.futbin.com/25/player/60832/sakina-karchaoui",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60833",
+    "name": "Marcos Ao\u00e1s Corr\u00eaa",
+    "rating": "98",
+    "position": "CM++",
+    "club": "Paris SG",
+    "nation": "Brazil",
+    "league": "Ligue 1 Uber Eats",
+    "url": "https://www.futbin.com/25/player/60833/marcos-aoas-correa",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60834",
+    "name": "Reece James",
+    "rating": "98",
+    "position": "RW++",
+    "club": "Chelsea",
+    "nation": "England",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/60834/reece-james",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60855",
+    "name": "Patricia Guijarro Guti\u00e9rrez",
+    "rating": "98",
+    "position": "CDM++",
+    "club": "FC Barcelona",
+    "nation": "Spain",
+    "league": "Liga F",
+    "url": "https://www.futbin.com/25/player/60855/patricia-guijarro-gutierrez",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60872",
+    "name": "Eric Cantona",
+    "rating": "98",
+    "position": "CM++",
+    "club": "EA FC ICONS",
+    "nation": "France",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/60872/eric-cantona",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60873",
+    "name": "Rio Ferdinand",
+    "rating": "98",
+    "position": "ST++",
+    "club": "EA FC ICONS",
+    "nation": "England",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/60873/rio-ferdinand",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60898",
+    "name": "Jobe Bellingham",
+    "rating": "98",
+    "position": "CM++",
+    "club": "Borussia Dortmund",
+    "nation": "England",
+    "league": "Bundesliga",
+    "url": "https://www.futbin.com/25/player/60898/jobe-bellingham",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60911",
+    "name": "Sophia Wilson",
+    "rating": "98",
+    "position": "ST++",
+    "club": "Portland Timbers-Thorns",
+    "nation": "United States",
+    "league": "NWSL",
+    "url": "https://www.futbin.com/25/player/60911/sophia-wilson",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60913",
+    "name": "Ferland Mendy",
+    "rating": "98",
+    "position": "LB++",
+    "club": "Real Madrid",
+    "nation": "France",
+    "league": "LALIGA EA SPORTS",
+    "url": "https://www.futbin.com/25/player/60913/ferland-mendy",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60914",
+    "name": "Jude Bellingham",
+    "rating": "98",
+    "position": "CAM++",
+    "club": "Real Madrid",
+    "nation": "England",
+    "league": "LALIGA EA SPORTS",
+    "url": "https://www.futbin.com/25/player/60914/jude-bellingham",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60920",
+    "name": "Laura Georges",
+    "rating": "98",
+    "position": "CB++",
+    "club": "HERO",
+    "nation": "France",
+    "league": "D1 Arkema",
+    "url": "https://www.futbin.com/25/player/60920/laura-georges",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60931",
+    "name": "Lotta Schelin",
+    "rating": "98",
+    "position": "ST++",
+    "club": "EA FC ICONS",
+    "nation": "Sweden",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/60931/lotta-schelin",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60933",
+    "name": "Camille Abily",
+    "rating": "98",
+    "position": "CM++",
+    "club": "EA FC ICONS",
+    "nation": "France",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/60933/camille-abily",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60941",
+    "name": "Lauren James",
+    "rating": "98",
+    "position": "RW++",
+    "club": "Chelsea",
+    "nation": "England",
+    "league": "Barclays WSL",
+    "url": "https://www.futbin.com/25/player/60941/lauren-james",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60942",
+    "name": "Alisson Ramses Becker",
+    "rating": "98",
+    "position": "GK++",
+    "club": "Liverpool",
+    "nation": "Brazil",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/60942/alisson-ramses-becker",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60950",
+    "name": "Paolo Maldini",
+    "rating": "98",
+    "position": "CB++",
+    "club": "EA FC ICONS",
+    "nation": "Italy",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/60950/paolo-maldini",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60969",
+    "name": "Vin\u00edcius Jos\u00e9 de Oliveira J\u00fanior",
+    "rating": "98",
+    "position": "LW++",
+    "club": "Real Madrid",
+    "nation": "Brazil",
+    "league": "LALIGA EA SPORTS",
+    "url": "https://www.futbin.com/25/player/60969/vinicius-jose-de-oliveira-junior",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60977",
+    "name": "Gianluigi Buffon",
+    "rating": "98",
+    "position": "GK++",
+    "club": "EA FC ICONS",
+    "nation": "Italy",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/60977/gianluigi-buffon",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60978",
+    "name": "Samuel Eto'o",
+    "rating": "98",
+    "position": "ST++",
+    "club": "EA FC ICONS",
+    "nation": "Cameroon",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/60978/samuel-etoo",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61000",
+    "name": "Agnes Beever-Jones",
+    "rating": "98",
+    "position": "ST++",
+    "club": "Chelsea",
+    "nation": "England",
+    "league": "Barclays WSL",
+    "url": "https://www.futbin.com/25/player/61000/agnes-beever-jones",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61003",
+    "name": "Franck Rib\u00e9ry",
+    "rating": "98",
+    "position": "LM++",
+    "club": "EA FC ICONS",
+    "nation": "France",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/61003/franck-ribery",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61006",
+    "name": "Trinity Rodman",
+    "rating": "98",
+    "position": "RM++",
+    "club": "Washington Spirit",
+    "nation": "United States",
+    "league": "NWSL",
+    "url": "https://www.futbin.com/25/player/61006/trinity-rodman",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61008",
+    "name": "Carlos Alberto Torres",
+    "rating": "98",
+    "position": "RB++",
+    "club": "EA FC ICONS",
+    "nation": "Brazil",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/61008/carlos-alberto-torres",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61009",
+    "name": "Jamal Musiala",
+    "rating": "98",
+    "position": "CAM++",
+    "club": "FC Bayern M\u00fcnchen",
+    "nation": "Germany",
+    "league": "Bundesliga",
+    "url": "https://www.futbin.com/25/player/61009/jamal-musiala",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61010",
+    "name": "Manuel Franc. dos Santos",
+    "rating": "98",
+    "position": "RW++",
+    "club": "EA FC ICONS",
+    "nation": "Brazil",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/61010/manuel-franc-dos-santos",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61027",
+    "name": "Yao Kouassi",
+    "rating": "98",
+    "position": "LW++",
+    "club": "HERO",
+    "nation": "C\u00f4te d'Ivoire",
+    "league": "Serie A TIM",
+    "url": "https://www.futbin.com/25/player/61027/yao-kouassi",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61441",
+    "name": "Wayne Rooney",
+    "rating": "98",
+    "position": "ST++",
+    "club": "EA FC ICONS",
+    "nation": "England",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/61441/wayne-rooney",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61444",
+    "name": "Heung Min Son",
+    "rating": "98",
+    "position": "LW++",
+    "club": "Spurs",
+    "nation": "Korea Republic",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/61444/heung-min-son",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61445",
+    "name": "Edwin van der Sar",
+    "rating": "98",
+    "position": "GK++",
+    "club": "EA FC ICONS",
+    "nation": "Netherlands",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/61445/edwin-van-der-sar",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61447",
+    "name": "Thierry Henry",
+    "rating": "98",
+    "position": "ST++",
+    "club": "EA FC ICONS",
+    "nation": "France",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/61447/thierry-henry",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61448",
+    "name": "Mois\u00e9s Caicedo",
+    "rating": "98",
+    "position": "CDM++",
+    "club": "Chelsea",
+    "nation": "Ecuador",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/61448/moises-caicedo",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61815",
+    "name": "Erling Haaland",
+    "rating": "98",
+    "position": "ST++",
+    "club": "Manchester City",
+    "nation": "Norway",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/61815/erling-haaland",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61818",
+    "name": "John Stones",
+    "rating": "98",
+    "position": "CB++",
+    "club": "Manchester City",
+    "nation": "England",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/61818/john-stones",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61819",
+    "name": "Robert Lewandowski",
+    "rating": "98",
+    "position": "ST++",
+    "club": "FC Barcelona",
+    "nation": "Poland",
+    "league": "LALIGA EA SPORTS",
+    "url": "https://www.futbin.com/25/player/61819/robert-lewandowski",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61824",
+    "name": "Roberto Carlos da Silva Rocha",
+    "rating": "98",
+    "position": "LB++",
+    "club": "EA FC ICONS",
+    "nation": "Brazil",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/61824/roberto-carlos-da-silva-rocha",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61836",
+    "name": "Alessandro Bastoni",
+    "rating": "98",
+    "position": "CB++",
+    "club": "Lombardia FC",
+    "nation": "Italy",
+    "league": "Serie A TIM",
+    "url": "https://www.futbin.com/25/player/61836/alessandro-bastoni",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61844",
+    "name": "Thibaut Courtois",
+    "rating": "98",
+    "position": "GK++",
+    "club": "Real Madrid",
+    "nation": "Belgium",
+    "league": "LALIGA EA SPORTS",
+    "url": "https://www.futbin.com/25/player/61844/thibaut-courtois",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61911",
+    "name": "Eduardo Camavinga",
+    "rating": "98",
+    "position": "CM++",
+    "club": "Real Madrid",
+    "nation": "France",
+    "league": "LALIGA EA SPORTS",
+    "url": "https://www.futbin.com/25/player/61911/eduardo-camavinga",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "62293",
+    "name": "Rayan A\u00eft-Nouri",
+    "rating": "98",
+    "position": "LB++",
+    "club": "Manchester City",
+    "nation": "Algeria",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/62293/rayan-ait-nouri",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "62294",
+    "name": "Liam Delap",
+    "rating": "98",
+    "position": "ST++",
+    "club": "Chelsea",
+    "nation": "England",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/62294/liam-delap",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "62295",
+    "name": "Dean Huijsen",
+    "rating": "98",
+    "position": "CB++",
+    "club": "Real Madrid",
+    "nation": "Spain",
+    "league": "LALIGA EA SPORTS",
+    "url": "https://www.futbin.com/25/player/62295/dean-huijsen",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "62296",
+    "name": "Luka Modri\u0107",
+    "rating": "98",
+    "position": "CM++",
+    "club": "Milano FC",
+    "nation": "Croatia",
+    "league": "Serie A TIM",
+    "url": "https://www.futbin.com/25/player/62296/luka-modric",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "62297",
+    "name": "Mia Fishel",
+    "rating": "98",
+    "position": "ST++",
+    "club": "OL Reign",
+    "nation": "United States",
+    "league": "NWSL",
+    "url": "https://www.futbin.com/25/player/62297/mia-fishel",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "62298",
+    "name": "Tijjani Reijnders",
+    "rating": "98",
+    "position": "CAM++",
+    "club": "Manchester City",
+    "nation": "Netherlands",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/62298/tijjani-reijnders",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "62299",
+    "name": "Olivia Smith",
+    "rating": "98",
+    "position": "ST++",
+    "club": "Arsenal",
+    "nation": "Canada",
+    "league": "Barclays WSL",
+    "url": "https://www.futbin.com/25/player/62299/olivia-smith",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "62300",
+    "name": "Jonathan Tah",
+    "rating": "98",
+    "position": "CB++",
+    "club": "FC Bayern M\u00fcnchen",
+    "nation": "Germany",
+    "league": "Bundesliga",
+    "url": "https://www.futbin.com/25/player/62300/jonathan-tah",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "62301",
+    "name": "Marcus Rashford",
+    "rating": "98",
+    "position": "LW++",
+    "club": "FC Barcelona",
+    "nation": "England",
+    "league": "LALIGA EA SPORTS",
+    "url": "https://www.futbin.com/25/player/62301/marcus-rashford",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "62308",
+    "name": "Florian Wirtz",
+    "rating": "98",
+    "position": "CAM++",
+    "club": "Liverpool",
+    "nation": "Germany",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/62308/florian-wirtz",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "62704",
+    "name": "Leny Yoro",
+    "rating": "98",
+    "position": "CB++",
+    "club": "Manchester Utd",
+    "nation": "France",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/62704/leny-yoro",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "55805",
+    "name": "Rodrigo Hern\u00e1ndez Cascante",
+    "rating": "97",
+    "position": "CDM++",
+    "club": "Manchester City",
+    "nation": "Spain",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/55805/rodrigo-hernandez-cascante",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "55806",
+    "name": "Aitana Bonmat\u00ed Conca",
+    "rating": "97",
+    "position": "CM++",
+    "club": "FC Barcelona",
+    "nation": "Spain",
+    "league": "Liga F",
+    "url": "https://www.futbin.com/25/player/55806/aitana-bonmati-conca",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "56762",
+    "name": "Caroline Graham Hansen",
+    "rating": "97",
+    "position": "RW++",
+    "club": "FC Barcelona",
+    "nation": "Norway",
+    "league": "Liga F",
+    "url": "https://www.futbin.com/25/player/56762/caroline-graham-hansen",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "56763",
+    "name": "Vin\u00edcius Jos\u00e9 de Oliveira J\u00fanior",
+    "rating": "97",
+    "position": "LW++",
+    "club": "Real Madrid",
+    "nation": "Brazil",
+    "league": "LALIGA EA SPORTS",
+    "url": "https://www.futbin.com/25/player/56763/vinicius-jose-de-oliveira-junior",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "56764",
+    "name": "Sophia Wilson",
+    "rating": "97",
+    "position": "ST++",
+    "club": "Portland Timbers-Thorns",
+    "nation": "United States",
+    "league": "NWSL",
+    "url": "https://www.futbin.com/25/player/56764/sophia-wilson",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "56772",
+    "name": "Rodrigo Hern\u00e1ndez Cascante",
+    "rating": "97",
+    "position": "CDM++",
+    "club": "Manchester City",
+    "nation": "Spain",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/56772/rodrigo-hernandez-cascante",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "56776",
+    "name": "Jude Bellingham",
+    "rating": "97",
+    "position": "CAM++",
+    "club": "Real Madrid",
+    "nation": "England",
+    "league": "LALIGA EA SPORTS",
+    "url": "https://www.futbin.com/25/player/56776/jude-bellingham",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "56777",
+    "name": "Aitana Bonmat\u00ed Conca",
+    "rating": "97",
+    "position": "CM++",
+    "club": "FC Barcelona",
+    "nation": "Spain",
+    "league": "Liga F",
+    "url": "https://www.futbin.com/25/player/56777/aitana-bonmati-conca",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "59426",
+    "name": "Edson Arantes Nascimento",
+    "rating": "97",
+    "position": "CAM++",
+    "club": "EA FC ICONS",
+    "nation": "Brazil",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/59426/edson-arantes-nascimento",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "59493",
+    "name": "Ousmane Demb\u00e9l\u00e9",
+    "rating": "97",
+    "position": "ST++",
+    "club": "Paris SG",
+    "nation": "France",
+    "league": "Ligue 1 Uber Eats",
+    "url": "https://www.futbin.com/25/player/59493/ousmane-dembele",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "59494",
+    "name": "Lindsey Horan",
+    "rating": "97",
+    "position": "CAM++",
+    "club": "OL",
+    "nation": "United States",
+    "league": "D1 Arkema",
+    "url": "https://www.futbin.com/25/player/59494/lindsey-horan",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "59582",
+    "name": "Khadija Shaw",
+    "rating": "97",
+    "position": "ST++",
+    "club": "Manchester City",
+    "nation": "Jamaica",
+    "league": "Barclays WSL",
+    "url": "https://www.futbin.com/25/player/59582/khadija-shaw",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "59583",
+    "name": "Mohamed Salah",
+    "rating": "97",
+    "position": "RW++",
+    "club": "Liverpool",
+    "nation": "Egypt",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/59583/mohamed-salah",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "59585",
+    "name": "Virgil van Dijk",
+    "rating": "97",
+    "position": "CB++",
+    "club": "Liverpool",
+    "nation": "Netherlands",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/59585/virgil-van-dijk",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "59967",
+    "name": "Jonathan Tah",
+    "rating": "97",
+    "position": "CB++",
+    "club": "Leverkusen",
+    "nation": "Germany",
+    "league": "Bundesliga",
+    "url": "https://www.futbin.com/25/player/59967/jonathan-tah",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "59968",
+    "name": "Harry Kane",
+    "rating": "97",
+    "position": "ST++",
+    "club": "FC Bayern M\u00fcnchen",
+    "nation": "England",
+    "league": "Bundesliga",
+    "url": "https://www.futbin.com/25/player/59968/harry-kane",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "59970",
+    "name": "Victor Osimhen",
+    "rating": "97",
+    "position": "ST++",
+    "club": "Galatasaray",
+    "nation": "Nigeria",
+    "league": "Trendyol S\u00fcper Lig",
+    "url": "https://www.futbin.com/25/player/59970/victor-osimhen",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "59971",
+    "name": "Pernille Harder",
+    "rating": "97",
+    "position": "ST++",
+    "club": "FC Bayern M\u00fcnchen",
+    "nation": "Denmark",
+    "league": "GPFBL",
+    "url": "https://www.futbin.com/25/player/59971/pernille-harder",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60038",
+    "name": "Alessandro Bastoni",
+    "rating": "97",
+    "position": "CB++",
+    "club": "Lombardia FC",
+    "nation": "Italy",
+    "league": "Serie A TIM",
+    "url": "https://www.futbin.com/25/player/60038/alessandro-bastoni",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60039",
+    "name": "Temwa Chawinga",
+    "rating": "97",
+    "position": "LM++",
+    "club": "KC Current",
+    "nation": "Malawi",
+    "league": "NWSL",
+    "url": "https://www.futbin.com/25/player/60039/temwa-chawinga",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60040",
+    "name": "Mateo Retegui",
+    "rating": "97",
+    "position": "ST++",
+    "club": "Bergamo Calcio",
+    "nation": "Italy",
+    "league": "Serie A TIM",
+    "url": "https://www.futbin.com/25/player/60040/mateo-retegui",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60119",
+    "name": "Cristian Romero",
+    "rating": "97",
+    "position": "CB++",
+    "club": "Spurs",
+    "nation": "Argentina",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/60119/cristian-romero",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60134",
+    "name": "Raphael Dias Belloli",
+    "rating": "97",
+    "position": "LW++",
+    "club": "FC Barcelona",
+    "nation": "Brazil",
+    "league": "LALIGA EA SPORTS",
+    "url": "https://www.futbin.com/25/player/60134/raphael-dias-belloli",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60136",
+    "name": "Kylian Mbapp\u00e9",
+    "rating": "97",
+    "position": "ST++",
+    "club": "Real Madrid",
+    "nation": "France",
+    "league": "LALIGA EA SPORTS",
+    "url": "https://www.futbin.com/25/player/60136/kylian-mbappe",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60138",
+    "name": "Alexia Putellas Segura",
+    "rating": "97",
+    "position": "CM++",
+    "club": "FC Barcelona",
+    "nation": "Spain",
+    "league": "Liga F",
+    "url": "https://www.futbin.com/25/player/60138/alexia-putellas-segura",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60142",
+    "name": "Lamine Yamal",
+    "rating": "97",
+    "position": "RW++",
+    "club": "FC Barcelona",
+    "nation": "Spain",
+    "league": "LALIGA EA SPORTS",
+    "url": "https://www.futbin.com/25/player/60142/lamine-yamal",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60143",
+    "name": "Jude Bellingham",
+    "rating": "97",
+    "position": "CAM++",
+    "club": "Real Madrid",
+    "nation": "England",
+    "league": "LALIGA EA SPORTS",
+    "url": "https://www.futbin.com/25/player/60143/jude-bellingham",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60205",
+    "name": "Cole Palmer",
+    "rating": "97",
+    "position": "RM++",
+    "club": "Chelsea",
+    "nation": "England",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/60205/cole-palmer",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60220",
+    "name": "Lionel Messi",
+    "rating": "97",
+    "position": "RW++",
+    "club": "Inter Miami CF",
+    "nation": "Argentina",
+    "league": "MLS",
+    "url": "https://www.futbin.com/25/player/60220/lionel-messi",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60222",
+    "name": "C. Ronaldo dos Santos Aveiro",
+    "rating": "97",
+    "position": "ST++",
+    "club": "Al Nassr",
+    "nation": "Portugal",
+    "league": "ROSHN Saudi League",
+    "url": "https://www.futbin.com/25/player/60222/c-ronaldo-dos-santos-aveiro",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60295",
+    "name": "D\u00e9sir\u00e9 Dou\u00e9",
+    "rating": "97",
+    "position": "LM++",
+    "club": "Paris SG",
+    "nation": "France",
+    "league": "Ligue 1 Uber Eats",
+    "url": "https://www.futbin.com/25/player/60295/desire-doue",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60315",
+    "name": "Stina Blackstenius",
+    "rating": "97",
+    "position": "ST++",
+    "club": "Arsenal",
+    "nation": "Sweden",
+    "league": "Barclays WSL",
+    "url": "https://www.futbin.com/25/player/60315/stina-blackstenius",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60344",
+    "name": "Rafael da Concei\u00e7\u00e3o Le\u00e3o",
+    "rating": "97",
+    "position": "ST++",
+    "club": "Milano FC",
+    "nation": "Portugal",
+    "league": "Serie A TIM",
+    "url": "https://www.futbin.com/25/player/60344/rafael-da-conceicao-leao",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60359",
+    "name": "Ricardo Izecson dos Santos Leite",
+    "rating": "97",
+    "position": "RW++",
+    "club": "EA FC ICONS",
+    "nation": "Brazil",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/60359/ricardo-izecson-dos-santos-leite",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60634",
+    "name": "Michael Olise",
+    "rating": "97",
+    "position": "ST++",
+    "club": "FC Bayern M\u00fcnchen",
+    "nation": "France",
+    "league": "Bundesliga",
+    "url": "https://www.futbin.com/25/player/60634/michael-olise",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60636",
+    "name": "Romelu Lukaku",
+    "rating": "97",
+    "position": "CB++",
+    "club": "SSC Napoli",
+    "nation": "Belgium",
+    "league": "Serie A TIM",
+    "url": "https://www.futbin.com/25/player/60636/romelu-lukaku",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60637",
+    "name": "Martin \u00d8degaard",
+    "rating": "97",
+    "position": "LW++",
+    "club": "Arsenal",
+    "nation": "Norway",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/60637/martin-odegaard",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60638",
+    "name": "Marcus Rashford",
+    "rating": "97",
+    "position": "CM++",
+    "club": "Aston Villa",
+    "nation": "England",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/60638/marcus-rashford",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60639",
+    "name": "Reus",
+    "rating": "97",
+    "position": "CM++",
+    "club": "LA Galaxy",
+    "nation": "Germany",
+    "league": "MLS",
+    "url": "https://www.futbin.com/25/player/60639/reus",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60653",
+    "name": "Patrick Vieira",
+    "rating": "97",
+    "position": "ST++",
+    "club": "EA FC ICONS",
+    "nation": "France",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/60653/patrick-vieira",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60654",
+    "name": "Mia Hamm",
+    "rating": "97",
+    "position": "CM++",
+    "club": "EA FC ICONS",
+    "nation": "United States",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/60654/mia-hamm",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60660",
+    "name": "Nuno Alexandre Tavares Mendes",
+    "rating": "97",
+    "position": "LB++",
+    "club": "Paris SG",
+    "nation": "Portugal",
+    "league": "Ligue 1 Uber Eats",
+    "url": "https://www.futbin.com/25/player/60660/nuno-alexandre-tavares-mendes",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60661",
+    "name": "Jo\u00e3o Pedro Gon\u00e7alves Neves",
+    "rating": "97",
+    "position": "RB++",
+    "club": "Paris SG",
+    "nation": "Portugal",
+    "league": "Ligue 1 Uber Eats",
+    "url": "https://www.futbin.com/25/player/60661/joao-pedro-goncalves-neves",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60662",
+    "name": "C. Ronaldo dos Santos Aveiro",
+    "rating": "97",
+    "position": "ST++",
+    "club": "Al Nassr",
+    "nation": "Portugal",
+    "league": "ROSHN Saudi League",
+    "url": "https://www.futbin.com/25/player/60662/c-ronaldo-dos-santos-aveiro",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60663",
+    "name": "Rafael da Concei\u00e7\u00e3o Le\u00e3o",
+    "rating": "97",
+    "position": "LW++",
+    "club": "Milano FC",
+    "nation": "Portugal",
+    "league": "Serie A TIM",
+    "url": "https://www.futbin.com/25/player/60663/rafael-da-conceicao-leao",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60686",
+    "name": "Alexander Isak",
+    "rating": "97",
+    "position": "CM++",
+    "club": "Newcastle Utd",
+    "nation": "Sweden",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/60686/alexander-isak",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60687",
+    "name": "Lautaro Mart\u00ednez",
+    "rating": "97",
+    "position": "CM++",
+    "club": "Lombardia FC",
+    "nation": "Argentina",
+    "league": "Serie A TIM",
+    "url": "https://www.futbin.com/25/player/60687/lautaro-martinez",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60688",
+    "name": "Bukayo Saka",
+    "rating": "97",
+    "position": "CAM++",
+    "club": "Arsenal",
+    "nation": "England",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/60688/bukayo-saka",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60712",
+    "name": "Ronaldo de Assis Moreira",
+    "rating": "97",
+    "position": "ST++",
+    "club": "EA FC ICONS",
+    "nation": "Brazil",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/60712/ronaldo-de-assis-moreira",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60783",
+    "name": "Sadio Man\u00e9",
+    "rating": "97",
+    "position": "CAM++",
+    "club": "Al Nassr",
+    "nation": "Senegal",
+    "league": "ROSHN Saudi League",
+    "url": "https://www.futbin.com/25/player/60783/sadio-mane",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60784",
+    "name": "Paulo Dybala",
+    "rating": "97",
+    "position": "CDM++",
+    "club": "AS Roma",
+    "nation": "Argentina",
+    "league": "Serie A TIM",
+    "url": "https://www.futbin.com/25/player/60784/paulo-dybala",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60785",
+    "name": "Melvine Malard",
+    "rating": "97",
+    "position": "LW++",
+    "club": "Manchester Utd",
+    "nation": "France",
+    "league": "Barclays WSL",
+    "url": "https://www.futbin.com/25/player/60785/melvine-malard",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60786",
+    "name": "Pablo Mart\u00edn P\u00e1ez Gavira",
+    "rating": "97",
+    "position": "CAM++",
+    "club": "FC Barcelona",
+    "nation": "Spain",
+    "league": "LALIGA EA SPORTS",
+    "url": "https://www.futbin.com/25/player/60786/pablo-martin-paez-gavira",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60787",
+    "name": "Ollie Watkins",
+    "rating": "97",
+    "position": "CAM++",
+    "club": "Aston Villa",
+    "nation": "England",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/60787/ollie-watkins",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60802",
+    "name": "Giulia Gwinn",
+    "rating": "97",
+    "position": "RB++",
+    "club": "FC Bayern M\u00fcnchen",
+    "nation": "Germany",
+    "league": "GPFBL",
+    "url": "https://www.futbin.com/25/player/60802/giulia-gwinn",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60804",
+    "name": "Fridolina Rolf\u00f6",
+    "rating": "97",
+    "position": "LM++",
+    "club": "FC Barcelona",
+    "nation": "Sweden",
+    "league": "Liga F",
+    "url": "https://www.futbin.com/25/player/60804/fridolina-rolfo",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60805",
+    "name": "Guro Reiten",
+    "rating": "97",
+    "position": "LM++",
+    "club": "Chelsea",
+    "nation": "Norway",
+    "league": "Barclays WSL",
+    "url": "https://www.futbin.com/25/player/60805/guro-reiten",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60806",
+    "name": "Grace Geyoro",
+    "rating": "97",
+    "position": "CM++",
+    "club": "Paris SG",
+    "nation": "France",
+    "league": "D1 Arkema",
+    "url": "https://www.futbin.com/25/player/60806/grace-geyoro",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60808",
+    "name": "Pernille Harder",
+    "rating": "97",
+    "position": "ST++",
+    "club": "FC Bayern M\u00fcnchen",
+    "nation": "Denmark",
+    "league": "GPFBL",
+    "url": "https://www.futbin.com/25/player/60808/pernille-harder",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60809",
+    "name": "Cascarino",
+    "rating": "97",
+    "position": "RW++",
+    "club": "San Diego Wave",
+    "nation": "France",
+    "league": "NWSL",
+    "url": "https://www.futbin.com/25/player/60809/cascarino",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60817",
+    "name": "Yaya Tour\u00e9",
+    "rating": "97",
+    "position": "ST++",
+    "club": "HERO",
+    "nation": "C\u00f4te d'Ivoire",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/60817/yaya-toure",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60821",
+    "name": "Hristo Stoichkov",
+    "rating": "97",
+    "position": "CAM++",
+    "club": "EA FC ICONS",
+    "nation": "Bulgaria",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/60821/hristo-stoichkov",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60822",
+    "name": "Iker Casillas Fern\u00e1ndez",
+    "rating": "97",
+    "position": "CM++",
+    "club": "EA FC ICONS",
+    "nation": "Spain",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/60822/iker-casillas-fernandez",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60835",
+    "name": "Stina Blackstenius",
+    "rating": "97",
+    "position": "ST++",
+    "club": "Arsenal",
+    "nation": "Sweden",
+    "league": "Barclays WSL",
+    "url": "https://www.futbin.com/25/player/60835/stina-blackstenius",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60836",
+    "name": "Arda G\u00fcler",
+    "rating": "97",
+    "position": "ST++",
+    "club": "Real Madrid",
+    "nation": "T\u00fcrkiye",
+    "league": "LALIGA EA SPORTS",
+    "url": "https://www.futbin.com/25/player/60836/arda-guler",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60838",
+    "name": "R\u00faben Diogo da Silva Neves",
+    "rating": "97",
+    "position": "CB++",
+    "club": "Al Hilal",
+    "nation": "Portugal",
+    "league": "ROSHN Saudi League",
+    "url": "https://www.futbin.com/25/player/60838/ruben-diogo-da-silva-neves",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60839",
+    "name": "Emanuel Emegha",
+    "rating": "97",
+    "position": "CB++",
+    "club": "Strasbourg",
+    "nation": "Netherlands",
+    "league": "Ligue 1 Uber Eats",
+    "url": "https://www.futbin.com/25/player/60839/emanuel-emegha",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60840",
+    "name": "Ellie Carpenter",
+    "rating": "97",
+    "position": "CM++",
+    "club": "Chelsea",
+    "nation": "Australia",
+    "league": "Barclays WSL",
+    "url": "https://www.futbin.com/25/player/60840/ellie-carpenter",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60857",
+    "name": "Marie Katoto",
+    "rating": "97",
+    "position": "ST++",
+    "club": "OL",
+    "nation": "France",
+    "league": "D1 Arkema",
+    "url": "https://www.futbin.com/25/player/60857/marie-katoto",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60858",
+    "name": "Ewa Pajor",
+    "rating": "97",
+    "position": "ST++",
+    "club": "FC Barcelona",
+    "nation": "Poland",
+    "league": "Liga F",
+    "url": "https://www.futbin.com/25/player/60858/ewa-pajor",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60859",
+    "name": "Magdalena Eriksson",
+    "rating": "97",
+    "position": "CB++",
+    "club": "FC Bayern M\u00fcnchen",
+    "nation": "Sweden",
+    "league": "GPFBL",
+    "url": "https://www.futbin.com/25/player/60859/magdalena-eriksson",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60862",
+    "name": "Ada Hegerberg",
+    "rating": "97",
+    "position": "ST++",
+    "club": "OL",
+    "nation": "Norway",
+    "league": "D1 Arkema",
+    "url": "https://www.futbin.com/25/player/60862/ada-hegerberg",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60870",
+    "name": "Lucimar da Silva Ferreira",
+    "rating": "97",
+    "position": "CDM++",
+    "club": "HERO",
+    "nation": "Brazil",
+    "league": "Serie A TIM",
+    "url": "https://www.futbin.com/25/player/60870/lucimar-da-silva-ferreira",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60874",
+    "name": "Michael Owen",
+    "rating": "97",
+    "position": "LW++",
+    "club": "EA FC ICONS",
+    "nation": "England",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/60874/michael-owen",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60879",
+    "name": "Hanna Lundkvist",
+    "rating": "97",
+    "position": "RB++",
+    "club": "San Diego Wave",
+    "nation": "Sweden",
+    "league": "NWSL",
+    "url": "https://www.futbin.com/25/player/60879/hanna-lundkvist",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60881",
+    "name": "Athenea del Castillo",
+    "rating": "97",
+    "position": "RW++",
+    "club": "Real Madrid",
+    "nation": "Spain",
+    "league": "Liga F",
+    "url": "https://www.futbin.com/25/player/60881/athenea-del-castillo",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60892",
+    "name": "Harry Maguire",
+    "rating": "97",
+    "position": "CB++",
+    "club": "Manchester Utd",
+    "nation": "England",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/60892/harry-maguire",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60893",
+    "name": "Jeremiah St. Juste",
+    "rating": "97",
+    "position": "CB++",
+    "club": "Sporting CP",
+    "nation": "Netherlands",
+    "league": "Liga Portugal",
+    "url": "https://www.futbin.com/25/player/60893/jeremiah-st-juste",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60894",
+    "name": "Adama Traor\u00e9 Diarra",
+    "rating": "97",
+    "position": "ST++",
+    "club": "Fulham",
+    "nation": "Spain",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/60894/adama-traore-diarra",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60895",
+    "name": "Nicol\u00f2 Barella",
+    "rating": "97",
+    "position": "CM++",
+    "club": "Lombardia FC",
+    "nation": "Italy",
+    "league": "Serie A TIM",
+    "url": "https://www.futbin.com/25/player/60895/nicolo-barella",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60897",
+    "name": "Rodrygo Silva de Goes",
+    "rating": "97",
+    "position": "RW++",
+    "club": "Real Madrid",
+    "nation": "Brazil",
+    "league": "LALIGA EA SPORTS",
+    "url": "https://www.futbin.com/25/player/60897/rodrygo-silva-de-goes",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60907",
+    "name": "Claudia Pina Medina",
+    "rating": "97",
+    "position": "LW++",
+    "club": "FC Barcelona",
+    "nation": "Spain",
+    "league": "Liga F",
+    "url": "https://www.futbin.com/25/player/60907/claudia-pina-medina",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60908",
+    "name": "Georginio Rutter",
+    "rating": "97",
+    "position": "CAM++",
+    "club": "Brighton",
+    "nation": "France",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/60908/georginio-rutter",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60909",
+    "name": "Darwin N\u00fa\u00f1ez",
+    "rating": "97",
+    "position": "ST++",
+    "club": "Liverpool",
+    "nation": "Uruguay",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/60909/darwin-nunez",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60910",
+    "name": "Omar Marmoush",
+    "rating": "97",
+    "position": "ST++",
+    "club": "Manchester City",
+    "nation": "Egypt",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/60910/omar-marmoush",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60919",
+    "name": "Davor \u0160uker",
+    "rating": "97",
+    "position": "ST++",
+    "club": "EA FC ICONS",
+    "nation": "Croatia",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/60919/davor-suker",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60922",
+    "name": "Micky van de Ven",
+    "rating": "97",
+    "position": "CB++",
+    "club": "Spurs",
+    "nation": "Netherlands",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/60922/micky-van-de-ven",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60923",
+    "name": "Sonia Bompastor",
+    "rating": "97",
+    "position": "LB++",
+    "club": "HERO",
+    "nation": "France",
+    "league": "D1 Arkema",
+    "url": "https://www.futbin.com/25/player/60923/sonia-bompastor",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60930",
+    "name": "Nadine Angerer",
+    "rating": "97",
+    "position": "GK++",
+    "club": "EA FC ICONS",
+    "nation": "Germany",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/60930/nadine-angerer",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60932",
+    "name": "Birgit Prinz",
+    "rating": "97",
+    "position": "ST++",
+    "club": "EA FC ICONS",
+    "nation": "Germany",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/60932/birgit-prinz",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60934",
+    "name": "Marinette Pichon",
+    "rating": "97",
+    "position": "ST++",
+    "club": "EA FC ICONS",
+    "nation": "France",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/60934/marinette-pichon",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60935",
+    "name": "J\u00fcrgen Kohler",
+    "rating": "97",
+    "position": "CB++",
+    "club": "HERO",
+    "nation": "Germany",
+    "league": "Bundesliga",
+    "url": "https://www.futbin.com/25/player/60935/jurgen-kohler",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60936",
+    "name": "Jos\u00e9 Roberto da Silva J\u00fanior",
+    "rating": "97",
+    "position": "LM++",
+    "club": "HERO",
+    "nation": "Brazil",
+    "league": "Bundesliga",
+    "url": "https://www.futbin.com/25/player/60936/jose-roberto-da-silva-junior",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60937",
+    "name": "Blaise Matuidi",
+    "rating": "97",
+    "position": "CDM++",
+    "club": "HERO",
+    "nation": "France",
+    "league": "Ligue 1 Uber Eats",
+    "url": "https://www.futbin.com/25/player/60937/blaise-matuidi",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60938",
+    "name": "Carlos T\u00e9vez",
+    "rating": "97",
+    "position": "ST++",
+    "club": "HERO",
+    "nation": "Argentina",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/60938/carlos-tevez",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60943",
+    "name": "Jules Kound\u00e9",
+    "rating": "97",
+    "position": "RB++",
+    "club": "FC Barcelona",
+    "nation": "France",
+    "league": "LALIGA EA SPORTS",
+    "url": "https://www.futbin.com/25/player/60943/jules-kounde",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60944",
+    "name": "Katie McCabe",
+    "rating": "97",
+    "position": "LB++",
+    "club": "Arsenal",
+    "nation": "Republic of Ireland",
+    "league": "Barclays WSL",
+    "url": "https://www.futbin.com/25/player/60944/katie-mccabe",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60951",
+    "name": "Patrick Kluivert",
+    "rating": "97",
+    "position": "ST++",
+    "club": "EA FC ICONS",
+    "nation": "Netherlands",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/60951/patrick-kluivert",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60952",
+    "name": "Julie Foudy",
+    "rating": "97",
+    "position": "CM++",
+    "club": "EA FC ICONS",
+    "nation": "United States",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/60952/julie-foudy",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60955",
+    "name": "Emmanuel Petit",
+    "rating": "97",
+    "position": "CDM++",
+    "club": "EA FC ICONS",
+    "nation": "France",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/60955/emmanuel-petit",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60957",
+    "name": "Maicon Douglas Sisenando",
+    "rating": "97",
+    "position": "RB++",
+    "club": "HERO",
+    "nation": "Brazil",
+    "league": "Serie A TIM",
+    "url": "https://www.futbin.com/25/player/60957/maicon-douglas-sisenando",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60959",
+    "name": "Bruno Miguel Borges Fernandes",
+    "rating": "97",
+    "position": "CAM++",
+    "club": "Manchester Utd",
+    "nation": "Portugal",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/60959/bruno-miguel-borges-fernandes",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60963",
+    "name": "V\u00edtor Machado Ferreira",
+    "rating": "97",
+    "position": "CM++",
+    "club": "Paris SG",
+    "nation": "Portugal",
+    "league": "Ligue 1 Uber Eats",
+    "url": "https://www.futbin.com/25/player/60963/vitor-machado-ferreira",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60965",
+    "name": "Aya Miyama",
+    "rating": "97",
+    "position": "LM++",
+    "club": "EA FC ICONS",
+    "nation": "Japan",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/60965/aya-miyama",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60970",
+    "name": "William Saliba",
+    "rating": "97",
+    "position": "CB++",
+    "club": "Arsenal",
+    "nation": "France",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/60970/william-saliba",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60971",
+    "name": "D\u00e9bora C. de Oliveira",
+    "rating": "97",
+    "position": "CAM++",
+    "club": "KC Current",
+    "nation": "Brazil",
+    "league": "NWSL",
+    "url": "https://www.futbin.com/25/player/60971/debora-c-de-oliveira",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60972",
+    "name": "Aur\u00e9lien Tchouam\u00e9ni",
+    "rating": "97",
+    "position": "CDM++",
+    "club": "Real Madrid",
+    "nation": "France",
+    "league": "LALIGA EA SPORTS",
+    "url": "https://www.futbin.com/25/player/60972/aurelien-tchouameni",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60973",
+    "name": "Dayot Upamecano",
+    "rating": "97",
+    "position": "CB++",
+    "club": "FC Bayern M\u00fcnchen",
+    "nation": "France",
+    "league": "Bundesliga",
+    "url": "https://www.futbin.com/25/player/60973/dayot-upamecano",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60974",
+    "name": "Marcus Thuram",
+    "rating": "97",
+    "position": "ST++",
+    "club": "Lombardia FC",
+    "nation": "France",
+    "league": "Serie A TIM",
+    "url": "https://www.futbin.com/25/player/60974/marcus-thuram",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60979",
+    "name": "Fernando Jos\u00e9 Torres Sanz",
+    "rating": "97",
+    "position": "ST++",
+    "club": "EA FC ICONS",
+    "nation": "Spain",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/60979/fernando-jose-torres-sanz",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60980",
+    "name": "Lilian Thuram",
+    "rating": "97",
+    "position": "RB++",
+    "club": "EA FC ICONS",
+    "nation": "France",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/60980/lilian-thuram",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60981",
+    "name": "Carles Puyol Saforcada",
+    "rating": "97",
+    "position": "CB++",
+    "club": "EA FC ICONS",
+    "nation": "Spain",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/60981/carles-puyol-saforcada",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60982",
+    "name": "Micha\u00ebl Essien",
+    "rating": "97",
+    "position": "CDM++",
+    "club": "EA FC ICONS",
+    "nation": "Ghana",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/60982/michael-essien",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60983",
+    "name": "Ronald Koeman",
+    "rating": "97",
+    "position": "CB++",
+    "club": "EA FC ICONS",
+    "nation": "Netherlands",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/60983/ronald-koeman",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60984",
+    "name": "Ji Sung Park",
+    "rating": "97",
+    "position": "CM++",
+    "club": "HERO",
+    "nation": "Korea Republic",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/60984/ji-sung-park",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60985",
+    "name": "Nwankwo Kanu",
+    "rating": "97",
+    "position": "ST++",
+    "club": "HERO",
+    "nation": "Nigeria",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/60985/nwankwo-kanu",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60986",
+    "name": "Sam Kerr",
+    "rating": "97",
+    "position": "ST++",
+    "club": "Chelsea",
+    "nation": "Australia",
+    "league": "Barclays WSL",
+    "url": "https://www.futbin.com/25/player/60986/sam-kerr",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60987",
+    "name": "Kenny Dalglish",
+    "rating": "97",
+    "position": "ST++",
+    "club": "EA FC ICONS",
+    "nation": "Scotland",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/60987/kenny-dalglish",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60991",
+    "name": "Jaap Stam",
+    "rating": "97",
+    "position": "CB++",
+    "club": "HERO",
+    "nation": "Netherlands",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/60991/jaap-stam",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60992",
+    "name": "Pedro Lomba Neto",
+    "rating": "97",
+    "position": "RW++",
+    "club": "Chelsea",
+    "nation": "Portugal",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/60992/pedro-lomba-neto",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60993",
+    "name": "Alphonso Davies",
+    "rating": "97",
+    "position": "LB++",
+    "club": "FC Bayern M\u00fcnchen",
+    "nation": "Canada",
+    "league": "Bundesliga",
+    "url": "https://www.futbin.com/25/player/60993/alphonso-davies",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60996",
+    "name": "Declan Rice",
+    "rating": "97",
+    "position": "CM++",
+    "club": "Arsenal",
+    "nation": "England",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/60996/declan-rice",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60998",
+    "name": "Roy Keane",
+    "rating": "97",
+    "position": "CM++",
+    "club": "EA FC ICONS",
+    "nation": "Republic of Ireland",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/60998/roy-keane",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "60999",
+    "name": "Melchie Dumornay",
+    "rating": "97",
+    "position": "ST++",
+    "club": "OL",
+    "nation": "Haiti",
+    "league": "D1 Arkema",
+    "url": "https://www.futbin.com/25/player/60999/melchie-dumornay",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61007",
+    "name": "Karim Benzema",
+    "rating": "97",
+    "position": "ST++",
+    "club": "Al Ittihad",
+    "nation": "France",
+    "league": "ROSHN Saudi League",
+    "url": "https://www.futbin.com/25/player/61007/karim-benzema",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61011",
+    "name": "Marie-Yasmine Alidou",
+    "rating": "97",
+    "position": "CAM++",
+    "club": "Portland Timbers-Thorns",
+    "nation": "Canada",
+    "league": "NWSL",
+    "url": "https://www.futbin.com/25/player/61011/marie-yasmine-alidou",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61012",
+    "name": "Karim Adeyemi",
+    "rating": "97",
+    "position": "LM++",
+    "club": "Borussia Dortmund",
+    "nation": "Germany",
+    "league": "Bundesliga",
+    "url": "https://www.futbin.com/25/player/61012/karim-adeyemi",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61016",
+    "name": "Gianluca Vialli",
+    "rating": "97",
+    "position": "ST++",
+    "club": "HERO",
+    "nation": "Italy",
+    "league": "Serie A TIM",
+    "url": "https://www.futbin.com/25/player/61016/gianluca-vialli",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61017",
+    "name": "Diego Forl\u00e1n",
+    "rating": "97",
+    "position": "ST++",
+    "club": "HERO",
+    "nation": "Uruguay",
+    "league": "LALIGA EA SPORTS",
+    "url": "https://www.futbin.com/25/player/61017/diego-forlan",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61018",
+    "name": "Selma Bacha",
+    "rating": "97",
+    "position": "LB++",
+    "club": "OL",
+    "nation": "France",
+    "league": "D1 Arkema",
+    "url": "https://www.futbin.com/25/player/61018/selma-bacha",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61019",
+    "name": "Frank Lampard",
+    "rating": "97",
+    "position": "CM++",
+    "club": "EA FC ICONS",
+    "nation": "England",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/61019/frank-lampard",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61020",
+    "name": "Paul Scholes",
+    "rating": "97",
+    "position": "CM++",
+    "club": "EA FC ICONS",
+    "nation": "England",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/61020/paul-scholes",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61021",
+    "name": "Jerzy Dudek",
+    "rating": "97",
+    "position": "GK++",
+    "club": "HERO",
+    "nation": "Poland",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/61021/jerzy-dudek",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61022",
+    "name": "Bruno Guimar\u00e3es Moura",
+    "rating": "97",
+    "position": "CDM++",
+    "club": "Newcastle Utd",
+    "nation": "Brazil",
+    "league": "Premier League",
+    "url": "https://www.futbin.com/25/player/61022/bruno-guimaraes-moura",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  },
+  {
+    "id": "61023",
+    "name": "Marcel Desailly",
+    "rating": "97",
+    "position": "CB++",
+    "club": "EA FC ICONS",
+    "nation": "France",
+    "league": "Icons",
+    "url": "https://www.futbin.com/25/player/61023/marcel-desailly",
+    "prices": {
+      "ps": null,
+      "xbox": null
+    }
+  }
+]
