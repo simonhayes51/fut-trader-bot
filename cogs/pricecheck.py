@@ -4,61 +4,71 @@ from discord import app_commands
 import requests
 from bs4 import BeautifulSoup
 import json
-import logging
 
 class PriceCheck(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.players = self.load_players()
 
-    def load_players(self):
-        try:
-            with open("players_temp.json", "r", encoding="utf-8") as f:
-                data = json.load(f)
-                logging.info("[LOAD] players_temp.json loaded successfully.")
-                return data
-        except Exception as e:
-            logging.error(f"[ERROR] Failed to load players_temp.json: {e}")
-            return []
-
-    @app_commands.command(name="pricecheck", description="Check the FUT price of a player.")
-    @app_commands.describe(player="Name of the player", platform="Platform: console or pc")
-    async def pricecheck(self, interaction: discord.Interaction, player: str, platform: str = "console"):
-        await interaction.response.defer()
+    @app_commands.command(name="pricecheck", description="Check the price of a FUT player")
+    @app_commands.describe(player_name="The name of the player")
+    async def pricecheck(self, interaction: discord.Interaction, player_name: str):
+        await interaction.response.defer(thinking=True)
 
         try:
-            player_data = next(
-                (p for p in self.players if player.lower() in f"{p['name']} {p['rating']}".lower()),
-                None
-            )
+            search_url = f"https://www.futbin.com/search?year=24&term={player_name}"
+            headers = {
+                "User-Agent": "Mozilla/5.0",
+                "X-Requested-With": "XMLHttpRequest"
+            }
 
-            if not player_data:
-                await interaction.followup.send("❌ Player not found.")
+            search_response = requests.get(search_url, headers=headers)
+            if search_response.status_code != 200:
+                await interaction.followup.send("❌ Failed to fetch data from Futbin.")
                 return
 
-            url = player_data.get("url")
-            logging.info(f"[PRICECHECK] Scraping URL: {url}")
-            response = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
-
-            if response.status_code != 200:
-                await interaction.followup.send("❌ Failed to fetch player data.")
+            results = search_response.json()
+            if not results:
+                await interaction.followup.send("❌ No results found for that player.")
                 return
 
-            soup = BeautifulSoup(response.text, "html.parser")
+            player = results[0]
+            player_id = player["id"]
+            player_name = player["name"]
+            player_image = f"https://cdn.futbin.com/content/fifa24/img/players/{player_id}.png"
+            player_url = f"https://www.futbin.com/24/player/{player_id}"
 
-            price_block = soup.find("div", class_="price-box", attrs={"data-id": player_data['id']})
-            if not price_block:
-                await interaction.followup.send("❌ Price data not found.")
+            player_response = requests.get(player_url, headers=headers)
+            if player_response.status_code != 200:
+                await interaction.followup.send("❌ Failed to fetch player details.")
                 return
 
-            main_price = price_block.find("div", class_="price inline-with-icon lowest-price-1")
-            trend = price_block.find("div", class_="price-box-trend")
-            price_range = price_block.find("div", class_="price-pr")
-            update_time = price_block.find("div", class_="prices-updated")
+            soup = BeautifulSoup(player_response.text, "html.parser")
+            price_data = soup.find("div", class_="price-graph-tab price-graph-tab-0")
 
-            coin_price = main_price.text.strip() if main_price else "Unknown"
-            trend_value = trend.text.strip().replace("Trend:", "") if trend else "-"
-            price_range_text = price_range.text.strip().replace("PR:", "") if price_range else "-"
-            updated = update_time.text.strip().replace("Price Updated:", "") if update_time else "-"
+            if price_data is None:
+                await interaction.followup.send("❌ Couldn't find price data.")
+                return
+
+            ps_data = json.loads(price_data["data-ps-data"])
+            pc_data = json.loads(price_data["data-pc-data"])
+
+            latest_ps_price = ps_data[-1][1] if ps_data else "N/A"
+            latest_pc_price = pc_data[-1][1] if pc_data else "N/A"
 
             embed = discord.Embed(
+                title=f"{player_name} Price Check",
+                url=player_url,
+                description=f"[View on Futbin]({player_url})",
+                color=discord.Color.blue()
+            )
+            embed.set_thumbnail(url=player_image)
+            embed.add_field(name="🖥️ PC Price", value=f"{latest_pc_price:,} coins", inline=True)
+            embed.add_field(name="🎮 Crossplay Price", value=f"{latest_ps_price:,} coins", inline=True)
+
+            await interaction.followup.send(embed=embed)
+
+        except Exception as e:
+            await interaction.followup.send(f"❌ An error occurred: `{str(e)}`")
+
+async def setup(bot):
+    await bot.add_cog(PriceCheck(bot))
