@@ -1,63 +1,54 @@
-import os
 import discord
-import logging
 from discord.ext import commands
 from discord import app_commands
-from dotenv import load_dotenv
-from keep_alive import keep_alive  # 👈 NEW
+import requests
+from bs4 import BeautifulSoup
+import json
+import logging
 
-# Load environment variables
-load_dotenv()
+class PriceCheck(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+        self.players = self.load_players()
 
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='[%(asctime)s] %(levelname)s:%(name)s: %(message)s',
-    handlers=[logging.StreamHandler()]
-)
+    def load_players(self):
+        try:
+            with open("players_temp.json", "r", encoding="utf-8") as f:
+                data = json.load(f)
+                logging.info("[LOAD] players_temp.json loaded successfully.")
+                return data
+        except Exception as e:
+            logging.error(f"[ERROR] Failed to load players_temp.json: {e}")
+            return []
 
-# Configure intents
-intents = discord.Intents.default()
-intents.message_content = True
+    @app_commands.command(name="pricecheck", description="Check the FUT price of a player.")
+    @app_commands.describe(player="Name of the player", platform="Platform: console or pc")
+    async def pricecheck(self, interaction: discord.Interaction, player: str, platform: str = "console"):
+        await interaction.response.defer()
 
-# Set up the bot
-bot = commands.Bot(command_prefix="!", intents=intents)
+        try:
+            player_data = next(
+                (p for p in self.players if player.lower() in f"{p['name']} {p['rating']}".lower()), None
+            )
 
-@bot.event
-async def on_ready():
-    logging.info(f"✅ Logged in as {bot.user.name}")
+            if not player_data:
+                await interaction.followup.send("❌ Player not found.")
+                return
 
-    try:
-        await bot.load_extension("cogs.pricecheck")
-        logging.info("📦 Loaded pricecheck cog")
-    except Exception as e:
-        logging.error(f"❌ Failed to load pricecheck cog: {e}")
+            url = player_data.get("url")
+            response = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
+            if response.status_code != 200:
+                await interaction.followup.send("❌ Failed to fetch player data.")
+                return
 
-    try:
-        await bot.load_extension("cogs.pricecheckgg")
-        logging.info("📦 Loaded pricecheckgg cog")
-    except Exception as e:
-        logging.error(f"❌ Failed to load pricecheckgg cog: {e}")
+            soup = BeautifulSoup(response.text, "html.parser")
+            price_block = soup.find("div", class_="price-box", attrs={"data-id": player_data['id']})
 
-    try:
-        synced = await bot.tree.sync()
-        logging.info(f"🔁 Globally synced {len(synced)} slash command(s).")
-    except Exception as e:
-        logging.error(f"❌ Failed to sync slash commands: {e}")
+            if not price_block:
+                await interaction.followup.send("❌ Price data not found.")
+                return
 
-# Test slash command
-@bot.tree.command(name="ping", description="Replies with pong!")
-async def ping(interaction: discord.Interaction):
-    logging.info("✅ /ping command used")
-    await interaction.response.send_message("🏓 Pong!")
-
-# Start keep-alive server
-keep_alive()  # 👈 NEW
-
-# Run bot
-token = os.getenv("DISCORD_TOKEN")
-if not token:
-    logging.error("❌ DISCORD_TOKEN environment variable is missing!")
-    exit(1)
-
-bot.run(token)
+            main_price = price_block.find("div", class_="price inline-with-icon lowest-price-1")
+            trend = price_block.find("div", class_="price-box-trend")
+            price_range = price_block.find("div", class_="price-pr")
+            updat
