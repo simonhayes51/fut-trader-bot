@@ -64,12 +64,13 @@ class PriceCheckGG(commands.Cog):
 
     @pricecheckgg.autocomplete("player")
     async def player_autocomplete(self, interaction: discord.Interaction, current: str):
-        current = current.lower()
-        return [
-            app_commands.Choice(name=f"{p['name']} {p['rating']}", value=f"{p['name']} {p['rating']}")
-            for p in self.players if current in f"{p['name']} {p['rating']}".lower()
-        ][:25]
-        return suggestions
+        try:
+            current = current.lower()
+            suggestions = [
+                app_commands.Choice(name=f"{p['name']} {p['rating']}", value=f"{p['name']} {p['rating']}")
+                for p in self.players if current in f"{p['name']} {p['rating']}".lower()
+            ][:25]
+            return suggestions
         except Exception as e:
             print(f"[AUTOCOMPLETE ERROR] {e}")
             return []
