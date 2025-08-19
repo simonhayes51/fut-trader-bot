@@ -25,10 +25,10 @@ class PriceCheck(commands.Cog):
         app_commands.Choice(name="PC", value="pc")
     ])
     async def pricecheck(self, interaction: discord.Interaction, player: str, platform: app_commands.Choice[str]):
+        print(f"🧪 /pricecheck triggered by {interaction.user} for {player} on {platform.name}")
         await interaction.response.defer()
 
         try:
-            # Match player from local list
             matched_player = next(
                 (p for p in self.players if f"{p['name'].lower()} {p['rating']}" == player.lower()), None
             )
@@ -43,6 +43,8 @@ class PriceCheck(commands.Cog):
             slug = player_name.replace(" ", "-").lower()
 
             futbin_url = f"https://www.futbin.com/25/player/{player_id}/{slug}"
+            print(f"🔗 Scraping URL: {futbin_url}")
+
             price = self.get_price(futbin_url, platform.value)
 
             embed = discord.Embed(
@@ -63,31 +65,47 @@ class PriceCheck(commands.Cog):
             response = requests.get(url, headers=headers)
             soup = BeautifulSoup(response.text, "html.parser")
 
+            print(f"🌐 [GET] Status: {response.status_code}")
+            print(f"📄 Page Title: {soup.title.string if soup.title else 'N/A'}")
+
             prices_wrapper = soup.find("div", class_="lowest-prices-wrapper")
             if not prices_wrapper:
                 print("[ERROR] Could not find prices wrapper")
                 return "N/A"
 
+            print("🧱 Matched container HTML:", str(prices_wrapper)[:300], "...")
+
             price_elements = prices_wrapper.find_all("div", class_="lowest-price")
+            print(f"💬 Found {len(price_elements)} price elements:")
+            for i, el in enumerate(price_elements):
+                print(f"  [{i}] {el.text.strip()}")
 
             def get_price_text(index):
                 if len(price_elements) > index:
-                    return price_elements[index].text.strip().replace(",", "").replace("\n", "")
+                    raw_text = price_elements[index].text.strip()
+                    print(f"🔎 Raw price @ index {index}: {raw_text}")
+                    return raw_text.replace(",", "").replace("\n", "")
                 return "0"
 
             if platform == "console":
                 ps_price = get_price_text(0)
                 xbox_price = get_price_text(1)
                 price = ps_price if ps_price != "0" else xbox_price
+                print(f"🎮 Selected Console Price: {price}")
             elif platform == "pc":
                 price = get_price_text(2)
+                print(f"💻 Selected PC Price: {price}")
             else:
+                print(f"[ERROR] Unknown platform: {platform}")
                 return "N/A"
 
             if price == "0" or price == "":
+                print("[WARN] Price is zero or blank")
                 return "N/A"
 
-            return f"{int(price):,}"  # Adds commas
+            formatted_price = f"{int(price):,}"
+            print(f"✅ Final formatted price: {formatted_price}")
+            return formatted_price
 
         except Exception as e:
             print(f"[SCRAPE ERROR] {e}")
