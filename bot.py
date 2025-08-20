@@ -27,6 +27,15 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 async def on_ready():
     logging.info(f"✅ Logged in as {bot.user.name}")
 
+    # Create leak_config.json if missing
+    import json
+    if not os.path.exists("leak_config.json"):
+        with open("leak_config.json", "w") as f:
+            json.dump({}, f)
+        print("✅ leak_config.json created manually")
+    else:
+        print("ℹ️ leak_config.json already exists")
+
     try:
         await bot.load_extension("cogs.pricecheck")
         logging.info("📦 Loaded pricecheck cog")
@@ -44,7 +53,6 @@ async def on_ready():
         logging.info("📦 Loaded leaktweets cog")
     except Exception as e:
         logging.error(f"❌ Failed to load leaktweets cog: {e}")
-
     
     try:
         await bot.load_extension("cogs.setupsniping")
