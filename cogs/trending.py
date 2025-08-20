@@ -9,6 +9,7 @@ from bs4 import BeautifulSoup
 
 CONFIG_FILE = "autotrend_config.json"
 
+
 def load_config():
     if not os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, "w") as f:
@@ -16,12 +17,15 @@ def load_config():
     with open(CONFIG_FILE, "r") as f:
         return json.load(f)
 
+
 def save_config(data):
     with open(CONFIG_FILE, "w") as f:
         json.dump(data, f, indent=2)
 
+
 def is_admin_or_owner(member: discord.Member) -> bool:
     return member.guild and (member.guild.owner_id == member.id or any(r.name.lower() in ["admin", "owner"] for r in member.roles))
+
 
 class Trending(commands.Cog):
     def __init__(self, bot):
@@ -87,8 +91,8 @@ class Trending(commands.Cog):
                 while start + timedelta(hours=settings["frequency"]) <= now:
                     start += timedelta(hours=settings["frequency"])
 
-                if now != start:
-                    continue  # Skip if it's not the exact minute
+                if abs((now - start).total_seconds()) > 30:
+                    continue
 
                 channel = self.bot.get_channel(int(channel_id))
                 if not channel:
@@ -211,6 +215,7 @@ class Trending(commands.Cog):
             })
 
         return sorted(players, key=lambda x: x["trend"], reverse=(direction == "riser"))[:10]
+
 
 async def setup(bot):
     await bot.add_cog(Trending(bot))
