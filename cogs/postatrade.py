@@ -52,7 +52,7 @@ class PostATrade(commands.Cog):
         if image:
             embed.set_image(url=image.url)
 
-        embed.set_footer(text="Use this format when sharing tips in #trade-room or similar channels 📈")
+        embed.set_footer(text="All trades are done at your own risk 📈")
         embed.timestamp = interaction.created_at
 
         await interaction.response.send_message("✅ Trade posted!", ephemeral=True)
