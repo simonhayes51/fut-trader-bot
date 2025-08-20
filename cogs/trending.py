@@ -1,9 +1,9 @@
 import discord
 from discord.ext import commands, tasks
 from discord import app_commands
+from datetime import datetime, timedelta
 import json
 import os
-from datetime import datetime, timedelta
 import requests
 from bs4 import BeautifulSoup
 
@@ -30,7 +30,10 @@ class Trending(commands.Cog):
         self.auto_post_trends.start()
 
     @app_commands.command(name="trending", description="📊 Show top trending players")
-    @app_commands.describe(direction="Choose trend direction", period="Choose timeframe")
+    @app_commands.describe(
+        direction="Choose trend direction",
+        period="Choose timeframe"
+    )
     @app_commands.choices(
         direction=[
             app_commands.Choice(name="📈 Risers", value="riser"),
@@ -63,9 +66,7 @@ class Trending(commands.Cog):
             await interaction.response.send_message("❌ Invalid time format. Use HH:MM (24h)", ephemeral=True)
             return
 
-        guild_id = str(interaction.guild.id)
-        self.config[guild_id] = {
-            "channel_id": channel.id,
+        self.config[str(channel.id)] = {
             "frequency": frequency,
             "start_time": start_time,
             "ping_role": ping_role.id if ping_role else None
@@ -76,49 +77,36 @@ class Trending(commands.Cog):
     @tasks.loop(minutes=1)
     async def auto_post_trends(self):
         now = datetime.utcnow().replace(second=0, microsecond=0)
-        print(f"[DEBUG] Current UTC time: {now.strftime('%H:%M')}")
+        print(f"[AUTOPOST] Running at {now.strftime('%H:%M')} UTC")
 
-        for guild_id, settings in self.config.items():
+        for channel_id, settings in self.config.items():
             try:
-                start_time = settings.get("start_time")
-                frequency = int(settings.get("frequency", 24))
-                if not start_time:
-                    continue
+                start = datetime.strptime(settings["start_time"], "%H:%M").replace(year=now.year, month=now.month, day=now.day)
+                while start > now:
+                    start -= timedelta(hours=settings["frequency"])
+                while start + timedelta(hours=settings["frequency"]) <= now:
+                    start += timedelta(hours=settings["frequency"])
 
-                start_dt = datetime.strptime(start_time, "%H:%M")
-                today_start = now.replace(hour=start_dt.hour, minute=start_dt.minute)
+                if now != start:
+                    continue  # Skip if it's not the exact minute
 
-                # Adjust forward if we're behind today's start
-                while today_start <= now:
-                    if today_start == now:
-                        break
-                    today_start += timedelta(hours=frequency)
-                else:
-                    continue
-
-                # If it's time to post
-                post_time = today_start - timedelta(hours=frequency)
-                if now != post_time:
-                    continue
-
-                print(f"[POST] Posting to Guild {guild_id} at {now.strftime('%H:%M')}")
-                channel = self.bot.get_channel(settings["channel_id"])
+                channel = self.bot.get_channel(int(channel_id))
                 if not channel:
-                    print(f"[ERROR] Channel not found for Guild {guild_id}")
+                    print(f"[WARN] Channel {channel_id} not found")
                     continue
 
                 embed = await self.generate_combined_embed("24h")
                 if not embed:
-                    print(f"[ERROR] Could not generate embed for Guild {guild_id}")
+                    print(f"[ERROR] Could not generate embed")
                     continue
 
-                role_id = settings.get("ping_role")
-                content = f"<@&{role_id}>" if role_id else None
+                ping = settings.get("ping_role")
+                content = f"<@&{ping}>" if ping else None
                 await channel.send(content=content, embed=embed)
-                print(f"[SUCCESS] Auto-posted trending to Guild {guild_id}")
+                print(f"[POSTED] Sent market trends to {channel.name}")
 
             except Exception as e:
-                print(f"[AutoPost Error] Guild {guild_id}: {e}")
+                print(f"[ERROR] Autopost error for channel {channel_id}: {e}")
 
     @auto_post_trends.before_loop
     async def before_auto(self):
@@ -135,22 +123,22 @@ class Trending(commands.Cog):
 
         embed = discord.Embed(title=title, color=color)
         embed.set_footer(text="Data from FUTBIN | Prices are estimates")
-
         number_emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
-        left = ""
-        right = ""
 
         for i, p in enumerate(data[:10]):
-            booster = " 🚀" if direction == "riser" and p["trend"] > 100 else " ❄️" if direction == "faller" and p["trend"] < -50 else ""
-            percent = f"-{p['trend']:.2f}%" if direction == "faller" else f"{p['trend']:.2f}%"
-            entry = f"**{number_emojis[i]} {p['name']} ({p['rating']})**\n💰 {p['price']}\n{emoji} {percent}{booster}\n\n"
-            if i < 5:
-                left += entry
-            else:
-                right += entry
+            boost = ""
+            if direction == "riser" and p["trend"] > 100:
+                boost = " 🚀"
+            elif direction == "faller" and p["trend"] < -50:
+                boost = " ❄️"
 
-        embed.add_field(name="\u200b", value=left.strip(), inline=True)
-        embed.add_field(name="\u200b", value=right.strip(), inline=True)
+            trend = f"-{p['trend']:.2f}%" if direction == "faller" else f"{p['trend']:.2f}%"
+            embed.add_field(
+                name=f"{number_emojis[i]} {p['name']} ({p['rating']})",
+                value=f"💰 {p['price']}\n{emoji} {trend}{boost}",
+                inline=False
+            )
+
         return embed
 
     async def generate_combined_embed(self, period) -> discord.Embed:
@@ -159,11 +147,10 @@ class Trending(commands.Cog):
         if not risers or not fallers:
             return None
 
-        title = f"📊 Top 10 Market Movers (🎮 Console) – {period}"
-        embed = discord.Embed(title=title, color=discord.Color.gold())
+        embed = discord.Embed(title=f"📊 Top 10 Market Movers (🎮 Console) – {period}", color=discord.Color.gold())
         embed.set_footer(text="Data from FUTBIN | Prices are estimates")
-
         number_emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+
         left = ""
         right = ""
 
@@ -192,14 +179,15 @@ class Trending(commands.Cog):
             return []
 
         cards = wrapper.select("a.market-player-card")
-        all_players = []
+        players = []
 
         for card in cards:
             trend_tag = card.select_one(".market-player-change")
             if not trend_tag or "%" not in trend_tag.text:
                 continue
+
             try:
-                trend = float(trend_tag.text.strip().replace("%", "").replace("+", "").replace(",", ""))
+                trend = float(trend_tag.text.replace("%", "").replace("+", "").replace(",", ""))
             except:
                 continue
 
@@ -215,15 +203,14 @@ class Trending(commands.Cog):
             if not (name and rating and price):
                 continue
 
-            all_players.append({
+            players.append({
                 "name": name.text.strip(),
                 "rating": rating.text.strip(),
                 "price": price.text.strip(),
                 "trend": trend
             })
 
-        sorted_players = sorted(all_players, key=lambda x: x["trend"], reverse=(direction == "riser"))
-        return sorted_players[:10]
+        return sorted(players, key=lambda x: x["trend"], reverse=(direction == "riser"))[:10]
 
 async def setup(bot):
     await bot.add_cog(Trending(bot))
