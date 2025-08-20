@@ -85,69 +85,69 @@ class Trending(commands.Cog):
         await self.bot.wait_until_ready()
 
     async def generate_trend_embed(self, direction: str) -> discord.Embed:
-        url = "https://www.futbin.com/24/playersData?sortby=updated_at&sort=desc"
+        url = "https://www.futbin.com/market"
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-            "Accept": "application/json, text/plain, */*",
-            "Referer": "https://www.futbin.com/",
-            "X-Requested-With": "XMLHttpRequest"
+            "Accept-Language": "en-US,en;q=0.9"
         }
 
-        try:
-            response = requests.get(url, headers=headers)
-            if response.status_code != 200:
-                print(f"❌ FUTBIN responded with status: {response.status_code}")
-                return discord.Embed(
-                    title="FUTBIN Error",
-                    description=f"Status Code: {response.status_code}",
-                    color=discord.Color.red()
-                )
+        response = requests.get(url, headers=headers)
+        soup = BeautifulSoup(response.text, "html.parser")
 
-            data = response.json()
-            print(f"✅ Pulled {len(data)} players from FUTBIN")
+        table_id = "top_movers_up" if direction == "riser" else "top_movers_down"
+        rows = soup.select(f"#{table_id} tbody tr")
 
-        except Exception as e:
-            print(f"❌ Failed to parse JSON: {e}")
-            print("Response content (first 500 chars):", response.text[:500])
-            return discord.Embed(
-                title="Error fetching data",
-                description="Could not parse FUTBIN response.",
-                color=discord.Color.red()
-            )
-
-        data = data[:500]
-
-        is_riser = direction == "riser"
-        filtered = [p for p in data if (p.get("prp", 0) > 0 if is_riser else p.get("prp", 0) < 0)]
-        top10 = sorted(filtered, key=lambda x: x["prp"], reverse=is_riser)[:10]
-
-        emoji = "📈" if is_riser else "📉"
-        color = discord.Color.green() if is_riser else discord.Color.red()
-        title = f"{emoji} Top 10 {'Risers' if is_riser else 'Fallers'} (🎮 Console)"
+        emoji = "📈" if direction == "riser" else "📉"
+        color = discord.Color.green() if direction == "riser" else discord.Color.red()
+        title = f"{emoji} Top 10 {'Risers' if direction == 'riser' else 'Fallers'} (🎮 Console)"
         embed = discord.Embed(title=title, color=color)
 
-        if top10 and top10[0].get("image"):
+        top10 = []
+        for row in rows[:10]:
+            cols = row.find_all("td")
+            if len(cols) < 6:
+                continue
+
+            name = cols[0].get_text(strip=True)
+            rating = cols[1].get_text(strip=True)
+            version = cols[2].get_text(strip=True)
+            price = cols[3].get_text(strip=True)
+            change = cols[4].get_text(strip=True).replace('%', '')
+            img_tag = cols[0].find("img")
+            image_url = img_tag["data-src"] if img_tag and "data-src" in img_tag.attrs else None
+
+            try:
+                trend = float(change.replace("+", "").replace("−", "-"))
+            except:
+                trend = 0.0
+
+            top10.append({
+                "name": name,
+                "rating": rating,
+                "version": version,
+                "price": price,
+                "trend": trend,
+                "image": image_url
+            })
+
+        if top10 and top10[0]["image"]:
             embed.set_thumbnail(url=top10[0]["image"])
 
         number_emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
         left_column, right_column = "", ""
 
         for i, p in enumerate(top10):
-            name = p.get("name", "Unknown")
-            rating = p.get("rating", "?")
-            price = p.get("ps_price", "?")
-            trend = p.get("prp", 0.0)
-
             booster = ""
-            if is_riser and trend > 100:
+            if direction == "riser" and p["trend"] > 100:
                 booster = " 🚀"
-            elif not is_riser and trend < -50:
+            elif direction == "faller" and p["trend"] < -50:
                 booster = " ❄️"
 
             entry = (
-                f"**{number_emojis[i]} {name} ({rating})**\n"
-                f"💰 {price}\n"
-                f"{emoji} {trend:.2f}%{booster}\n\n"
+                f"**{number_emojis[i]} {p['name']} ({p['rating']})**\n"
+                f"{p['version']}\n"
+                f"💰 {p['price']}\n"
+                f"{emoji} {p['trend']:.2f}%{booster}\n\n"
             )
             if i < 5:
                 left_column += entry
@@ -156,8 +156,8 @@ class Trending(commands.Cog):
 
         embed.add_field(name="\u200b", value=left_column.strip(), inline=True)
         embed.add_field(name="\u200b", value=right_column.strip(), inline=True)
-
         return embed
+
 
 async def setup(bot):
     await bot.add_cog(Trending(bot))
