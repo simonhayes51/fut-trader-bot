@@ -1,160 +1,128 @@
-import os
-import json
 import discord
-import snscrape.modules.twitter as sntwitter
 from discord.ext import commands, tasks
-from discord import app_commands
+import json
+import requests
+from bs4 import BeautifulSoup
+import logging
+import re
+import time
 
-CONFIG_FILE = "global_leak_config.json"
-SEEN_FILE = "tweet_seen.json"
+log = logging.getLogger("leaktweets")
+log.setLevel(logging.INFO)
+handler = logging.StreamHandler()
+formatter = logging.Formatter("[%(asctime)s] %(levelname)s:%(name)s: %(message)s")
+handler.setFormatter(formatter)
+log.addHandler(handler)
 
-
-def load_json(filename):
-    if os.path.exists(filename):
-        with open(filename, "r") as f:
-            return json.load(f)
-    return [] if filename == CONFIG_FILE else {}
-
-
-def save_json(filename, data):
-    with open(filename, "w") as f:
-        json.dump(data, f, indent=2)
-
-
-def is_admin_or_owner(member: discord.Member) -> bool:
-    return member.guild and (member.guild.owner_id == member.id or any(role.permissions.administrator for role in member.roles))
-
+CONFIG_FILE = "leak_config.json"
 
 class LeakTweets(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.config = load_json(CONFIG_FILE)
-        self.seen = load_json(SEEN_FILE)
-        self.scrape_tweets.start()
+        self.config = self.load_config()
+        self.last_seen = {}  # Keep track of last tweet per user
+        self.check_tweets.start()
 
-    def cog_unload(self):
-        self.scrape_tweets.cancel()
+    def load_config(self):
+        try:
+            with open(CONFIG_FILE, "r") as f:
+                return json.load(f)
+        except:
+            return {}
 
-    @tasks.loop(minutes=3)
-    async def scrape_tweets(self):
-        print("🔄 Scraping tweets...")
-        for entry in self.config:
-            username = entry["username"]
-            last_seen = self.seen.get(username)
-            try:
-                for tweet in sntwitter.TwitterUserScraper(username).get_items():
-                    tweet_id = str(tweet.id)
-                    if tweet_id == last_seen:
-                        break
+    def save_config(self):
+        with open(CONFIG_FILE, "w") as f:
+            json.dump(self.config, f, indent=2)
 
-                    for listener in entry["listeners"]:
-                        text = tweet.content.lower()
-                        include = [kw.lower() for kw in listener.get("include_keywords", [])]
-                        exclude = [kw.lower() for kw in listener.get("exclude_keywords", [])]
-                        if include and not any(kw in text for kw in include):
-                            continue
-                        if exclude and any(kw in text for kw in exclude):
-                            continue
+    def get_latest_tweet(self, username):
+        url = f"https://x.com/{username}"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        try:
+            res = requests.get(url, headers=headers, timeout=10)
+            soup = BeautifulSoup(res.text, "html.parser")
+            scripts = soup.find_all("script")
+            
+            for script in scripts:
+                if "\"tweet\"" in script.text:
+                    match = re.search(r'\"id_str\":\"(\d+)\".*?\"full_text\":\"(.*?)\"', script.text)
+                    if match:
+                        tweet_id, tweet_text = match.groups()
+                        tweet_text = tweet_text.encode().decode('unicode_escape')
+                        return tweet_id, tweet_text
+        except Exception as e:
+            log.warning(f"Failed to fetch tweet from @{username}: {e}")
+            return None, None
 
-                        channel = self.bot.get_channel(int(listener["channel_id"]))
-                        ping = listener.get("ping", "")
-                        embed = discord.Embed(
-                            title=f"📢 New tweet from @{username}",
-                            url=f"https://x.com/{username}/status/{tweet.id}",
-                            color=discord.Color.blue()
-                        )
-                        tweet_link = f"https://x.com/{username}/status/{tweet.id}"
-                        full_text = f"{ping}\n{tweet.content}\n{tweet_link}"
+    @tasks.loop(seconds=60)
+    async def check_tweets(self):
+        for guild_id, accounts in self.config.items():
+            for acc in accounts:
+                username = acc['username']
+                channel_id = acc['channel_id']
+                ping = acc.get('ping')
+                include_keywords = acc.get('include_keywords', [])
+                exclude_keywords = acc.get('exclude_keywords', [])
 
-                        if channel:
-                            await channel.send(embed=embed)
-                            await channel.send(full_text)
-                            print(f"✅ Posted tweet from @{username} to {listener['guild_id']}")
+                tweet_id, tweet_text = self.get_latest_tweet(username)
+                if not tweet_id or not tweet_text:
+                    continue
 
-                    self.seen[username] = tweet_id
-                    save_json(SEEN_FILE, self.seen)
-                    break
-            except Exception as e:
-                print(f"❌ Error scraping @{username}: {e}")
+                if tweet_id == self.last_seen.get(username):
+                    continue  # Already posted
 
-    @scrape_tweets.before_loop
-    async def before_scrape(self):
-        await self.bot.wait_until_ready()
+                if include_keywords and not any(k.lower() in tweet_text.lower() for k in include_keywords):
+                    continue
 
-    @app_commands.command(name="addleak", description="➕ Subscribe to tweet alerts from a Twitter account.")
-    @app_commands.describe(
-        username="Twitter username (no @)",
-        channel="Channel to post in",
-        ping="Optional ping (@here, @everyone, or role mention)",
-        include_keywords="Comma-separated words to include (optional)",
-        exclude_keywords="Comma-separated words to exclude (optional)"
-    )
-    async def addleak(self, interaction: discord.Interaction, username: str, channel: discord.TextChannel, ping: str = "", include_keywords: str = "", exclude_keywords: str = ""):
-        if not is_admin_or_owner(interaction.user):
-            await interaction.response.send_message("❌ Only server admins can use this command.", ephemeral=True)
-            return
+                if exclude_keywords and any(k.lower() in tweet_text.lower() for k in exclude_keywords):
+                    continue
 
-        guild_id = str(interaction.guild.id)
-        listener = {
-            "guild_id": guild_id,
-            "channel_id": str(channel.id),
-            "ping": ping.strip(),
-            "include_keywords": [kw.strip().lower() for kw in include_keywords.split(",") if kw.strip()] if include_keywords else [],
-            "exclude_keywords": [kw.strip().lower() for kw in exclude_keywords.split(",") if kw.strip()] if exclude_keywords else []
-        }
+                self.last_seen[username] = tweet_id
+                channel = self.bot.get_channel(channel_id)
+                if not channel:
+                    continue
 
-        for entry in self.config:
-            if entry["username"].lower() == username.lower():
-                entry["listeners"] = [l for l in entry["listeners"] if l["guild_id"] != guild_id]
-                entry["listeners"].append(listener)
-                break
-        else:
-            self.config.append({
-                "username": username,
-                "listeners": [listener]
-            })
+                msg = f"https://x.com/{username}/status/{tweet_id}\n\n{tweet_text}"
+                if ping:
+                    msg = f"<@&{ping}>\n{msg}"
+                await channel.send(msg)
 
-        save_json(CONFIG_FILE, self.config)
-        await interaction.response.send_message(f"✅ Now tracking @{username} for this server!", ephemeral=True)
+    @app_commands.command(name="addleak", description="🔔 Track an X account for leak tweets")
+    @app_commands.describe(username="Twitter/X username", channel="Channel to post in", ping="Optional role ID to ping")
+    async def addleak(self, interaction: discord.Interaction, username: str, channel: discord.TextChannel, ping: str = None):
+        guild_id = str(interaction.guild_id)
+        if guild_id not in self.config:
+            self.config[guild_id] = []
 
-    @app_commands.command(name="removeleak", description="❌ Stop receiving tweets from a tracked Twitter account.")
-    @app_commands.describe(username="Twitter username to remove (no @)")
+        self.config[guild_id].append({
+            "username": username,
+            "channel_id": channel.id,
+            "ping": ping,
+            "include_keywords": ["sbc", "leak", "objective"],
+            "exclude_keywords": ["test", "promo"]
+        })
+        self.save_config()
+        await interaction.response.send_message(f"✅ Now tracking @{username} in {channel.mention}", ephemeral=True)
+
+    @app_commands.command(name="removeleak", description="❌ Stop tracking an X account")
+    @app_commands.describe(username="Twitter/X username")
     async def removeleak(self, interaction: discord.Interaction, username: str):
-        if not is_admin_or_owner(interaction.user):
-            await interaction.response.send_message("❌ Only server admins can use this command.", ephemeral=True)
-            return
+        guild_id = str(interaction.guild_id)
+        if guild_id in self.config:
+            self.config[guild_id] = [acc for acc in self.config[guild_id] if acc['username'].lower() != username.lower()]
+            self.save_config()
+        await interaction.response.send_message(f"✅ Stopped tracking @{username}", ephemeral=True)
 
-        guild_id = str(interaction.guild.id)
-        removed = False
-
-        for entry in self.config:
-            if entry["username"].lower() == username.lower():
-                before = len(entry["listeners"])
-                entry["listeners"] = [l for l in entry["listeners"] if l["guild_id"] != guild_id]
-                removed = before != len(entry["listeners"])
-
-        self.config = [entry for entry in self.config if entry["listeners"]]
-        save_json(CONFIG_FILE, self.config)
-
-        if removed:
-            await interaction.response.send_message(f"✅ Stopped tracking @{username} for this server.", ephemeral=True)
-        else:
-            await interaction.response.send_message(f"⚠️ @{username} wasn't tracked in this server.", ephemeral=True)
-
-    @app_commands.command(name="listleaks", description="📃 View all Twitter accounts your server is tracking.")
+    @app_commands.command(name="listleaks", description="📄 List tracked accounts")
     async def listleaks(self, interaction: discord.Interaction):
-        if not is_admin_or_owner(interaction.user):
-            await interaction.response.send_message("❌ Only server admins can use this command.", ephemeral=True)
+        guild_id = str(interaction.guild_id)
+        accounts = self.config.get(guild_id, [])
+        if not accounts:
+            await interaction.response.send_message("ℹ️ No accounts tracked.", ephemeral=True)
             return
-
-        guild_id = str(interaction.guild.id)
-        tracked = [entry["username"] for entry in self.config if any(l["guild_id"] == guild_id for l in entry["listeners"])]
-
-        if not tracked:
-            await interaction.response.send_message("❌ This server isn't tracking any accounts.", ephemeral=True)
-        else:
-            await interaction.response.send_message(f"🔍 This server is tracking:\n• " + "\n• ".join(f"@{u}" for u in tracked), ephemeral=True)
-
+        msg = "**Tracked Accounts:**\n"
+        for acc in accounts:
+            msg += f"- @{acc['username']} → <#{acc['channel_id']}>\n"
+        await interaction.response.send_message(msg, ephemeral=True)
 
 async def setup(bot):
-    await bot.add_cog(LeakTweets(bot))
+    await bot.add_cog(LeakTweets
