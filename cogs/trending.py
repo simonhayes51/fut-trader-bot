@@ -9,7 +9,6 @@ from bs4 import BeautifulSoup
 
 CONFIG_FILE = "autotrend_config.json"
 
-
 def load_config():
     if not os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, "w") as f:
@@ -17,15 +16,12 @@ def load_config():
     with open(CONFIG_FILE, "r") as f:
         return json.load(f)
 
-
 def save_config(data):
     with open(CONFIG_FILE, "w") as f:
         json.dump(data, f, indent=2)
 
-
 def is_admin_or_owner(member: discord.Member) -> bool:
     return member.guild and (member.guild.owner_id == member.id or any(r.name.lower() in ["admin", "owner"] for r in member.roles))
-
 
 class Trending(commands.Cog):
     def __init__(self, bot):
@@ -34,10 +30,7 @@ class Trending(commands.Cog):
         self.auto_post_trends.start()
 
     @app_commands.command(name="trending", description="📊 Show top trending players")
-    @app_commands.describe(
-        direction="Choose trend direction",
-        period="Choose timeframe"
-    )
+    @app_commands.describe(direction="Choose trend direction", period="Choose timeframe")
     @app_commands.choices(
         direction=[
             app_commands.Choice(name="📈 Risers", value="riser"),
@@ -51,7 +44,7 @@ class Trending(commands.Cog):
     async def trending(self, interaction: discord.Interaction, direction: app_commands.Choice[str], period: app_commands.Choice[str]):
         await interaction.response.defer()
         embed = await self.generate_embed(direction.value, period.value)
-        await interaction.followup.send(embed=embed or "Error\nUnable to fetch market data.")
+        await interaction.followup.send(embed=embed or "❌ Error: Unable to fetch market data.")
 
     @app_commands.command(name="setupautotrending", description="⚙️ Set up auto-post for trending players")
     @app_commands.describe(channel="Channel to post in", frequency="Frequency (6/12/24 hours)", start_time="Start time (HH:MM)", ping_role="Optional ping role")
@@ -81,40 +74,46 @@ class Trending(commands.Cog):
     @tasks.loop(minutes=1)
     async def auto_post_trends(self):
         now = datetime.utcnow().replace(second=0, microsecond=0)
-        print(f"[AUTOPOST] Running at {now.strftime('%H:%M')} UTC")
+        print(f"[AUTOPOST] Checking at {now.strftime('%H:%M')} UTC")
 
         for channel_id, settings in self.config.items():
             try:
-                start = datetime.strptime(settings["start_time"], "%H:%M").replace(year=now.year, month=now.month, day=now.day)
+                freq = settings["frequency"]
+                start = datetime.strptime(settings["start_time"], "%H:%M").replace(
+                    year=now.year, month=now.month, day=now.day
+                )
+
                 while start > now:
-                    start -= timedelta(hours=settings["frequency"])
-                while start + timedelta(hours=settings["frequency"]) <= now:
-                    start += timedelta(hours=settings["frequency"])
+                    start -= timedelta(hours=freq)
+                while start + timedelta(hours=freq) <= now:
+                    start += timedelta(hours=freq)
 
                 if abs((now - start).total_seconds()) > 30:
-                    continue
+                    continue  # Only act within 30 seconds
 
                 channel = self.bot.get_channel(int(channel_id))
                 if not channel:
-                    print(f"[WARN] Channel {channel_id} not found")
+                    print(f"[WARN] Channel {channel_id} not found.")
                     continue
 
                 embed = await self.generate_combined_embed("24h")
                 if not embed:
-                    print(f"[ERROR] Could not generate embed")
+                    print(f"[ERROR] Could not generate embed for auto-post.")
                     continue
 
                 ping = settings.get("ping_role")
                 content = f"<@&{ping}>" if ping else None
                 await channel.send(content=content, embed=embed)
-                print(f"[POSTED] Sent market trends to {channel.name}")
+                print(f"[POSTED] Sent market trends to #{channel.name} ({channel.id})")
 
             except Exception as e:
-                print(f"[ERROR] Autopost error for channel {channel_id}: {e}")
+                print(f"[ERROR] Autopost error in channel {channel_id}: {e}")
 
     @auto_post_trends.before_loop
     async def before_auto(self):
+        print("[INIT] Waiting for bot to be ready before starting trend loop.")
         await self.bot.wait_until_ready()
+        print("[INIT] Trending loop started.")
 
     async def generate_embed(self, direction, period) -> discord.Embed:
         data = self.scrape_futbin_data(direction, period)
@@ -180,6 +179,7 @@ class Trending(commands.Cog):
         wrapper_class = "market-24-hours" if period == "24h" else "market-4-hours"
         wrapper = soup.select_one(f"div.market-players-wrapper.{wrapper_class}.m-row.space-between")
         if not wrapper:
+            print(f"[SCRAPE] No data found for {period}")
             return []
 
         cards = wrapper.select("a.market-player-card")
@@ -215,7 +215,6 @@ class Trending(commands.Cog):
             })
 
         return sorted(players, key=lambda x: x["trend"], reverse=(direction == "riser"))[:10]
-
 
 async def setup(bot):
     await bot.add_cog(Trending(bot))
