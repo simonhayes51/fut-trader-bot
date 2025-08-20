@@ -27,6 +27,7 @@ class Trending(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.config = load_config()
+        print("✅ Trending cog initialized")
         self.auto_post_trends.start()
 
     @app_commands.command(name="trending", description="📊 Show top trending players")
@@ -77,18 +78,23 @@ class Trending(commands.Cog):
     @tasks.loop(minutes=1)
     async def auto_post_trends(self):
         now = datetime.utcnow().replace(second=0, microsecond=0)
-        print(f"[AUTOPOST] Running at {now.strftime('%H:%M')} UTC")
+        print(f"[LOOP] Tick at {now.strftime('%H:%M')} UTC")
 
         for channel_id, settings in self.config.items():
             try:
-                start = datetime.strptime(settings["start_time"], "%H:%M").replace(year=now.year, month=now.month, day=now.day)
+                frequency = int(settings["frequency"])
+                start = datetime.strptime(settings["start_time"], "%H:%M").replace(
+                    year=now.year, month=now.month, day=now.day
+                )
+
+                # Shift back until within correct window
                 while start > now:
-                    start -= timedelta(hours=settings["frequency"])
-                while start + timedelta(hours=settings["frequency"]) <= now:
-                    start += timedelta(hours=settings["frequency"])
+                    start -= timedelta(hours=frequency)
+                while start + timedelta(hours=frequency) <= now:
+                    start += timedelta(hours=frequency)
 
                 if now != start:
-                    continue  # Skip if it's not the exact minute
+                    continue  # Not yet time to post
 
                 channel = self.bot.get_channel(int(channel_id))
                 if not channel:
@@ -103,14 +109,16 @@ class Trending(commands.Cog):
                 ping = settings.get("ping_role")
                 content = f"<@&{ping}>" if ping else None
                 await channel.send(content=content, embed=embed)
-                print(f"[POSTED] Sent market trends to {channel.name}")
+                print(f"[POSTED] Sent market trends to {channel.name} ({channel_id})")
 
             except Exception as e:
                 print(f"[ERROR] Autopost error for channel {channel_id}: {e}")
 
     @auto_post_trends.before_loop
     async def before_auto(self):
+        print("⏳ Waiting for bot to be ready...")
         await self.bot.wait_until_ready()
+        print("✅ Auto-post loop ready")
 
     async def generate_embed(self, direction, period) -> discord.Embed:
         data = self.scrape_futbin_data(direction, period)
@@ -120,9 +128,9 @@ class Trending(commands.Cog):
         emoji = "📈" if direction == "riser" else "📉"
         color = discord.Color.green() if direction == "riser" else discord.Color.red()
         title = f"{emoji} Top 10 {'Risers' if direction == 'riser' else 'Fallers'} (🎮 Console) – {period}"
-
         embed = discord.Embed(title=title, color=color)
         embed.set_footer(text="Data from FUTBIN | Prices are estimates")
+
         number_emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
 
         for i, p in enumerate(data[:10]):
@@ -149,18 +157,19 @@ class Trending(commands.Cog):
 
         embed = discord.Embed(title=f"📊 Top 10 Market Movers (🎮 Console) – {period}", color=discord.Color.gold())
         embed.set_footer(text="Data from FUTBIN | Prices are estimates")
-        number_emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
 
+        number_emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
         left = ""
         right = ""
 
         for i in range(10):
             r = risers[i]
-            boost = " 🚀" if r["trend"] > 100 else ""
-            left += f"**{number_emojis[i]} {r['name']} ({r['rating']})**\n💰 {r['price']}\n📈 {r['trend']:.2f}%{boost}\n\n"
-
             f = fallers[i]
+
+            boost = " 🚀" if r["trend"] > 100 else ""
             drop = " ❄️" if f["trend"] < -50 else ""
+
+            left += f"**{number_emojis[i]} {r['name']} ({r['rating']})**\n💰 {r['price']}\n📈 {r['trend']:.2f}%{boost}\n\n"
             right += f"**{number_emojis[i]} {f['name']} ({f['rating']})**\n💰 {f['price']}\n📉 -{f['trend']:.2f}%{drop}\n\n"
 
         embed.add_field(name="📈 Risers", value=left.strip(), inline=True)
@@ -176,6 +185,7 @@ class Trending(commands.Cog):
         wrapper_class = "market-24-hours" if period == "24h" else "market-4-hours"
         wrapper = soup.select_one(f"div.market-players-wrapper.{wrapper_class}.m-row.space-between")
         if not wrapper:
+            print(f"[SCRAPE] No wrapper found for {wrapper_class}")
             return []
 
         cards = wrapper.select("a.market-player-card")
@@ -212,5 +222,7 @@ class Trending(commands.Cog):
 
         return sorted(players, key=lambda x: x["trend"], reverse=(direction == "riser"))[:10]
 
+# ✅ Register cog
 async def setup(bot):
+    print("📦 Registering Trending cog")
     await bot.add_cog(Trending(bot))
