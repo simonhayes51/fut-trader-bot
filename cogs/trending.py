@@ -78,31 +78,45 @@ class Trending(commands.Cog):
 
     @tasks.loop(minutes=1)
     async def auto_post_trends(self):
-        now = datetime.now()
+        now = datetime.utcnow().replace(second=0, microsecond=0)
+        print(f"[DEBUG] Current UTC time: {now.strftime('%H:%M')}")
+
         for guild_id, settings in self.config.items():
             try:
-                start = datetime.strptime(settings["start_time"], "%H:%M").replace(year=now.year, month=now.month, day=now.day)
-                frequency = settings["frequency"]
-                while start <= now:
-                    if start.strftime("%H:%M") == now.strftime("%H:%M"):
-                        break
-                    start += timedelta(hours=frequency)
-                else:
+                start_time = settings.get("start_time")
+                frequency = int(settings.get("frequency", 24))
+                if not start_time:
                     continue
 
+                start_dt = datetime.strptime(start_time, "%H:%M")
+                today_start = now.replace(hour=start_dt.hour, minute=start_dt.minute)
+
+                post_now = False
+                for i in range(0, 24, frequency):
+                    scheduled_time = today_start + timedelta(hours=i)
+                    if scheduled_time.strftime("%H:%M") == now.strftime("%H:%M"):
+                        post_now = True
+                        break
+
+                if not post_now:
+                    continue
+
+                print(f"[POST] Posting to Guild {guild_id} at {now.strftime('%H:%M')}")
                 channel = self.bot.get_channel(settings["channel_id"])
                 if not channel:
+                    print(f"[ERROR] Channel not found for Guild {guild_id}")
                     continue
 
                 embed = await self.generate_combined_embed("24h")
                 if not embed:
+                    print(f"[ERROR] Could not generate embed for Guild {guild_id}")
                     continue
 
-                if settings.get("ping_role"):
-                    role = channel.guild.get_role(settings["ping_role"])
-                    await channel.send(content=role.mention if role else None, embed=embed)
-                else:
-                    await channel.send(embed=embed)
+                role_id = settings.get("ping_role")
+                content = f"<@&{role_id}>" if role_id else None
+                await channel.send(content=content, embed=embed)
+                print(f"[SUCCESS] Auto-posted trending to Guild {guild_id}")
+
             except Exception as e:
                 print(f"[AutoPost Error] Guild {guild_id}: {e}")
 
@@ -167,11 +181,10 @@ class Trending(commands.Cog):
         right = ""
 
         for i in range(10):
-            # Risers
             r = risers[i]
             boost = " 🚀" if r["trend"] > 100 else ""
             left += f"**{number_emojis[i]} {r['name']} ({r['rating']})**\n💰 {r['price']}\n📈 {r['trend']:.2f}%{boost}\n\n"
-            # Fallers
+
             f = fallers[i]
             drop = " ❄️" if f["trend"] < -50 else ""
             right += f"**{number_emojis[i]} {f['name']} ({f['rating']})**\n💰 {f['price']}\n📉 -{f['trend']:.2f}%{drop}\n\n"
