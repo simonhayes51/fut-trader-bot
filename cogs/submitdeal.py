@@ -7,7 +7,7 @@ class SubmitDeal(commands.Cog):
         self.bot = bot
         self.tree = bot.tree  # Hook into the bot's command tree
 
-    @app_commands.command(name="submitdeal", description="📬 Share a FUT trading tip with the server!")
+    @app_commands.command(name="postatrade", description="📬 Post a trade tip to the server!")
     @app_commands.describe(
         name="Player name",
         version="Card version (e.g. Gold Rare, TOTW, TOTS)",
