@@ -140,12 +140,18 @@ class Trending(commands.Cog):
         if not top10:
             embed.description = "No trending players found."
         else:
-            for p in top10:
-                embed.add_field(
-                    name=f"{p['name']} ({p['rating']})",
-                    value=f"{p['card_type']}\n💰 {p['price']}\n{emoji} {p['trend']}%",
-                    inline=False
-                )
+            left_column = ""
+            right_column = ""
+
+            for i, p in enumerate(top10):
+                entry = f"**{i+1}. {p['name']} ({p['rating']})**\n{p['card_type']}\n💰 {p['price']}\n{emoji} {p['trend']}%\n\n"
+                if i < 5:
+                    left_column += entry
+                else:
+                    right_column += entry
+
+            embed.add_field(name="⬅️", value=left_column.strip(), inline=True)
+            embed.add_field(name="➡️", value=right_column.strip(), inline=True)
 
         return embed
 
