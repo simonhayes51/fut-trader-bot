@@ -31,8 +31,12 @@ class PriceCheck(commands.Cog):
 
     @app_commands.command(name="pricecheck", description="Check a player's FUTBIN price.")
     @app_commands.describe(player="Enter the name of the player", platform="Choose platform")
-    async def pricecheck(self, interaction: discord.Interaction, player: str, platform: str = "console"):
-        log.info(f"🧪 /pricecheck by {interaction.user.name} | Player: {player} | Platform: {platform}")
+    @app_commands.choices(platform=[
+        app_commands.Choice(name="🎮 Console", value="console"),
+        app_commands.Choice(name="💻 PC", value="pc")
+    ])
+    async def pricecheck(self, interaction: discord.Interaction, player: str, platform: app_commands.Choice[str]):
+        log.info(f"🧪 /pricecheck by {interaction.user.name} | Player: {player} | Platform: {platform.value}")
         match = next((p for p in self.players if f"{p['name']} {p['rating']}".lower() == player.lower()), None)
 
         if not match:
@@ -79,7 +83,7 @@ class PriceCheck(commands.Cog):
             title=f"{match['name']} ({match['rating']})",
             color=0xFFD700,
         )
-        embed.add_field(name="🎮 Platform", value=f"Console" if platform == "console" else "PC", inline=False)
+        embed.add_field(name="🎮 Platform", value="Console" if platform.value == "console" else "PC", inline=False)
         embed.add_field(name="💰 Price", value=f"{price} 🪙", inline=False)
         embed.add_field(name="📊 Range", value=price_range, inline=False)
         embed.add_field(name=f"{trend_label_emoji} Trend", value=clean_trend, inline=False)
