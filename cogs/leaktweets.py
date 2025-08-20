@@ -36,23 +36,31 @@ class LeakTweets(commands.Cog):
             json.dump(self.config, f, indent=2)
 
     def get_latest_tweet(self, username):
+    try:
         url = f"https://x.com/{username}"
-        headers = {"User-Agent": "Mozilla/5.0"}
-        try:
-            res = requests.get(url, headers=headers, timeout=10)
-            soup = BeautifulSoup(res.text, "html.parser")
-            scripts = soup.find_all("script")
-            
-            for script in scripts:
-                if "\"tweet\"" in script.text:
-                    match = re.search(r'\"id_str\":\"(\d+)\".*?\"full_text\":\"(.*?)\"', script.text)
-                    if match:
-                        tweet_id, tweet_text = match.groups()
-                        tweet_text = tweet_text.encode().decode('unicode_escape')
-                        return tweet_id, tweet_text
-        except Exception as e:
-            log.warning(f"Failed to fetch tweet from @{username}: {e}")
-            return None, None
+        headers = {
+            "User-Agent": "Mozilla/5.0",
+        }
+        response = requests.get(url, headers=headers)
+        soup = BeautifulSoup(response.text, "html.parser")
+
+        # ✅ Latest tweet container (change if structure updates)
+        tweet_blocks = soup.find_all("div", {"data-testid": "tweet"})
+        if not tweet_blocks:
+            return None
+
+        tweet = tweet_blocks[0]
+        tweet_text = tweet.get_text(separator=" ").strip()
+        tweet_link = tweet.find("a", href=re.compile(r"/{}/status/\d+".format(username)))
+        if not tweet_link:
+            return None
+
+        tweet_id = tweet_link["href"].split("/")[-1]
+        return tweet_id, tweet_text
+
+    except Exception as e:
+        logging.error(f"❌ Error scraping tweet from @{username}: {e}")
+        return None
 
     @tasks.loop(seconds=60)
     async def check_tweets(self):
