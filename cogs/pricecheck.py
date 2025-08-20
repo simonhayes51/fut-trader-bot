@@ -33,22 +33,16 @@ class PriceCheck(commands.Cog):
             log.error(f"[ERROR] Failed to load players: {e}")
             return []
 
-    def get_player_url(self, player_name, rating):
-        for player in self.players:
-            if player["name"].lower() == player_name.lower() and int(player["rating"]) == int(rating):
-                return player.get("url")
-        return None
-
     def fetch_price_data(self, url):
         try:
             headers = {"User-Agent": "Mozilla/5.0"}
             res = requests.get(url, headers=headers)
             soup = BeautifulSoup(res.text, "html.parser")
 
-            # Try 4-hour trend first
+            # ✅ Use 4-hour trend data
             graph_divs = soup.find_all("div", class_="highcharts-graph-wrapper")
             if len(graph_divs) >= 2:
-                hourly_graph = graph_divs[1]  # Second is usually 4h
+                hourly_graph = graph_divs[1]
             else:
                 hourly_graph = graph_divs[0]
 
@@ -66,7 +60,7 @@ class PriceCheck(commands.Cog):
 
             fig, ax = plt.subplots(figsize=(6, 3))
             ax.plot(timestamps, prices, marker='o', linestyle='-', color='blue', label="Console")
-            ax.set_title(f"{player_name} Price Trend (Hourly)")
+            ax.set_title(f"{player_name} Price Trend (Last 4h)")
             ax.set_xlabel("Time")
             ax.set_ylabel("Coins")
             ax.grid(True)
@@ -86,6 +80,16 @@ class PriceCheck(commands.Cog):
         except Exception as e:
             log.error(f"[ERROR] Failed to generate graph: {e}")
             return None
+
+    def format_trend(self, raw_text):
+        try:
+            percent, delta = raw_text.split("(")
+            delta_val = int(delta.replace(",", "").replace(")", ""))
+            delta_k = f"{'+' if delta_val >= 0 else '-'}{abs(delta_val)//1000}K"
+            arrow = "📈" if delta_val >= 0 else "📉"
+            return f"{arrow} {percent.strip()} ({delta_k})"
+        except:
+            return raw_text
 
     @app_commands.command(name="pricecheck", description="Check a player's FUTBIN price.")
     @app_commands.describe(player="Enter the name of the player", platform="Choose platform")
@@ -112,30 +116,45 @@ class PriceCheck(commands.Cog):
             res = requests.get(url, headers=headers)
             soup = BeautifulSoup(res.text, "html.parser")
 
+            # ✅ Price
             price_block = soup.find("div", class_="price-box-original-player")
-            price_el = price_block.find("div", class_=f"price inline-with-icon lowest-price-1")
+            if not price_block:
+                log.warning("[SCRAPE] Missing price block.")
+            price_el = price_block.find("div", class_="price inline-with-icon lowest-price-1") if price_block else None
             price = price_el.text.strip().replace(",", "") if price_el else "N/A"
 
+            # ✅ Trend
             trend_block = soup.find("div", class_="trend-card-body")
-            trend_value = trend_block.find("div", class_="trend-value").text.strip() if trend_block else "N/A"
+            trend_val_el = trend_block.find("div", class_="trend-value") if trend_block else None
+            trend_raw = trend_val_el.text.strip() if trend_val_el else "N/A"
+            trend_display = self.format_trend(trend_raw)
 
+            # ✅ Price Range
             price_range_block = soup.find("div", class_="ps-lowest")
             price_range = price_range_block.text.strip() if price_range_block else "N/A"
 
+            # ✅ Metadata
             club = player_match.get("club", "Unknown")
             nation = player_match.get("nation", "Unknown")
             position = player_match.get("position", "Unknown")
 
-            # Fetch and generate graph
+            # ✅ Graph
             price_data = self.fetch_price_data(url)
             graph = self.generate_price_graph(price_data, player_name)
 
+            # ✅ Embed
             embed = discord.Embed(
                 title=f"{player_name} ({rating})",
-                description=f"**🎮 Platform:** {platform.name}\n**💰 Price:** {price} 🪙\n"
-                            f"**📊 Range:** {price_range}\n**📈 Trend:** {trend_value}\n"
-                            f"**🏟️ Club:** {club}\n**🌍 Nation:** {nation}\n**🧩 Position:** {position}\n\n"
-                            f"🔴 Updated:  just now • Data from FUTBIN",
+                description=(
+                    f"**🎮 Platform:** {platform.name}\n"
+                    f"**💰 Price:** {price} 🪙\n"
+                    f"**📊 Range:** {price_range}\n"
+                    f"**{trend_display}**\n"
+                    f"**🏟️ Club:** {club}\n"
+                    f"**🌍 Nation:** {nation}\n"
+                    f"**🧩 Position:** {position}\n\n"
+                    f"🔴 Updated: just now • Data from FUTBIN"
+                ),
                 color=discord.Color.blue()
             )
             embed.url = url
