@@ -79,43 +79,33 @@ class Trending(commands.Cog):
     @tasks.loop(minutes=1)
     async def auto_post_trends(self):
         now = datetime.utcnow().replace(second=0, microsecond=0)
-        print(f"[DEBUG] Current UTC time: {now.strftime('%H:%M')}")
-
         for guild_id, settings in self.config.items():
             try:
-                start_time = settings.get("start_time")
-                frequency = int(settings.get("frequency", 24))
-                if not start_time:
+                start_time_str = settings.get("start_time")
+                frequency = settings.get("frequency")
+                if not (start_time_str and frequency):
                     continue
 
-                start_dt = datetime.strptime(start_time, "%H:%M")
-                today_start = now.replace(hour=start_dt.hour, minute=start_dt.minute)
+                start_time = datetime.strptime(start_time_str, "%H:%M")
+                scheduled_today = now.replace(hour=start_time.hour, minute=start_time.minute)
+                if now < scheduled_today:
+                    scheduled_today -= timedelta(days=1)
 
-                post_now = False
-                for i in range(0, 24, frequency):
-                    scheduled_time = today_start + timedelta(hours=i)
-                    if scheduled_time.strftime("%H:%M") == now.strftime("%H:%M"):
-                        post_now = True
-                        break
+                elapsed = now - scheduled_today
+                elapsed_hours = elapsed.total_seconds() // 3600
 
-                if not post_now:
-                    continue
+                if elapsed.total_seconds() >= 0 and elapsed_hours % frequency == 0 and now.minute == scheduled_today.minute:
+                    channel = self.bot.get_channel(settings["channel_id"])
+                    if not channel:
+                        continue
 
-                print(f"[POST] Posting to Guild {guild_id} at {now.strftime('%H:%M')}")
-                channel = self.bot.get_channel(settings["channel_id"])
-                if not channel:
-                    print(f"[ERROR] Channel not found for Guild {guild_id}")
-                    continue
+                    embed = await self.generate_combined_embed("24h")
+                    if not embed:
+                        continue
 
-                embed = await self.generate_combined_embed("24h")
-                if not embed:
-                    print(f"[ERROR] Could not generate embed for Guild {guild_id}")
-                    continue
-
-                role_id = settings.get("ping_role")
-                content = f"<@&{role_id}>" if role_id else None
-                await channel.send(content=content, embed=embed)
-                print(f"[SUCCESS] Auto-posted trending to Guild {guild_id}")
+                    role_id = settings.get("ping_role")
+                    content = f"<@&{role_id}>" if role_id else None
+                    await channel.send(content=content, embed=embed)
 
             except Exception as e:
                 print(f"[AutoPost Error] Guild {guild_id}: {e}")
