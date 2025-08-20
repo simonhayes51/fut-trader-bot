@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 
-class SubmitDeal(commands.Cog):
+class PostATrade(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.tree = bot.tree  # Hook into the bot's command tree
@@ -23,7 +23,7 @@ class SubmitDeal(commands.Cog):
             app_commands.Choice(name="💻 PC", value="PC")
         ]
     )
-    async def submitdeal(
+    async def postatrade(
         self,
         interaction: discord.Interaction,
         name: str,
@@ -55,8 +55,9 @@ class SubmitDeal(commands.Cog):
         embed.set_footer(text="Use this format when sharing tips in #trade-room or similar channels 📈")
         embed.timestamp = interaction.created_at
 
-        await interaction.response.send_message("✅ Deal submitted!", ephemeral=True)
+        await interaction.response.send_message("✅ Trade posted!", ephemeral=True)
         await interaction.channel.send(embed=embed)
 
+# ✅ Correct class reference here
 async def setup(bot):
-    await bot.add_cog(SubmitDeal(bot))
+    await bot.add_cog(PostATrade(bot))
