@@ -30,10 +30,7 @@ class Trending(commands.Cog):
         self.auto_post_trends.start()
 
     @app_commands.command(name="trending", description="📊 Show top trending players")
-    @app_commands.describe(
-        direction="Choose trend direction",
-        period="Choose timeframe"
-    )
+    @app_commands.describe(direction="Choose trend direction", period="Choose timeframe")
     @app_commands.choices(
         direction=[
             app_commands.Choice(name="📈 Risers", value="riser"),
@@ -79,6 +76,7 @@ class Trending(commands.Cog):
     @tasks.loop(minutes=1)
     async def auto_post_trends(self):
         now = datetime.utcnow().replace(second=0, microsecond=0)
+        print(f"[DEBUG] Current UTC time: {now.strftime('%H:%M')}")
 
         for guild_id, settings in self.config.items():
             try:
@@ -90,30 +88,34 @@ class Trending(commands.Cog):
                 start_dt = datetime.strptime(start_time, "%H:%M")
                 today_start = now.replace(hour=start_dt.hour, minute=start_dt.minute)
 
-                # Find last post time before now that matches frequency
-                while today_start > now:
-                    today_start -= timedelta(hours=frequency)
-                while today_start + timedelta(hours=frequency) <= now:
+                # Adjust forward if we're behind today's start
+                while today_start <= now:
+                    if today_start == now:
+                        break
                     today_start += timedelta(hours=frequency)
+                else:
+                    continue
 
-                # Post now if we're exactly at the scheduled time
-                if now == today_start:
-                    print(f"[POST] Posting to Guild {guild_id} at {now.strftime('%H:%M')}")
+                # If it's time to post
+                post_time = today_start - timedelta(hours=frequency)
+                if now != post_time:
+                    continue
 
-                    channel = self.bot.get_channel(settings["channel_id"])
-                    if not channel:
-                        print(f"[ERROR] Channel not found for Guild {guild_id}")
-                        continue
+                print(f"[POST] Posting to Guild {guild_id} at {now.strftime('%H:%M')}")
+                channel = self.bot.get_channel(settings["channel_id"])
+                if not channel:
+                    print(f"[ERROR] Channel not found for Guild {guild_id}")
+                    continue
 
-                    embed = await self.generate_combined_embed("24h")
-                    if not embed:
-                        print(f"[ERROR] Could not generate embed for Guild {guild_id}")
-                        continue
+                embed = await self.generate_combined_embed("24h")
+                if not embed:
+                    print(f"[ERROR] Could not generate embed for Guild {guild_id}")
+                    continue
 
-                    role_id = settings.get("ping_role")
-                    content = f"<@&{role_id}>" if role_id else None
-                    await channel.send(content=content, embed=embed)
-                    print(f"[SUCCESS] Auto-posted trending to Guild {guild_id}")
+                role_id = settings.get("ping_role")
+                content = f"<@&{role_id}>" if role_id else None
+                await channel.send(content=content, embed=embed)
+                print(f"[SUCCESS] Auto-posted trending to Guild {guild_id}")
 
             except Exception as e:
                 print(f"[AutoPost Error] Guild {guild_id}: {e}")
@@ -139,21 +141,9 @@ class Trending(commands.Cog):
         right = ""
 
         for i, p in enumerate(data[:10]):
-            booster = ""
-            if direction == "riser" and p["trend"] > 100:
-                booster = " 🚀"
-            elif direction == "faller" and p["trend"] < -50:
-                booster = " ❄️"
-
-            percent = f"{p['trend']:.2f}%"
-            if direction == "faller":
-                percent = f"-{percent}"
-
-            entry = (
-                f"**{number_emojis[i]} {p['name']} ({p['rating']})**\n"
-                f"💰 {p['price']}\n"
-                f"{emoji} {percent}{booster}\n\n"
-            )
+            booster = " 🚀" if direction == "riser" and p["trend"] > 100 else " ❄️" if direction == "faller" and p["trend"] < -50 else ""
+            percent = f"-{p['trend']:.2f}%" if direction == "faller" else f"{p['trend']:.2f}%"
+            entry = f"**{number_emojis[i]} {p['name']} ({p['rating']})**\n💰 {p['price']}\n{emoji} {percent}{booster}\n\n"
             if i < 5:
                 left += entry
             else:
@@ -166,7 +156,6 @@ class Trending(commands.Cog):
     async def generate_combined_embed(self, period) -> discord.Embed:
         risers = self.scrape_futbin_data("riser", period)
         fallers = self.scrape_futbin_data("faller", period)
-
         if not risers or not fallers:
             return None
 
