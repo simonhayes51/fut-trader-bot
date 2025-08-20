@@ -90,8 +90,17 @@ class Trending(commands.Cog):
     async def generate_trend_embed(self, direction: str) -> discord.Embed:
         url = "https://www.futbin.com/24/playersData?sortby=updated_at&sort=desc"
         headers = {"User-Agent": "Mozilla/5.0"}
-        response = requests.get(url, headers=headers)
-        data = response.json()
+
+        try:
+            response = requests.get(url, headers=headers)
+            data = response.json()
+            print(f"✅ Pulled {len(data)} players from FUTBIN")
+        except Exception as e:
+            print(f"❌ Failed to fetch or parse data: {e}")
+            return discord.Embed(title="Error fetching data", description=str(e), color=discord.Color.red())
+
+        # TEMP: limit to first 500 players to reduce lag
+        data = data[:500]
 
         is_riser = direction == "riser"
         filtered = [p for p in data if (p.get("prp", 0) > 0 if is_riser else p.get("prp", 0) < 0)]
@@ -102,7 +111,6 @@ class Trending(commands.Cog):
         title = f"{emoji} Top 10 {'Risers' if is_riser else 'Fallers'} (🎮 Console)"
         embed = discord.Embed(title=title, color=color)
 
-        # Set thumbnail image of the top player
         if top10 and top10[0].get("image"):
             embed.set_thumbnail(url=top10[0]["image"])
 
