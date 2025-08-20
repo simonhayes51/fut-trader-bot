@@ -84,7 +84,7 @@ class Trending(commands.Cog):
     async def before_auto_post(self):
         await self.bot.wait_until_ready()
 
-     async def generate_trend_embed(self, direction: str) -> discord.Embed:
+    async def generate_trend_embed(self, direction: str) -> discord.Embed:
         max_page = 76
         pages = range(max_page, 0, -1) if direction == "riser" else range(1, max_page + 1)
         all_players = []
@@ -164,7 +164,6 @@ class Trending(commands.Cog):
         embed.add_field(name="\u200b", value=right_column.strip(), inline=True)
 
         return embed
-
 
 async def setup(bot):
     await bot.add_cog(Trending(bot))
