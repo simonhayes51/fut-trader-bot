@@ -40,6 +40,12 @@ async def on_ready():
         logging.error(f"❌ Failed to load taxcalc cog: {e}")
 
     try:
+        await bot.load_extension("cogs.leaktweets")
+        logging.info("📦 Loaded leaktweets cog")
+    except Exception as e:
+        logging.error(f"❌ Failed to load leaktweets cog: {e}")
+    
+    try:
         await bot.load_extension("cogs.setupsniping")
         logging.info("📦 Loaded setupsniping cog")
     except Exception as e:
