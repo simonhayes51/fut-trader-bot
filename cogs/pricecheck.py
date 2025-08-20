@@ -5,12 +5,11 @@ import requests
 from bs4 import BeautifulSoup
 import json
 import logging
-import re
+import io
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+import matplotlib.ticker as ticker
 from datetime import datetime
-import tempfile
-import os
 
 log = logging.getLogger("fut-pricecheck")
 log.setLevel(logging.INFO)
@@ -18,7 +17,6 @@ handler = logging.StreamHandler()
 formatter = logging.Formatter("[%(asctime)s] %(levelname)s:%(name)s: %(message)s")
 handler.setFormatter(formatter)
 log.addHandler(handler)
-
 
 class PriceCheck(commands.Cog):
     def __init__(self, bot):
@@ -35,109 +33,125 @@ class PriceCheck(commands.Cog):
             log.error(f"[ERROR] Failed to load players: {e}")
             return []
 
-    def generate_price_graph(self, data, player_name):
-        timestamps = [datetime.fromtimestamp(ts / 1000) for ts, _ in data]
-        prices = [price for _, price in data]
+    def get_player_url(self, player_name, rating):
+        for player in self.players:
+            if player["name"].lower() == player_name.lower() and int(player["rating"]) == int(rating):
+                return player.get("url")
+        return None
 
-        fig, ax = plt.subplots(figsize=(6, 3))
-        ax.plot(timestamps, prices, marker='o', linestyle='-', color='blue', label="Console")
-        ax.set_title(f"{player_name} Price Trend")
-        ax.set_xlabel("Time")
-        ax.set_ylabel("Price")
-        ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-        plt.xticks(rotation=45)
-        plt.tight_layout()
+    def fetch_price_data(self, url):
+        try:
+            headers = {"User-Agent": "Mozilla/5.0"}
+            res = requests.get(url, headers=headers)
+            soup = BeautifulSoup(res.text, "html.parser")
 
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-            path = tmp.name
-            plt.savefig(path)
-            plt.close()
-            return path
+            # Try 4-hour trend first
+            graph_divs = soup.find_all("div", class_="highcharts-graph-wrapper")
+            if len(graph_divs) >= 2:
+                hourly_graph = graph_divs[1]  # Second is usually 4h
+            else:
+                hourly_graph = graph_divs[0]
+
+            data_ps_raw = hourly_graph.get("data-ps-data", "[]")
+            price_data = json.loads(data_ps_raw)
+
+            return [(datetime.fromtimestamp(ts / 1000), price) for ts, price in price_data]
+        except Exception as e:
+            log.error(f"[ERROR] Failed to fetch graph data: {e}")
+            return []
+
+    def generate_price_graph(self, price_data, player_name):
+        try:
+            timestamps, prices = zip(*price_data)
+
+            fig, ax = plt.subplots(figsize=(6, 3))
+            ax.plot(timestamps, prices, marker='o', linestyle='-', color='blue', label="Console")
+            ax.set_title(f"{player_name} Price Trend (Hourly)")
+            ax.set_xlabel("Time")
+            ax.set_ylabel("Coins")
+            ax.grid(True)
+
+            ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+            ax.xaxis.set_major_locator(mdates.AutoDateLocator())
+            ax.yaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f"{int(x/1000)}K"))
+
+            plt.xticks(rotation=45)
+            plt.tight_layout()
+
+            buffer = io.BytesIO()
+            plt.savefig(buffer, format='png')
+            buffer.seek(0)
+            plt.close(fig)
+            return buffer
+        except Exception as e:
+            log.error(f"[ERROR] Failed to generate graph: {e}")
+            return None
 
     @app_commands.command(name="pricecheck", description="Check a player's FUTBIN price.")
     @app_commands.describe(player="Enter the name of the player", platform="Choose platform")
-    async def pricecheck(self, interaction: discord.Interaction, player: str, platform: str = "console"):
-        log.info(f"🧪 /pricecheck by {interaction.user.name} | Player: {player} | Platform: {platform}")
-        match = next((p for p in self.players if f"{p['name']} {p['rating']}".lower() == player.lower()), None)
+    @app_commands.choices(platform=[
+        app_commands.Choice(name="🎮 Console", value="ps"),
+        app_commands.Choice(name="💻 PC", value="pc")
+    ])
+    async def pricecheck(self, interaction: discord.Interaction, player: str, platform: app_commands.Choice[str]):
+        await interaction.response.defer()
 
-        if not match:
-            await interaction.response.send_message("❌ Player not found.", ephemeral=True)
+        player_match = next((p for p in self.players if p["name"].lower() == player.lower()), None)
+        if not player_match:
+            await interaction.followup.send("❌ Player not found.")
             return
 
-        url = match["url"]
-        log.info(f"🔗 Scraping URL: {url}")
+        futbin_id = player_match["id"]
+        player_name = player_match["name"]
+        rating = player_match["rating"]
+        url = f"https://www.futbin.com/25/player/{futbin_id}"
+        log.info(f"[LOOKUP] {player_name} - {url}")
 
         try:
-            response = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
-            soup = BeautifulSoup(response.text, "html.parser")
+            headers = {"User-Agent": "Mozilla/5.0"}
+            res = requests.get(url, headers=headers)
+            soup = BeautifulSoup(res.text, "html.parser")
+
+            price_block = soup.find("div", class_="price-box-original-player")
+            price_el = price_block.find("div", class_=f"price inline-with-icon lowest-price-1")
+            price = price_el.text.strip().replace(",", "") if price_el else "N/A"
+
+            trend_block = soup.find("div", class_="trend-card-body")
+            trend_value = trend_block.find("div", class_="trend-value").text.strip() if trend_block else "N/A"
+
+            price_range_block = soup.find("div", class_="ps-lowest")
+            price_range = price_range_block.text.strip() if price_range_block else "N/A"
+
+            club = player_match.get("club", "Unknown")
+            nation = player_match.get("nation", "Unknown")
+            position = player_match.get("position", "Unknown")
+
+            # Fetch and generate graph
+            price_data = self.fetch_price_data(url)
+            graph = self.generate_price_graph(price_data, player_name)
+
+            embed = discord.Embed(
+                title=f"{player_name} ({rating})",
+                description=f"**🎮 Platform:** {platform.name}\n**💰 Price:** {price} 🪙\n"
+                            f"**📊 Range:** {price_range}\n**📈 Trend:** {trend_value}\n"
+                            f"**🏟️ Club:** {club}\n**🌍 Nation:** {nation}\n**🧩 Position:** {position}\n\n"
+                            f"🔴 Updated:  just now • Data from FUTBIN",
+                color=discord.Color.blue()
+            )
+            embed.url = url
+
+            if graph:
+                file = discord.File(graph, filename="trend.png")
+                embed.set_image(url="attachment://trend.png")
+                await interaction.followup.send(embed=embed, file=file)
+            else:
+                await interaction.followup.send(embed=embed)
+
         except Exception as e:
-            log.error(f"[SCRAPE ERROR] {e}")
-            await interaction.response.send_message("❌ Failed to fetch price data.", ephemeral=True)
-            return
-
-        try:
-            price_box = soup.find("div", class_="price-box-original-player")
-            price_tag = price_box.find("div", class_="price inline-with-icon lowest-price-1")
-            price = price_tag.text.strip().replace(",", "") if price_tag else "N/A"
-            price = f"{int(price):,}" if price.isdigit() else price
-
-            trend_tag = price_box.find("div", class_="price-box-trend")
-            raw_trend = trend_tag.get_text(strip=True).replace("Trend:", "") if trend_tag else "-"
-            clean_trend = re.sub(r"[📉📈]", "", raw_trend).strip()
-            trend_emoji = "📉" if "-" in clean_trend else "📈"
-            trend = f"{trend_emoji} {clean_trend}"
-
-            range_tag = price_box.find("div", class_="price-pr")
-            price_range = range_tag.text.strip().replace("PR:", "") if range_tag else "-"
-
-            updated_tag = price_box.find("div", class_="prices-updated")
-            updated = updated_tag.text.strip().replace("Price Updated:", "") if updated_tag else "-"
-
-            # Graph data
-            graph_wrapper = soup.find("div", class_="highcharts-graph-wrapper")
-            data_ps_raw = graph_wrapper["data-ps-data"] if graph_wrapper else "[]"
-            data_ps = json.loads(data_ps_raw)
-
-        except Exception as e:
-            log.warning(f"[WARN] Could not parse some price elements: {e}")
-            price, trend, price_range, updated, data_ps = "N/A", "-", "-", "-", []
-
-        # Build embed
-        embed = discord.Embed(
-            title=f"{match['name']} ({match['rating']})",
-            color=0xFFD700,
-        )
-        embed.add_field(name="🎮 Platform", value="Console" if platform == "console" else "PC", inline=False)
-        embed.add_field(name="💰 Price", value=f"{price} 🪙", inline=False)
-        embed.add_field(name="📊 Range", value=price_range, inline=False)
-        embed.add_field(name=f"{trend_emoji} Trend", value=clean_trend, inline=False)
-        embed.add_field(name="🏟️ Club", value=match.get("club", "Unknown"), inline=True)
-        embed.add_field(name="🌍 Nation", value=match.get("nation", "Unknown"), inline=True)
-        embed.add_field(name="🧩 Position", value=match.get("position", "Unknown"), inline=True)
-        embed.set_footer(text=f"🔴 Updated: {updated} • Data from FUTBIN")
-
-        # Attach graph if we have data
-        if data_ps:
-            graph_path = self.generate_price_graph(data_ps, match['name'])
-            file = discord.File(graph_path, filename="graph.png")
-            embed.set_image(url="attachment://graph.png")
-            await interaction.response.send_message(embed=embed, file=file)
-            os.remove(graph_path)
-        else:
-            await interaction.response.send_message(embed=embed)
+            log.error(f"[ERROR] Something went wrong: {e}")
+            await interaction.followup.send("❌ Failed to fetch player data.")
 
     @pricecheck.autocomplete("player")
     async def player_autocomplete(self, interaction: discord.Interaction, current: str):
-        try:
-            suggestions = [
-                app_commands.Choice(name=f"{p['name']} ({p['rating']})", value=f"{p['name']} {p['rating']}")
-                for p in self.players if current.lower() in f"{p['name']} {p['rating']}".lower()
-            ][:25]
-            return suggestions
-        except Exception as e:
-            log.error(f"[AUTOCOMPLETE ERROR] {e}")
-            return []
-
-
-async def setup(bot):
-    await bot.add_cog(PriceCheck(bot))
+        matches = [p["name"] for p in self.players if current.lower() in p["name"].lower()]
+        return [app_commands.Choice(name=name, value=name) for name in matches[:25]]
