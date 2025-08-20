@@ -130,33 +130,39 @@ class Trending(commands.Cog):
                     "trend": trend
                 })
 
-        all_players = sorted(all_players, key=lambda x: x["trend"], reverse=(direction == "riser"))
+ all_players = sorted(all_players, key=lambda x: x["trend"], reverse=(direction == "riser"))
         top10 = all_players[:10]
 
         emoji = "📈" if direction == "riser" else "📉"
         title = f"{emoji} Top 10 {'Risers' if direction == 'riser' else 'Fallers'} (🎮 Console)"
         embed = discord.Embed(title=title, color=discord.Color.green() if direction == "riser" else discord.Color.red())
 
-        if not top10:
-            embed.description = "No trending players found."
-        else:
-            left_column = ""
-            right_column = ""
+        number_emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+        left_column = ""
+        right_column = ""
 
-            for i, p in enumerate(top10):
-                entry = (
-                    f"**{i+1}. {p['name']} ({p['rating']})**\n"
-                    f"{p['card_type']}\n"
-                    f"💰 {p['price']}\n"
-                    f"{emoji} {p['trend']}%\n\n"
-                )
-                if i < 5:
-                    left_column += entry
-                else:
-                    right_column += entry
+        for i, p in enumerate(top10):
+            # Add booster emoji if extreme trend
+            trend_val = p["trend"]
+            booster = ""
+            if direction == "riser" and trend_val > 100:
+                booster = " 🚀"
+            elif direction == "faller" and trend_val < -50:
+                booster = " ❄️"
 
-            embed.add_field(name="\u200b", value=left_column.strip(), inline=True)
-            embed.add_field(name="\u200b", value=right_column.strip(), inline=True)
+            entry = (
+                f"**{number_emojis[i]} {p['name']} ({p['rating']})**\n"
+                f"{p['card_type']}\n"
+                f"💰 {p['price']}\n"
+                f"{emoji} {trend_val:.2f}%{booster}\n\n"
+            )
+            if i < 5:
+                left_column += entry
+            else:
+                right_column += entry
+
+        embed.add_field(name="\u200b", value=left_column.strip(), inline=True)
+        embed.add_field(name="\u200b", value=right_column.strip(), inline=True)
 
         return embed
 
