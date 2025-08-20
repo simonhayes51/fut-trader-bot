@@ -11,7 +11,7 @@ FEED_FILE = "twitter_feeds.json"
 SEEN_FILE = "tweet_leak_storage.json"
 CHANNEL_FILE = "leak_channel_config.json"
 CONFIG_FILE = "leak_config.json"
-KEYWORDS = ["leak", "sbc", "stats", "dynamic", "promo"]
+KEYWORDS = ["leak", "sbc", "stats", "official"]
 CHECK_INTERVAL = 180
 
 
