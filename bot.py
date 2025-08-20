@@ -27,15 +27,6 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 async def on_ready():
     logging.info(f"✅ Logged in as {bot.user.name}")
 
-    # Create leak_config.json if missing
-    import json
-    if not os.path.exists("leak_config.json"):
-        with open("leak_config.json", "w") as f:
-            json.dump({}, f)
-        print("✅ leak_config.json created manually")
-    else:
-        print("ℹ️ leak_config.json already exists")
-
     try:
         await bot.load_extension("cogs.pricecheck")
         logging.info("📦 Loaded pricecheck cog")
@@ -47,12 +38,6 @@ async def on_ready():
         logging.info("📦 Loaded taxcalc cog")
     except Exception as e:
         logging.error(f"❌ Failed to load taxcalc cog: {e}")
-
-    try:
-        await bot.load_extension("cogs.leaktweets")
-        logging.info("📦 Loaded leaktweets cog")
-    except Exception as e:
-        logging.error(f"❌ Failed to load leaktweets cog: {e}")
     
     try:
         await bot.load_extension("cogs.setupsniping")
@@ -96,7 +81,4 @@ keep_alive()  # Only works if keep_alive.py exists
 # Run the bot
 token = os.getenv("DISCORD_TOKEN")
 if not token:
-    logging.error("❌ DISCORD_TOKEN environment variable is missing!")
-    exit(1)
-
-bot.run(token)
+    logging.error("❌ DISCORD_TOKEN environment vari_
