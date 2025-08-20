@@ -64,14 +64,21 @@ class LeakTweets(commands.Cog):
                     self.seen.setdefault(username, []).append(tweet_id)
                     save_json(SEEN_FILE, self.seen)
 
-                    embed = discord.Embed(
-                        title=f"📢 New tweet from @{username}",
-                        description=f"> {entry.title}",
-                        url=entry.link,
-                        color=discord.Color.blue(),
-                        timestamp=datetime.utcnow()
-                    )
-                    embed.set_footer(text="Filtered by: leak, sbc, stats, dynamic, promo")
+                    color_map = {
+    "FUTDonk": 0xFFA500,        # Orange
+    "FutSheriff": 0x800080,     # Purple
+    "FUTTradersHub": 0x32CD32   # Lime Green
+}
+color = color_map.get(username, 0x1DA1F2)
+
+embed = discord.Embed(
+    title=entry.title,
+    description=f"New post by: [@{username}]({entry.link})",
+    url=entry.link,
+    color=color,
+    timestamp=datetime.utcnow()
+)
+
 
                     for guild in self.bot.guilds:
                         channel_id = self.channel_config.get(str(guild.id))
@@ -142,10 +149,10 @@ class LeakTweets(commands.Cog):
             return
 
         default_feeds = {
-            "FUTDonk": "https://rss.app/feeds/NApsCGtBTG9hATPI.xml",
-            "FutSheriff": "https://rss.app/feeds/CZnnYcKF0mmAX51f.xml",
-            "FUTTradersHub": "https://rss.app/feeds/moWaqUszS3v67GmW.xml"
-        }
+    "FUTDonk": "https://rss.app/feeds/NApsCGtBTG9hATPI.xml",
+    "FutSheriff": "https://rss.app/feeds/CZnnYcKF0mmAX51f.xml",
+    "FUTTradersHub": "https://rss.app/feeds/moWaqUszS3v67GmW.xml"
+}
 
         guild_id = str(interaction.guild_id)
         self.channel_config[guild_id] = channel.id
