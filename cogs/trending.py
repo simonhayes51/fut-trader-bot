@@ -29,19 +29,19 @@ class Trending(commands.Cog):
         self.config = load_config()
         self.auto_post_trends.start()
 
-    @app_commands.command(name="trending", description="\ud83d\udcca Show top trending players")
+    @app_commands.command(name="trending", description="📊 Show top trending players")
     @app_commands.describe(
         direction="Choose trend direction",
         period="Choose timeframe"
     )
     @app_commands.choices(
         direction=[
-            app_commands.Choice(name="\ud83d\udcc8 Risers", value="riser"),
-            app_commands.Choice(name="\ud83d\udd89\ufe0f Fallers", value="faller")
+            app_commands.Choice(name="📈 Risers", value="riser"),
+            app_commands.Choice(name="📉 Fallers", value="faller")
         ],
         period=[
-            app_commands.Choice(name="\ud83d\uddd3\ufe0f 24 Hour", value="24h"),
-            app_commands.Choice(name="\ud83d\udd53 4 Hour", value="4h")
+            app_commands.Choice(name="🗓️ 24 Hour", value="24h"),
+            app_commands.Choice(name="🕓 4 Hour", value="4h")
         ]
     )
     async def trending(self, interaction: discord.Interaction, direction: app_commands.Choice[str], period: app_commands.Choice[str]):
@@ -49,21 +49,21 @@ class Trending(commands.Cog):
         embed = await self.generate_embed(direction.value, period.value)
         await interaction.followup.send(embed=embed or "Error\nUnable to fetch market data.")
 
-    @app_commands.command(name="setupautotrending", description="\u2699\ufe0f Set up auto-post for trending players")
+    @app_commands.command(name="setupautotrending", description="⚙️ Set up auto-post for trending players")
     @app_commands.describe(channel="Channel to post in", frequency="Frequency (6/12/24 hours)", start_time="Start time (HH:MM)", ping_role="Optional ping role")
     async def setupautotrending(self, interaction: discord.Interaction, channel: discord.TextChannel, frequency: int, start_time: str, ping_role: discord.Role = None):
         if not is_admin_or_owner(interaction.user):
-            await interaction.response.send_message("\u274c You must be an Admin or Server Owner.", ephemeral=True)
+            await interaction.response.send_message("❌ You must be an Admin or Server Owner.", ephemeral=True)
             return
 
         if frequency not in [6, 12, 24]:
-            await interaction.response.send_message("\u274c Frequency must be 6, 12, or 24.", ephemeral=True)
+            await interaction.response.send_message("❌ Frequency must be 6, 12, or 24.", ephemeral=True)
             return
 
         try:
             datetime.strptime(start_time, "%H:%M")
         except ValueError:
-            await interaction.response.send_message("\u274c Invalid time format. Use HH:MM (24h)", ephemeral=True)
+            await interaction.response.send_message("❌ Invalid time format. Use HH:MM (24h)", ephemeral=True)
             return
 
         self.config[str(channel.id)] = {
@@ -72,12 +72,12 @@ class Trending(commands.Cog):
             "ping_role": ping_role.id if ping_role else None
         }
         save_config(self.config)
-        await interaction.response.send_message(f"\u2705 Auto-trending set for every {frequency}h starting at {start_time} in {channel.mention}")
+        await interaction.response.send_message(f"✅ Auto-trending set for every {frequency}h starting at {start_time} in {channel.mention}")
 
     @tasks.loop(minutes=1)
     async def auto_post_trends(self):
         now = datetime.utcnow().replace(second=0, microsecond=0)
-        print(f"[LOOP] Tick at {now.strftime('%H:%M')} UTC")
+        print(f"[AUTOPOST] Running at {now.strftime('%H:%M')} UTC")
 
         for channel_id, settings in self.config.items():
             try:
@@ -88,7 +88,7 @@ class Trending(commands.Cog):
                     start += timedelta(hours=settings["frequency"])
 
                 if now != start:
-                    continue
+                    continue  # Skip if it's not the exact minute
 
                 channel = self.bot.get_channel(int(channel_id))
                 if not channel:
@@ -110,31 +110,107 @@ class Trending(commands.Cog):
 
     @auto_post_trends.before_loop
     async def before_auto(self):
-        print("\u23f3 Waiting for bot to be ready...")
         await self.bot.wait_until_ready()
-        print("\u2705 Bot ready — starting auto loop")
 
     async def generate_embed(self, direction, period) -> discord.Embed:
         data = self.scrape_futbin_data(direction, period)
         if not data:
             return None
 
-        emoji = "\ud83d\udcc8" if direction == "riser" else "\ud83d\udd89\ufe0f"
+        emoji = "📈" if direction == "riser" else "📉"
         color = discord.Color.green() if direction == "riser" else discord.Color.red()
-        title = f"{emoji} Top 10 {'Risers' if direction == 'riser' else 'Fallers'} (\ud83c\udfae Console) – {period}"
+        title = f"{emoji} Top 10 {'Risers' if direction == 'riser' else 'Fallers'} (🎮 Console) – {period}"
 
         embed = discord.Embed(title=title, color=color)
         embed.set_footer(text="Data from FUTBIN | Prices are estimates")
-        number_emojis = ["1\ufe0f\u20e3", "2\ufe0f\u20e3", "3\ufe0f\u20e3", "4\ufe0f\u20e3", "5\ufe0f\u20e3", "6\ufe0f\u20e3", "7\ufe0f\u20e3", "8\ufe0f\u20e3", "9\ufe0f\u20e3", "\ud83d\udd1f"]
+        number_emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
 
         for i, p in enumerate(data[:10]):
             boost = ""
             if direction == "riser" and p["trend"] > 100:
-                boost = " \ud83d\ude80"
+                boost = " 🚀"
             elif direction == "faller" and p["trend"] < -50:
-                boost = " \u2744\ufe0f"
+                boost = " ❄️"
 
             trend = f"-{p['trend']:.2f}%" if direction == "faller" else f"{p['trend']:.2f}%"
             embed.add_field(
                 name=f"{number_emojis[i]} {p['name']} ({p['rating']})",
-                value=f"
+                value=f"💰 {p['price']}\n{emoji} {trend}{boost}",
+                inline=False
+            )
+
+        return embed
+
+    async def generate_combined_embed(self, period) -> discord.Embed:
+        risers = self.scrape_futbin_data("riser", period)
+        fallers = self.scrape_futbin_data("faller", period)
+        if not risers or not fallers:
+            return None
+
+        embed = discord.Embed(title=f"📊 Top 10 Market Movers (🎮 Console) – {period}", color=discord.Color.gold())
+        embed.set_footer(text="Data from FUTBIN | Prices are estimates")
+        number_emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+
+        left = ""
+        right = ""
+
+        for i in range(10):
+            r = risers[i]
+            boost = " 🚀" if r["trend"] > 100 else ""
+            left += f"**{number_emojis[i]} {r['name']} ({r['rating']})**\n💰 {r['price']}\n📈 {r['trend']:.2f}%{boost}\n\n"
+
+            f = fallers[i]
+            drop = " ❄️" if f["trend"] < -50 else ""
+            right += f"**{number_emojis[i]} {f['name']} ({f['rating']})**\n💰 {f['price']}\n📉 -{f['trend']:.2f}%{drop}\n\n"
+
+        embed.add_field(name="📈 Risers", value=left.strip(), inline=True)
+        embed.add_field(name="📉 Fallers", value=right.strip(), inline=True)
+        return embed
+
+    def scrape_futbin_data(self, direction, period):
+        url = "https://www.futbin.com/market"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        response = requests.get(url, headers=headers)
+        soup = BeautifulSoup(response.text, "html.parser")
+
+        wrapper_class = "market-24-hours" if period == "24h" else "market-4-hours"
+        wrapper = soup.select_one(f"div.market-players-wrapper.{wrapper_class}.m-row.space-between")
+        if not wrapper:
+            return []
+
+        cards = wrapper.select("a.market-player-card")
+        players = []
+
+        for card in cards:
+            trend_tag = card.select_one(".market-player-change")
+            if not trend_tag or "%" not in trend_tag.text:
+                continue
+
+            try:
+                trend = float(trend_tag.text.replace("%", "").replace("+", "").replace(",", ""))
+            except:
+                continue
+
+            if direction == "riser" and trend <= 0:
+                continue
+            if direction == "faller" and trend >= 0:
+                continue
+
+            name = card.select_one(".playercard-s-25-name")
+            rating = card.select_one(".playercard-s-25-rating")
+            price = card.select_one(".platform-price-wrapper-small")
+
+            if not (name and rating and price):
+                continue
+
+            players.append({
+                "name": name.text.strip(),
+                "rating": rating.text.strip(),
+                "price": price.text.strip(),
+                "trend": trend
+            })
+
+        return sorted(players, key=lambda x: x["trend"], reverse=(direction == "riser"))[:10]
+
+async def setup(bot):
+    await bot.add_cog(Trending(bot))
