@@ -28,11 +28,12 @@ class LeakTweets(commands.Cog):
             with open(CONFIG_FILE, "r") as f:
                 return json.load(f)
         except:
-            return {}
+            return {"leaks": []}
 
     def save_config(self):
         with open(CONFIG_FILE, "w") as f:
             json.dump(self.config, f, indent=2)
+        log.info(f"📏 Saved config with {len(self.config['leaks'])} accounts.")
 
     def get_latest_tweet(self, username):
         try:
@@ -49,7 +50,7 @@ class LeakTweets(commands.Cog):
 
             tweet = tweet_blocks[0]
             tweet_text = tweet.get_text(separator=" ").strip()
-            tweet_link = tweet.find("a", href=re.compile(r"/{}/status/\d+".format(username)))
+            tweet_link = tweet.find("a", href=re.compile(rf"/{username}/status/\\d+"))
             if not tweet_link:
                 return None
 
@@ -57,7 +58,7 @@ class LeakTweets(commands.Cog):
             return tweet_id, tweet_text
 
         except Exception as e:
-            log.error(f"\u274c Error scraping tweet from @{username}: {e}")
+            log.error(f"❌ Error scraping tweet from @{username}: {e}")
             return None
 
     @tasks.loop(seconds=60)
@@ -94,14 +95,11 @@ class LeakTweets(commands.Cog):
                 msg = f"<@&{ping}>\n{msg}"
 
             await channel.send(msg)
-            log.info(f"\u2705 Posted tweet from @{username} to {channel.name}")
+            log.info(f"✅ Posted tweet from @{username} to {channel.name}")
 
-    @app_commands.command(name="addleak", description="\ud83d\udd14 Track an X account for leak tweets")
+    @app_commands.command(name="addleak", description="🔔 Track an X account for leak tweets")
     @app_commands.describe(username="Twitter/X username", channel="Channel to post in", ping="Optional role ID to ping")
     async def addleak(self, interaction: discord.Interaction, username: str, channel: discord.TextChannel, ping: str = None):
-        if "leaks" not in self.config:
-            self.config["leaks"] = []
-
         self.config["leaks"].append({
             "username": username,
             "channel_id": channel.id,
@@ -110,21 +108,20 @@ class LeakTweets(commands.Cog):
             "exclude_keywords": ["test", "promo"]
         })
         self.save_config()
-        await interaction.response.send_message(f"\u2705 Now tracking @{username} in {channel.mention}", ephemeral=True)
+        await interaction.response.send_message(f"✅ Now tracking @{username} in {channel.mention}", ephemeral=True)
 
-    @app_commands.command(name="removeleak", description="\u274c Stop tracking an X account")
+    @app_commands.command(name="removeleak", description="❌ Stop tracking an X account")
     @app_commands.describe(username="Twitter/X username")
     async def removeleak(self, interaction: discord.Interaction, username: str):
-        if "leaks" in self.config:
-            self.config["leaks"] = [acc for acc in self.config["leaks"] if acc['username'].lower() != username.lower()]
-            self.save_config()
-        await interaction.response.send_message(f"\u2705 Stopped tracking @{username}", ephemeral=True)
+        self.config["leaks"] = [acc for acc in self.config["leaks"] if acc['username'].lower() != username.lower()]
+        self.save_config()
+        await interaction.response.send_message(f"✅ Stopped tracking @{username}", ephemeral=True)
 
-    @app_commands.command(name="listleaks", description="\ud83d\udcc4 List tracked accounts")
+    @app_commands.command(name="listleaks", description="📄 List tracked accounts")
     async def listleaks(self, interaction: discord.Interaction):
         accounts = self.config.get("leaks", [])
         if not accounts:
-            await interaction.response.send_message("\u2139\ufe0f No accounts tracked.", ephemeral=True)
+            await interaction.response.send_message("ℹ️ No accounts tracked.", ephemeral=True)
             return
         msg = "**Tracked Accounts:**\n"
         for acc in accounts:
