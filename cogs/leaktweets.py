@@ -6,7 +6,6 @@ import requests
 from bs4 import BeautifulSoup
 import logging
 import re
-import time
 
 log = logging.getLogger("leaktweets")
 log.setLevel(logging.INFO)
@@ -15,13 +14,13 @@ formatter = logging.Formatter("[%(asctime)s] %(levelname)s:%(name)s: %(message)s
 handler.setFormatter(formatter)
 log.addHandler(handler)
 
-CONFIG_FILE = "leak_config.json"
+CONFIG_FILE = "global_leak_config.json"
 
 class LeakTweets(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.config = self.load_config()
-        self.last_seen = {}  # Keep track of last tweet per user
+        self.last_seen = {}
         self.check_tweets.start()
 
     def load_config(self):
@@ -36,31 +35,30 @@ class LeakTweets(commands.Cog):
             json.dump(self.config, f, indent=2)
 
     def get_latest_tweet(self, username):
-    try:
-        url = f"https://x.com/{username}"
-        headers = {
-            "User-Agent": "Mozilla/5.0",
-        }
-        response = requests.get(url, headers=headers)
-        soup = BeautifulSoup(response.text, "html.parser")
+        try:
+            url = f"https://x.com/{username}"
+            headers = {
+                "User-Agent": "Mozilla/5.0",
+            }
+            response = requests.get(url, headers=headers)
+            soup = BeautifulSoup(response.text, "html.parser")
 
-        # ✅ Latest tweet container (change if structure updates)
-        tweet_blocks = soup.find_all("div", {"data-testid": "tweet"})
-        if not tweet_blocks:
+            tweet_blocks = soup.find_all("div", {"data-testid": "tweet"})
+            if not tweet_blocks:
+                return None
+
+            tweet = tweet_blocks[0]
+            tweet_text = tweet.get_text(separator=" ").strip()
+            tweet_link = tweet.find("a", href=re.compile(r"/{}/status/\d+".format(username)))
+            if not tweet_link:
+                return None
+
+            tweet_id = tweet_link["href"].split("/")[-1]
+            return tweet_id, tweet_text
+
+        except Exception as e:
+            log.error(f"❌ Error scraping tweet from @{username}: {e}")
             return None
-
-        tweet = tweet_blocks[0]
-        tweet_text = tweet.get_text(separator=" ").strip()
-        tweet_link = tweet.find("a", href=re.compile(r"/{}/status/\d+".format(username)))
-        if not tweet_link:
-            return None
-
-        tweet_id = tweet_link["href"].split("/")[-1]
-        return tweet_id, tweet_text
-
-    except Exception as e:
-        logging.error(f"❌ Error scraping tweet from @{username}: {e}")
-        return None
 
     @tasks.loop(seconds=60)
     async def check_tweets(self):
@@ -72,12 +70,14 @@ class LeakTweets(commands.Cog):
                 include_keywords = acc.get('include_keywords', [])
                 exclude_keywords = acc.get('exclude_keywords', [])
 
-                tweet_id, tweet_text = self.get_latest_tweet(username)
-                if not tweet_id or not tweet_text:
+                result = self.get_latest_tweet(username)
+                if not result:
                     continue
 
+                tweet_id, tweet_text = result
+
                 if tweet_id == self.last_seen.get(username):
-                    continue  # Already posted
+                    continue
 
                 if include_keywords and not any(k.lower() in tweet_text.lower() for k in include_keywords):
                     continue
@@ -93,7 +93,9 @@ class LeakTweets(commands.Cog):
                 msg = f"https://x.com/{username}/status/{tweet_id}\n\n{tweet_text}"
                 if ping:
                     msg = f"<@&{ping}>\n{msg}"
+
                 await channel.send(msg)
+                log.info(f"✅ Posted tweet from @{username} to {channel.name}")
 
     @app_commands.command(name="addleak", description="🔔 Track an X account for leak tweets")
     @app_commands.describe(username="Twitter/X username", channel="Channel to post in", ping="Optional role ID to ping")
