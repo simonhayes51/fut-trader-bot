@@ -144,16 +144,22 @@ class Trending(commands.Cog):
             right_column = ""
 
             for i, p in enumerate(top10):
-                entry = f"**{i+1}. {p['name']} ({p['rating']})**\n{p['card_type']}\n💰 {p['price']}\n{emoji} {p['trend']}%\n\n"
+                entry = (
+                    f"**{i+1}. {p['name']} ({p['rating']})**\n"
+                    f"{p['card_type']}\n"
+                    f"💰 {p['price']}\n"
+                    f"{emoji} {p['trend']}%\n\n"
+                )
                 if i < 5:
                     left_column += entry
                 else:
                     right_column += entry
 
-            embed.add_field(name="⬅️", value=left_column.strip(), inline=True)
-            embed.add_field(name="➡️", value=right_column.strip(), inline=True)
+            embed.add_field(name="\u200b", value=left_column.strip(), inline=True)
+            embed.add_field(name="\u200b", value=right_column.strip(), inline=True)
 
         return embed
+
 
 async def setup(bot):
     await bot.add_cog(Trending(bot))
