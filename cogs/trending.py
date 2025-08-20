@@ -38,21 +38,20 @@ class Trending(commands.Cog):
         self.auto_post_trends.start()
 
     @app_commands.command(name="trending", description="📊 Show top trending players (Risers/Fallers)")
-    @app_commands.describe(direction="Risers or Fallers", period="🗓️ 24h or 🕓 4h market data")
-    @app_commands.choices(
-        direction=[
-            app_commands.Choice(name="📈 Risers", value="riser"),
-            app_commands.Choice(name="📉 Fallers", value="faller")
-        ],
-        period=[
-            app_commands.Choice(name="🗓️ 24h", value="24h"),
-            app_commands.Choice(name="🕓 4h", value="4h")
-        ]
+    @app_commands.describe(
+        direction="Risers or Fallers",
+        period="Choose 24h or 4h trend data"
     )
-    async def trending(self, interaction: discord.Interaction, direction: app_commands.Choice[str], period: app_commands.Choice[str] = None):
+    @app_commands.choices(direction=[
+        app_commands.Choice(name="📈 Risers", value="riser"),
+        app_commands.Choice(name="📉 Fallers", value="faller")
+    ], period=[
+        app_commands.Choice(name="🗓️ 24h", value="day"),
+        app_commands.Choice(name="🕓 4h", value="4hour")
+    ])
+    async def trending(self, interaction: discord.Interaction, direction: app_commands.Choice[str], period: app_commands.Choice[str]):
         await interaction.response.defer()
-        period_value = period.value if period else "24h"
-        embed = await self.generate_trend_embed(direction.value, period_value)
+        embed = await self.generate_trend_embed(direction.value, period.value)
         await interaction.followup.send(embed=embed)
 
     @app_commands.command(name="setupautotrending", description="🛠️ Set daily auto-post channel and time (HH:MM 24hr)")
@@ -88,7 +87,7 @@ class Trending(commands.Cog):
                 continue
 
             for direction in ["riser", "faller"]:
-                embed = await self.generate_trend_embed(direction, "24h")
+                embed = await self.generate_trend_embed(direction, "day")
                 await channel.send(embed=embed)
 
     @auto_post_trends.before_loop
@@ -96,73 +95,74 @@ class Trending(commands.Cog):
         await self.bot.wait_until_ready()
 
     async def generate_trend_embed(self, direction: str, period: str) -> discord.Embed:
-        url = "https://www.futbin.com/market"
         headers = {"User-Agent": "Mozilla/5.0"}
+        url = "https://www.futbin.com/market"
         response = requests.get(url, headers=headers)
+        if response.status_code != 200:
+            embed = discord.Embed(title="Error", description="Unable to fetch market data.", color=discord.Color.red())
+            return embed
+
         soup = BeautifulSoup(response.text, "html.parser")
+        target_class = "market-gain" if direction == "riser" else "market-losers"
+        timeframe_class = "day" if period == "day" else "four"
+        wrapper = soup.find("div", class_=f"{target_class} xs-column {timeframe_class}")
 
-        section_class = {
-            ("riser", "24h"): "market-gain",
-            ("faller", "24h"): "market-losers",
-            ("riser", "4h"): "market-gain-4h",
-            ("faller", "4h"): "market-losers-4h"
-        }.get((direction, period), "market-gain")
+        if not wrapper:
+            embed = discord.Embed(title="Error", description="No trend data available.", color=discord.Color.red())
+            return embed
 
-        section = soup.find("div", class_=section_class)
-        if not section:
-            return discord.Embed(title="Error", description="Unable to fetch market data.", color=discord.Color.red())
-
-        cards = section.select("a.market-player-card")
+        player_rows = wrapper.select("div.market-row")
         players = []
-        seen = set()
 
-        for card in cards:
-            name_tag = card.select_one(".playercard-s-25-name")
-            rating_tag = card.select_one(".playercard-s-25-rating")
-            trend_tag = card.select_one(".market-player-change")
-            price_tag = card.select_one(".platform-price-wrapper-small")
+        for row in player_rows[:10]:
+            name_tag = row.select_one(".market-row-name")
+            price_tag = row.select_one(".market-row-price")
+            change_tag = row.select_one(".market-player-change")
 
-            if not all([name_tag, rating_tag, trend_tag]):
+            if not name_tag or not price_tag or not change_tag:
                 continue
 
             name = name_tag.text.strip()
-            rating = rating_tag.text.strip()
-            full_name = f"{name} ({rating})"
+            price = price_tag.text.strip().replace("\n", " ").replace("  ", " ").strip()
+            trend_text = change_tag.text.strip().replace("%", "").replace(",", "")
 
-            if full_name in seen:
-                continue
-            seen.add(full_name)
-
-            trend_text = trend_tag.text.strip().replace("%", "").replace(",", "").replace("+", "")
             try:
                 trend = float(trend_text)
             except ValueError:
                 continue
 
-            price = price_tag.text.strip() if price_tag else "?"
-            players.append({"name": name, "rating": rating, "trend": trend, "price": price})
-
-        sorted_players = sorted(players, key=lambda x: x["trend"], reverse=(direction == "riser"))[:10]
+            players.append({
+                "name": name,
+                "price": price,
+                "trend": trend
+            })
 
         emoji = "📈" if direction == "riser" else "📉"
-        booster_threshold = 100 if direction == "riser" else -50
-        booster_emoji = "🚀" if direction == "riser" else "❄️"
-        time_emoji = "🗓️" if period == "24h" else "🕓"
-
-        embed = discord.Embed(
-            title=f"{emoji} Top 10 {'Risers' if direction == 'riser' else 'Fallers'} (🎮 Console)",
-            description=f"{time_emoji} Data from FUTBIN | Prices are estimates",
-            color=discord.Color.green() if direction == "riser" else discord.Color.red()
-        )
+        period_emoji = "🗓️" if period == "day" else "🕓"
+        title = f"{emoji} Top 10 {'Risers' if direction == 'riser' else 'Fallers'} (🎮 Console) {period_emoji}"
+        embed = discord.Embed(title=title, color=discord.Color.green() if direction == "riser" else discord.Color.red())
+        embed.set_footer(text="Data from FUTBIN | Prices are estimates")
 
         number_emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
         left = ""
         right = ""
 
-        for i, p in enumerate(sorted_players):
-            booster = booster_emoji if ((direction == "riser" and p["trend"] > booster_threshold) or (direction == "faller" and p["trend"] < booster_threshold)) else ""
-            trend_str = f"{emoji} {'-' if direction == 'faller' else ''}{p['trend']:.2f}% {booster}".strip()
-            entry = f"**{number_emojis[i]} {p['name']} ({p['rating']})**\n💰 {p['price']}\n{trend_str}\n\n"
+        for i, p in enumerate(players):
+            booster = ""
+            trend_val = p["trend"]
+            if direction == "riser" and trend_val > 100:
+                booster = " 🚀"
+            elif direction == "faller" and trend_val < 50:
+                booster = " ❄️"
+
+            sign = "" if direction == "riser" else "-"
+
+            entry = (
+                f"**{number_emojis[i]} {p['name']}**\n"
+                f"💰 {p['price']}\n"
+                f"{emoji} {sign}{trend_val:.2f}%{booster}\n\n"
+            )
+
             if i < 5:
                 left += entry
             else:
