@@ -44,6 +44,7 @@ async def on_ready():
         logging.info("📦 Loaded leaktweets cog")
     except Exception as e:
         logging.error(f"❌ Failed to load leaktweets cog: {e}")
+
     
     try:
         await bot.load_extension("cogs.setupsniping")
