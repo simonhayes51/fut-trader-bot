@@ -85,51 +85,59 @@ class Trending(commands.Cog):
         await self.bot.wait_until_ready()
 
     async def generate_trend_embed(self, direction: str) -> discord.Embed:
-        url = "https://www.futbin.com/market?interval=4"
+        url = "https://www.futbin.com/market"
         headers = {"User-Agent": "Mozilla/5.0"}
         response = requests.get(url, headers=headers)
         soup = BeautifulSoup(response.text, "html.parser")
 
-        if direction == "riser":
-            container = soup.select_one("div.market-gain.xs-column.active")
-        else:
-            container = soup.select_one("div.market-losers.xs-column")
+        container_class = "market-gain xs-column active" if direction == "riser" else "market-losers xs-column"
+        container = soup.find("div", class_=container_class)
+        if not container:
+            return discord.Embed(title="❌ Error", description="Failed to find market data.", color=discord.Color.red())
 
-        cards = container.select("a.market-player-card") if container else []
+        cards = container.select("a.market-player-card")
+        seen = set()
         all_players = []
 
         for card in cards:
+            name_tag = card.select_one(".playercard-s-25-name")
+            rating_tag = card.select_one(".playercard-s-25-rating")
             trend_tag = card.select_one(".market-player-change")
-            if not trend_tag or "%" not in trend_tag.text:
+            price_tag = card.select_one(".platform-price-wrapper-small")
+
+            if not (name_tag and rating_tag and trend_tag and "%" in trend_tag.text):
                 continue
-            trend_text = trend_tag.text.strip().replace("%", "").replace("+", "").replace(",", "")
+
+            name = name_tag.text.strip()
+            rating = rating_tag.text.strip()
+            price = price_tag.text.strip() if price_tag else "?"
+
+            trend_raw = trend_tag.text.strip().replace("%", "").replace(",", "")
             try:
-                trend = float(trend_text)
+                trend = float(trend_raw)
+                if "day-change-negative" in trend_tag.get("class", []):
+                    trend = -abs(trend)
             except ValueError:
                 continue
+
+            # Remove duplicates
+            key = f"{name}-{rating}"
+            if key in seen:
+                continue
+            seen.add(key)
 
             if (direction == "riser" and trend <= 0) or (direction == "faller" and trend >= 0):
                 continue
 
-            name_tag = card.select_one(".playercard-s-25-name")
-            rating_tag = card.select_one(".playercard-s-25-rating")
-            if not name_tag or not rating_tag:
-                continue
-            name = name_tag.text.strip()
-            rating = rating_tag.text.strip()
-
-            price_tag = card.select_one(".platform-price-wrapper-small")
-            price = price_tag.text.strip() if price_tag else "?"
-
             all_players.append({
                 "name": name,
                 "rating": rating,
-                "trend": trend,
-                "price": price
+                "price": price,
+                "trend": trend
             })
 
-        sorted_players = sorted(all_players, key=lambda x: x["trend"], reverse=(direction == "riser"))
-        top10 = sorted_players[:10]
+            if len(all_players) >= 10:
+                break
 
         emoji = "📈" if direction == "riser" else "📉"
         title = f"{emoji} Top 10 {'Risers' if direction == 'riser' else 'Fallers'} (🎮 Console)"
@@ -140,7 +148,7 @@ class Trending(commands.Cog):
         left = ""
         right = ""
 
-        for i, p in enumerate(top10):
+        for i, p in enumerate(all_players):
             booster = ""
             if direction == "riser" and p["trend"] > 100:
                 booster = " 🚀"
@@ -148,9 +156,9 @@ class Trending(commands.Cog):
                 booster = " ❄️"
 
             entry = (
-                f"{number_emojis[i]} {p['name']} ({p['rating']})\n"
+                f"**{number_emojis[i]} {p['name']} ({p['rating']})**\n"
                 f"💰 {p['price']}\n"
-                f"{emoji} {p['trend']:.2f}%{booster}\n\n"
+                f"{emoji} {abs(p['trend']):.2f}%{booster}\n\n"
             )
             if i < 5:
                 left += entry
