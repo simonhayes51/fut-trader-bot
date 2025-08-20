@@ -81,4 +81,4 @@ keep_alive()  # Only works if keep_alive.py exists
 # Run the bot
 token = os.getenv("DISCORD_TOKEN")
 if not token:
-    logging.error("❌ DISCORD_TOKEN environment vari_
+    logging.error("❌ DISCORD_TOKEN environment variable is missing!")
