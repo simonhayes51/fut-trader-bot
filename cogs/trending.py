@@ -130,7 +130,7 @@ class Trending(commands.Cog):
                     "trend": trend
                 })
 
- all_players = sorted(all_players, key=lambda x: x["trend"], reverse=(direction == "riser"))
+     all_players = sorted(all_players, key=lambda x: x["trend"], reverse=(direction == "riser"))
         top10 = all_players[:10]
 
         emoji = "📈" if direction == "riser" else "📉"
