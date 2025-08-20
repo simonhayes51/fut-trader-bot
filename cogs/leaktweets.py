@@ -2,19 +2,16 @@ import discord
 from discord.ext import commands, tasks
 from discord import app_commands
 import feedparser
-import asyncio
 import os
 import json
 from datetime import datetime
-import requests
-from bs4 import BeautifulSoup
 
 FEED_FILE = "twitter_feeds.json"
 SEEN_FILE = "tweet_leak_storage.json"
 CHANNEL_FILE = "leak_channel_config.json"
 CONFIG_FILE = "leak_config.json"
 KEYWORDS = ["leak", "sbc", "stats", "dynamic", "promo"]
-CHECK_INTERVAL = 180
+CHECK_INTERVAL = 180  # seconds
 
 def load_json(filename):
     if os.path.exists(filename):
@@ -31,21 +28,6 @@ def is_admin_or_owner(member: discord.Member) -> bool:
         return True
     allowed_roles = ["admin", "owner"]
     return any(role.name.lower() in allowed_roles for role in member.roles)
-
-def get_tweet_image(tweet_url):
-    headers = {
-        "User-Agent": "Mozilla/5.0",
-        "Accept-Language": "en"
-    }
-    try:
-        response = requests.get(tweet_url, headers=headers, timeout=5)
-        soup = BeautifulSoup(response.text, "html.parser")
-        image_tag = soup.find("meta", property="og:image")
-        if image_tag and image_tag.get("content"):
-            return image_tag["content"]
-    except Exception as e:
-        print(f"❌ Failed to fetch tweet image: {e}")
-    return None
 
 class LeakTweets(commands.Cog):
     def __init__(self, bot):
@@ -83,34 +65,15 @@ class LeakTweets(commands.Cog):
                     if len(self.posted_links[username]) > 10:
                         self.posted_links[username] = self.posted_links[username][-10:]
 
-                    color_map = {
-                        "FUTDonk": 0xFFA500,
-                        "FutSheriff": 0x800080,
-                        "FUTTradersHub": 0x32CD32
-                    }
-                    color = color_map.get(username, 0x1DA1F2)
-
-                    embed = discord.Embed(
-                        title=entry.title,
-                        description=f"New post by: [@{username}]({entry.link})",
-                        url=entry.link,
-                        color=color,
-                        timestamp=datetime.utcnow()
-                    )
-
-                    image_url = get_tweet_image(entry.link)
-                    if image_url:
-                        embed.set_image(url=image_url)
-
                     for guild in self.bot.guilds:
                         guild_id = str(guild.id)
                         config = self.config.get(guild_id, [])
                         for source in config:
                             if source["username"].lower() == username.lower():
                                 channel = self.bot.get_channel(source["channel_id"])
-                                role_mention = f"<@&{source['role_id']}> " if source.get("role_id") else ""
+                                role_mention = f"<@&{source['role_id']}>\n" if source.get("role_id") else ""
                                 if channel:
-                                    await channel.send(content=role_mention, embed=embed)
+                                    await channel.send(content=f"{role_mention}{tweet_link}")
                                     print(f"✅ Posted: {tweet_link}")
             except Exception as e:
                 print(f"❌ Error checking {username}: {e}")
@@ -166,6 +129,36 @@ class LeakTweets(commands.Cog):
         self.feeds.update(default_feeds)
         save_json(FEED_FILE, self.feeds)
         await interaction.response.send_message("✅ Default feeds loaded.", ephemeral=True)
+
+    @app_commands.command(name="setleakchannel", description="📍 Set the channel for FUT leak tweet alerts.")
+    @app_commands.describe(channel="Channel to send leaks to")
+    async def setleakchannel(self, interaction: discord.Interaction, channel: discord.TextChannel):
+        if not is_admin_or_owner(interaction.user):
+            await interaction.response.send_message("❌ Only Admins/Owners can use this command.", ephemeral=True)
+            return
+        guild_id = str(interaction.guild_id)
+        self.channel_config[guild_id] = channel.id
+        save_json(CHANNEL_FILE, self.channel_config)
+        await interaction.response.send_message(f"✅ Leak tweets will now be posted in {channel.mention}", ephemeral=True)
+
+    @app_commands.command(name="addleaksource", description="➕ Track a Twitter user and post to a channel.")
+    @app_commands.describe(username="Twitter username (without @)", channel="Channel to post in", role="Optional role to ping")
+    async def addleaksource(self, interaction: discord.Interaction, username: str, channel: discord.TextChannel, role: discord.Role = None):
+        if not is_admin_or_owner(interaction.user):
+            await interaction.response.send_message("❌ You need Manage Server permission to use this command.", ephemeral=True)
+            return
+
+        guild_id = str(interaction.guild_id)
+        if guild_id not in self.config:
+            self.config[guild_id] = []
+
+        self.config[guild_id].append({
+            "username": username,
+            "channel_id": channel.id,
+            "role_id": role.id if role else None
+        })
+        save_json(CONFIG_FILE, self.config)
+        await interaction.response.send_message(f"✅ Now tracking tweets from @{username} in {channel.mention}", ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(LeakTweets(bot))
