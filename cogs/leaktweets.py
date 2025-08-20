@@ -134,5 +134,35 @@ class LeakTweets(commands.Cog):
         feed_list = "\n".join([f"**@{k}** → {v}" for k, v in self.feeds.items()])
         await interaction.response.send_message(f"🔍 Currently tracking:\n{feed_list}", ephemeral=True)
 
+    @app_commands.command(name="preloadfeeds", description="📦 Load default FUT leak accounts (Donk, Sheriff, FUTTradersHub).")
+    @app_commands.describe(channel="Channel to post in", role="Optional role to ping on each tweet")
+    async def preloadfeeds(self, interaction: discord.Interaction, channel: discord.TextChannel, role: discord.Role = None):
+        if not is_admin_or_owner(interaction.user):
+            await interaction.response.send_message("❌ Only Admins/Owners can use this command.", ephemeral=True)
+            return
+
+        default_feeds = {
+            "FUTDonk": "https://rss.app/feeds/NApsCGtBTG9hATPI.xml",
+            "FutSheriff": "https://rss.app/feeds/CZnnYcKF0mmAX51f.xml",
+            "FUTTradersHub": "https://rss.app/feeds/moWaqUszS3v67GmW.xml"
+        }
+
+        guild_id = str(interaction.guild_id)
+        self.channel_config[guild_id] = channel.id
+
+        for username, url in default_feeds.items():
+            self.feeds[username] = url
+            self.seen.setdefault(username, [])
+
+        save_json(FEED_FILE, self.feeds)
+        save_json(CHANNEL_FILE, self.channel_config)
+        save_json(SEEN_FILE, self.seen)
+
+        await interaction.response.send_message(
+            f"✅ Loaded Donk, Sheriff, and FUTTradersHub.\nTweets will be posted in {channel.mention}" +
+            (f" and will ping {role.mention}" if role else ""),
+            ephemeral=True
+        )
+
 async def setup(bot):
     await bot.add_cog(LeakTweets(bot))
