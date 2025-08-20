@@ -11,7 +11,6 @@ from datetime import datetime
 FEED_FILE = "twitter_feeds.json"
 SEEN_FILE = "tweet_leak_storage.json"
 CHANNEL_FILE = "leak_channel_config.json"
-CONFIG_FILE = "leak_config.json"
 KEYWORDS = ["leak", "sbc", "stats", "dynamic", "promo"]
 CHECK_INTERVAL = 180  # seconds
 
@@ -25,6 +24,7 @@ def load_json(filename):
 def save_json(filename, data):
     with open(filename, "w") as f:
         json.dump(data, f, indent=2)
+    print(f"💾 Saved data to {filename}")
 
 def is_admin_or_owner(member: discord.Member) -> bool:
     if member.guild and member.id == member.guild.owner_id:
@@ -38,19 +38,14 @@ class LeakTweets(commands.Cog):
         self.feeds = load_json(FEED_FILE)
         self.seen = load_json(SEEN_FILE)
         self.channel_config = load_json(CHANNEL_FILE)
-        self.config = load_json(CONFIG_FILE)
-        self.posted_links = {}
         self.check_tweets.start()
 
     def cog_unload(self):
         self.check_tweets.cancel()
 
-    def get_feed_url(self, username):
-        return f"https://rss.app/feeds/twitter/user/{username}.rss"
-
     @tasks.loop(seconds=CHECK_INTERVAL)
     async def check_tweets(self):
-        print("\U0001F504 Checking tweet feeds...")
+        print("🔄 Checking tweet feeds...")
         for username, feed_url in self.feeds.items():
             try:
                 parsed = feedparser.parse(feed_url)
@@ -85,9 +80,10 @@ class LeakTweets(commands.Cog):
                         channel = self.bot.get_channel(channel_id)
                         if channel:
                             await channel.send(embed=embed)
+                            print(f"✅ Posted tweet from @{username} in {channel.name}")
 
             except Exception as e:
-                print(f"❌ Error checking {username}: {e}")
+                print(f"❌ Error checking @{username}: {e}")
 
     @check_tweets.before_loop
     async def before_check(self):
