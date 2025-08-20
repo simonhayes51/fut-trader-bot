@@ -84,7 +84,7 @@ class Trending(commands.Cog):
     async def before_auto_post(self):
         await self.bot.wait_until_ready()
 
-    async def generate_trend_embed(self, direction: str) -> discord.Embed:
+     async def generate_trend_embed(self, direction: str) -> discord.Embed:
         max_page = 76
         pages = range(max_page, 0, -1) if direction == "riser" else range(1, max_page + 1)
         all_players = []
@@ -130,7 +130,7 @@ class Trending(commands.Cog):
                     "trend": trend
                 })
 
-     all_players = sorted(all_players, key=lambda x: x["trend"], reverse=(direction == "riser"))
+        all_players = sorted(all_players, key=lambda x: x["trend"], reverse=(direction == "riser"))
         top10 = all_players[:10]
 
         emoji = "📈" if direction == "riser" else "📉"
@@ -142,7 +142,6 @@ class Trending(commands.Cog):
         right_column = ""
 
         for i, p in enumerate(top10):
-            # Add booster emoji if extreme trend
             trend_val = p["trend"]
             booster = ""
             if direction == "riser" and trend_val > 100:
