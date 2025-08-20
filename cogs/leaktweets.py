@@ -2,26 +2,25 @@ import discord
 from discord.ext import commands, tasks
 from discord import app_commands
 import json
-import requests
-from bs4 import BeautifulSoup
+import feedparser
 import logging
 import re
 
-log = logging.getLogger("leaktweets")
+log = logging.getLogger("rssleaks")
 log.setLevel(logging.INFO)
 handler = logging.StreamHandler()
 formatter = logging.Formatter("[%(asctime)s] %(levelname)s:%(name)s: %(message)s")
 handler.setFormatter(formatter)
 log.addHandler(handler)
 
-CONFIG_FILE = "global_leak_config.json"
+CONFIG_FILE = "global_rssleak_config.json"
 
-class LeakTweets(commands.Cog):
+class RssLeakTracker(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.config = self.load_config()
-        self.last_seen = {}
-        self.check_tweets.start()
+        self.last_seen = {}  # feed_url -> last post link
+        self.check_rss.start()
 
     def load_config(self):
         try:
@@ -35,82 +34,68 @@ class LeakTweets(commands.Cog):
             json.dump(self.config, f, indent=2)
         log.info(f"📏 Saved config with {len(self.config['leaks'])} accounts.")
 
-    def get_latest_tweet(self, username):
-        try:
-            url = f"https://x.com/{username}"
-            headers = {
-                "User-Agent": "Mozilla/5.0",
-            }
-            response = requests.get(url, headers=headers)
-            soup = BeautifulSoup(response.text, "html.parser")
-
-            tweet_blocks = soup.find_all("div", {"data-testid": "tweet"})
-            if not tweet_blocks:
-                return None
-
-            tweet = tweet_blocks[0]
-            tweet_text = tweet.get_text(separator=" ").strip()
-            tweet_link = tweet.find("a", href=re.compile(rf"/{username}/status/\\d+"))
-            if not tweet_link:
-                return None
-
-            tweet_id = tweet_link["href"].split("/")[-1]
-            return tweet_id, tweet_text
-
-        except Exception as e:
-            log.error(f"❌ Error scraping tweet from @{username}: {e}")
-            return None
-
-    @tasks.loop(seconds=60)
-    async def check_tweets(self):
+    @tasks.loop(seconds=120)
+    async def check_rss(self):
         for acc in self.config.get("leaks", []):
             username = acc['username']
+            feed_url = acc['rss']
             channel_id = acc['channel_id']
             ping = acc.get('ping')
             include_keywords = acc.get('include_keywords', [])
             exclude_keywords = acc.get('exclude_keywords', [])
 
-            result = self.get_latest_tweet(username)
-            if not result:
+            feed = feedparser.parse(feed_url)
+            if not feed.entries:
                 continue
 
-            tweet_id, tweet_text = result
+            latest = feed.entries[0]
+            title = latest.title
+            link = latest.link
 
-            if tweet_id == self.last_seen.get(username):
+            if feed_url in self.last_seen and self.last_seen[feed_url] == link:
                 continue
 
-            if include_keywords and not any(k.lower() in tweet_text.lower() for k in include_keywords):
+            self.last_seen[feed_url] = link
+
+            if include_keywords and not any(k.lower() in title.lower() for k in include_keywords):
+                continue
+            if exclude_keywords and any(k.lower() in title.lower() for k in exclude_keywords):
                 continue
 
-            if exclude_keywords and any(k.lower() in tweet_text.lower() for k in exclude_keywords):
-                continue
-
-            self.last_seen[username] = tweet_id
             channel = self.bot.get_channel(channel_id)
             if not channel:
                 continue
 
-            msg = f"https://x.com/{username}/status/{tweet_id}\n\n{tweet_text}"
-            if ping:
-                msg = f"<@&{ping}>\n{msg}"
+            # Post embed and message
+            embed = discord.Embed(title=f"📢 New post from @{username}", color=0x2F3136)
+            await channel.send(embed=embed)
 
+            msg = f"{f'<@&{ping}>' if ping else ''}\n{link}\n\n{title}"
             await channel.send(msg)
-            log.info(f"✅ Posted tweet from @{username} to {channel.name}")
+            log.info(f"✅ Posted new RSS from @{username} to {channel.name}")
 
-    @app_commands.command(name="addleak", description="🔔 Track an X account for leak tweets")
-    @app_commands.describe(username="Twitter/X username", channel="Channel to post in", ping="Optional role ID to ping")
-    async def addleak(self, interaction: discord.Interaction, username: str, channel: discord.TextChannel, ping: str = None):
+    @app_commands.command(name="addleak", description="🔔 Track a Twitter/X account via RSS")
+    @app_commands.describe(
+        username="Twitter/X username",
+        rss="RSS feed URL (from rss.app or similar)",
+        include_keywords="Comma-separated keywords to include",
+        exclude_keywords="Comma-separated keywords to exclude",
+        channel="Channel to post updates in",
+        ping="Optional role ID to ping"
+    )
+    async def addleak(self, interaction: discord.Interaction, username: str, rss: str, include_keywords: str, exclude_keywords: str, channel: discord.TextChannel, ping: str = None):
         self.config["leaks"].append({
             "username": username,
+            "rss": rss,
             "channel_id": channel.id,
             "ping": ping,
-            "include_keywords": ["sbc", "leak", "objective"],
-            "exclude_keywords": ["test", "promo"]
+            "include_keywords": [k.strip() for k in include_keywords.split(",") if k.strip()],
+            "exclude_keywords": [k.strip() for k in exclude_keywords.split(",") if k.strip()]
         })
         self.save_config()
         await interaction.response.send_message(f"✅ Now tracking @{username} in {channel.mention}", ephemeral=True)
 
-    @app_commands.command(name="removeleak", description="❌ Stop tracking an X account")
+    @app_commands.command(name="removeleak", description="❌ Stop tracking an X account via RSS")
     @app_commands.describe(username="Twitter/X username")
     async def removeleak(self, interaction: discord.Interaction, username: str):
         self.config["leaks"] = [acc for acc in self.config["leaks"] if acc['username'].lower() != username.lower()]
@@ -129,4 +114,4 @@ class LeakTweets(commands.Cog):
         await interaction.response.send_message(msg, ephemeral=True)
 
 async def setup(bot):
-    await bot.add_cog(LeakTweets(bot))
+    await bot.add_cog(RssLeakTracker(bot))
