@@ -1,13 +1,13 @@
 import discord
 from discord.ext import commands, tasks
 from discord import app_commands
+from bs4 import BeautifulSoup
 import requests
-from datetime import datetime
 import json
 import os
+from datetime import datetime
 
 CONFIG_FILE = "autotrend_config.json"
-
 
 def load_config():
     if not os.path.exists(CONFIG_FILE):
@@ -16,11 +16,9 @@ def load_config():
     with open(CONFIG_FILE, "r") as f:
         return json.load(f)
 
-
 def save_config(data):
     with open(CONFIG_FILE, "w") as f:
         json.dump(data, f, indent=2)
-
 
 def is_admin_or_owner(member: discord.Member) -> bool:
     if member.guild and member.id == member.guild.owner_id:
@@ -28,7 +26,6 @@ def is_admin_or_owner(member: discord.Member) -> bool:
     allowed_roles = ["Admin", "Owner"]
     role_names = [role.name.lower() for role in member.roles]
     return any(allowed.lower() in role_names for allowed in allowed_roles)
-
 
 class Trending(commands.Cog):
     def __init__(self, bot):
@@ -51,7 +48,7 @@ class Trending(commands.Cog):
     @app_commands.describe(channel="Channel to send posts in", post_time="Time in 24h format (e.g. 09:00)")
     async def setupautotrending(self, interaction: discord.Interaction, channel: discord.TextChannel, post_time: str):
         if not is_admin_or_owner(interaction.user):
-            await interaction.response.send_message("❌ Only Admins or Owners can use this.", ephemeral=True)
+            await interaction.response.send_message("❌ Only the server owner or users with the 'Admin' or 'Owner' role can use this command.", ephemeral=True)
             return
 
         try:
@@ -66,7 +63,7 @@ class Trending(commands.Cog):
             "time": post_time
         }
         save_config(self.config)
-        await interaction.response.send_message(f"✅ Auto-trending set for **{post_time}** in {channel.mention}")
+        await interaction.response.send_message(f"✅ Auto-trending set to post daily at **{post_time}** in {channel.mention}")
 
     @tasks.loop(minutes=1)
     async def auto_post_trends(self):
@@ -89,17 +86,35 @@ class Trending(commands.Cog):
 
     async def generate_trend_embed(self, direction: str) -> discord.Embed:
         url = "https://www.futbin.com/24/playersData?sortby=updated_at&sort=desc"
-        headers = {"User-Agent": "Mozilla/5.0"}
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+            "Accept": "application/json, text/plain, */*",
+            "Referer": "https://www.futbin.com/",
+            "X-Requested-With": "XMLHttpRequest"
+        }
 
         try:
             response = requests.get(url, headers=headers)
+            if response.status_code != 200:
+                print(f"❌ FUTBIN responded with status: {response.status_code}")
+                return discord.Embed(
+                    title="FUTBIN Error",
+                    description=f"Status Code: {response.status_code}",
+                    color=discord.Color.red()
+                )
+
             data = response.json()
             print(f"✅ Pulled {len(data)} players from FUTBIN")
-        except Exception as e:
-            print(f"❌ Failed to fetch or parse data: {e}")
-            return discord.Embed(title="Error fetching data", description=str(e), color=discord.Color.red())
 
-        # TEMP: limit to first 500 players to reduce lag
+        except Exception as e:
+            print(f"❌ Failed to parse JSON: {e}")
+            print("Response content (first 500 chars):", response.text[:500])
+            return discord.Embed(
+                title="Error fetching data",
+                description="Could not parse FUTBIN response.",
+                color=discord.Color.red()
+            )
+
         data = data[:500]
 
         is_riser = direction == "riser"
@@ -122,6 +137,7 @@ class Trending(commands.Cog):
             rating = p.get("rating", "?")
             price = p.get("ps_price", "?")
             trend = p.get("prp", 0.0)
+
             booster = ""
             if is_riser and trend > 100:
                 booster = " 🚀"
@@ -142,7 +158,6 @@ class Trending(commands.Cog):
         embed.add_field(name="\u200b", value=right_column.strip(), inline=True)
 
         return embed
-
 
 async def setup(bot):
     await bot.add_cog(Trending(bot))
