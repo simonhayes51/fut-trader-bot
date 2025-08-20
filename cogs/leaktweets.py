@@ -28,7 +28,7 @@ class LeakTweets(commands.Cog):
             with open(CONFIG_FILE, "r") as f:
                 return json.load(f)
         except:
-            return {}
+            return []
 
     def save_config(self):
         with open(CONFIG_FILE, "w") as f:
@@ -62,49 +62,44 @@ class LeakTweets(commands.Cog):
 
     @tasks.loop(seconds=60)
     async def check_tweets(self):
-        for guild_id, accounts in self.config.items():
-            for acc in accounts:
-                username = acc['username']
-                channel_id = acc['channel_id']
-                ping = acc.get('ping')
-                include_keywords = acc.get('include_keywords', [])
-                exclude_keywords = acc.get('exclude_keywords', [])
+        for acc in self.config:
+            username = acc['username']
+            channel_id = acc['channel_id']
+            ping = acc.get('ping')
+            include_keywords = acc.get('include_keywords', [])
+            exclude_keywords = acc.get('exclude_keywords', [])
 
-                result = self.get_latest_tweet(username)
-                if not result:
-                    continue
+            result = self.get_latest_tweet(username)
+            if not result:
+                continue
 
-                tweet_id, tweet_text = result
+            tweet_id, tweet_text = result
 
-                if tweet_id == self.last_seen.get(username):
-                    continue
+            if tweet_id == self.last_seen.get(username):
+                continue
 
-                if include_keywords and not any(k.lower() in tweet_text.lower() for k in include_keywords):
-                    continue
+            if include_keywords and not any(k.lower() in tweet_text.lower() for k in include_keywords):
+                continue
 
-                if exclude_keywords and any(k.lower() in tweet_text.lower() for k in exclude_keywords):
-                    continue
+            if exclude_keywords and any(k.lower() in tweet_text.lower() for k in exclude_keywords):
+                continue
 
-                self.last_seen[username] = tweet_id
-                channel = self.bot.get_channel(channel_id)
-                if not channel:
-                    continue
+            self.last_seen[username] = tweet_id
+            channel = self.bot.get_channel(channel_id)
+            if not channel:
+                continue
 
-                msg = f"https://x.com/{username}/status/{tweet_id}\n\n{tweet_text}"
-                if ping:
-                    msg = f"<@&{ping}>\n{msg}"
+            msg = f"https://x.com/{username}/status/{tweet_id}\n\n{tweet_text}"
+            if ping:
+                msg = f"<@&{ping}>\n{msg}"
 
-                await channel.send(msg)
-                log.info(f"✅ Posted tweet from @{username} to {channel.name}")
+            await channel.send(msg)
+            log.info(f"✅ Posted tweet from @{username} to {channel.name}")
 
     @app_commands.command(name="addleak", description="🔔 Track an X account for leak tweets")
     @app_commands.describe(username="Twitter/X username", channel="Channel to post in", ping="Optional role ID to ping")
     async def addleak(self, interaction: discord.Interaction, username: str, channel: discord.TextChannel, ping: str = None):
-        guild_id = str(interaction.guild_id)
-        if guild_id not in self.config:
-            self.config[guild_id] = []
-
-        self.config[guild_id].append({
+        self.config.append({
             "username": username,
             "channel_id": channel.id,
             "ping": ping,
@@ -117,21 +112,17 @@ class LeakTweets(commands.Cog):
     @app_commands.command(name="removeleak", description="❌ Stop tracking an X account")
     @app_commands.describe(username="Twitter/X username")
     async def removeleak(self, interaction: discord.Interaction, username: str):
-        guild_id = str(interaction.guild_id)
-        if guild_id in self.config:
-            self.config[guild_id] = [acc for acc in self.config[guild_id] if acc['username'].lower() != username.lower()]
-            self.save_config()
+        self.config = [acc for acc in self.config if acc['username'].lower() != username.lower()]
+        self.save_config()
         await interaction.response.send_message(f"✅ Stopped tracking @{username}", ephemeral=True)
 
     @app_commands.command(name="listleaks", description="📄 List tracked accounts")
     async def listleaks(self, interaction: discord.Interaction):
-        guild_id = str(interaction.guild_id)
-        accounts = self.config.get(guild_id, [])
-        if not accounts:
+        if not self.config:
             await interaction.response.send_message("ℹ️ No accounts tracked.", ephemeral=True)
             return
         msg = "**Tracked Accounts:**\n"
-        for acc in accounts:
+        for acc in self.config:
             msg += f"- @{acc['username']} → <#{acc['channel_id']}>\n"
         await interaction.response.send_message(msg, ephemeral=True)
 
