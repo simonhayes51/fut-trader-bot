@@ -155,3 +155,6 @@ class PriceCheck(commands.Cog):
     async def player_autocomplete(self, interaction: discord.Interaction, current: str):
         matches = [p["name"] for p in self.players if current.lower() in p["name"].lower()]
         return [app_commands.Choice(name=name, value=name) for name in matches[:25]]
+
+async def setup(bot):
+    await bot.add_cog(PriceCheck(bot))
