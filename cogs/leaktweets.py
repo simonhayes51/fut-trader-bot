@@ -125,4 +125,4 @@ class LeakTweets(commands.Cog):
         await interaction.response.send_message(msg, ephemeral=True)
 
 async def setup(bot):
-    await bot.add_cog(LeakTweets
+    await bot.add_cog(LeakTweets(bot))
