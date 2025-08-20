@@ -9,7 +9,6 @@ from datetime import datetime
 
 CONFIG_FILE = "autotrend_config.json"
 
-
 def load_config():
     if not os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, "w") as f:
@@ -17,11 +16,9 @@ def load_config():
     with open(CONFIG_FILE, "r") as f:
         return json.load(f)
 
-
 def save_config(data):
     with open(CONFIG_FILE, "w") as f:
         json.dump(data, f, indent=2)
-
 
 def is_admin_or_owner(member: discord.Member) -> bool:
     if member.guild and member.id == member.guild.owner_id:
@@ -29,7 +26,6 @@ def is_admin_or_owner(member: discord.Member) -> bool:
     allowed_roles = ["Admin", "Owner"]
     role_names = [role.name.lower() for role in member.roles]
     return any(allowed.lower() in role_names for allowed in allowed_roles)
-
 
 class Trending(commands.Cog):
     def __init__(self, bot):
@@ -40,18 +36,18 @@ class Trending(commands.Cog):
     @app_commands.command(name="trending", description="📊 Show top trending players (Risers/Fallers)")
     @app_commands.describe(
         direction="Risers or Fallers",
-        period="Choose 24h or 4h trend data"
+        timeframe="🗓️ 24 hour or 🕓 4 hour trends"
     )
     @app_commands.choices(direction=[
         app_commands.Choice(name="📈 Risers", value="riser"),
         app_commands.Choice(name="📉 Fallers", value="faller")
-    ], period=[
-        app_commands.Choice(name="🗓️ 24h", value="day"),
-        app_commands.Choice(name="🕓 4h", value="4hour")
+    ], timeframe=[
+        app_commands.Choice(name="🗓️ 24 hour", value="24"),
+        app_commands.Choice(name="🕓 4 hour", value="4")
     ])
-    async def trending(self, interaction: discord.Interaction, direction: app_commands.Choice[str], period: app_commands.Choice[str]):
+    async def trending(self, interaction: discord.Interaction, direction: app_commands.Choice[str], timeframe: app_commands.Choice[str]):
         await interaction.response.defer()
-        embed = await self.generate_trend_embed(direction.value, period.value)
+        embed = await self.generate_trend_embed(direction.value, timeframe.value)
         await interaction.followup.send(embed=embed)
 
     @app_commands.command(name="setupautotrending", description="🛠️ Set daily auto-post channel and time (HH:MM 24hr)")
@@ -87,91 +83,98 @@ class Trending(commands.Cog):
                 continue
 
             for direction in ["riser", "faller"]:
-                embed = await self.generate_trend_embed(direction, "day")
+                embed = await self.generate_trend_embed(direction, "24")
                 await channel.send(embed=embed)
 
     @auto_post_trends.before_loop
     async def before_auto_post(self):
         await self.bot.wait_until_ready()
 
-    async def generate_trend_embed(self, direction: str, period: str) -> discord.Embed:
-        headers = {"User-Agent": "Mozilla/5.0"}
+    async def generate_trend_embed(self, direction: str, timeframe: str) -> discord.Embed:
         url = "https://www.futbin.com/market"
+        headers = {"User-Agent": "Mozilla/5.0"}
         response = requests.get(url, headers=headers)
-        if response.status_code != 200:
-            embed = discord.Embed(title="Error", description="Unable to fetch market data.", color=discord.Color.red())
-            return embed
-
         soup = BeautifulSoup(response.text, "html.parser")
-        target_class = "market-gain" if direction == "riser" else "market-losers"
-        timeframe_class = "day" if period == "day" else "four"
-        wrapper = soup.find("div", class_=f"{target_class} xs-column {timeframe_class}")
 
-        if not wrapper:
-            embed = discord.Embed(title="Error", description="No trend data available.", color=discord.Color.red())
-            return embed
+        # Target correct container
+        if timeframe == "24":
+            container = soup.select_one("div.market-players-wrapper.market-24-hours.m-row.space-between")
+            time_label = "🗓️"
+        else:
+            container = soup.select_one("div.market-players-wrapper.market-4-hours.m-row.space-between")
+            time_label = "🕓"
 
-        player_rows = wrapper.select("div.market-row")
-        players = []
+        if not container:
+            return discord.Embed(title="Error", description="Unable to fetch market data.", color=discord.Color.red())
 
-        for row in player_rows[:10]:
-            name_tag = row.select_one(".market-row-name")
-            price_tag = row.select_one(".market-row-price")
-            change_tag = row.select_one(".market-player-change")
+        player_cards = container.select("a.market-player-card")
+        all_players = []
 
-            if not name_tag or not price_tag or not change_tag:
+        for card in player_cards:
+            name_tag = card.select_one(".playercard-s-25-name")
+            rating_tag = card.select_one(".playercard-s-25-rating")
+            trend_tag = card.select_one(".market-player-change")
+
+            if not (name_tag and rating_tag and trend_tag):
                 continue
 
-            name = name_tag.text.strip()
-            price = price_tag.text.strip().replace("\n", " ").replace("  ", " ").strip()
-            trend_text = change_tag.text.strip().replace("%", "").replace(",", "")
-
             try:
-                trend = float(trend_text)
+                trend_val = float(trend_tag.text.strip().replace("%", "").replace("+", "").replace(",", ""))
             except ValueError:
                 continue
 
-            players.append({
-                "name": name,
-                "price": price,
-                "trend": trend
+            if direction == "riser" and trend_val <= 0:
+                continue
+            if direction == "faller" and trend_val >= 0:
+                continue
+
+            price_tag = card.select_one(".platform-price-wrapper-small")
+            price = price_tag.text.strip() if price_tag else "?"
+
+            all_players.append({
+                "name": name_tag.text.strip(),
+                "rating": rating_tag.text.strip(),
+                "trend": trend_val,
+                "price": price
             })
 
+        sorted_players = sorted(all_players, key=lambda x: x["trend"], reverse=(direction == "riser"))
+        top10 = sorted_players[:10]
+
         emoji = "📈" if direction == "riser" else "📉"
-        period_emoji = "🗓️" if period == "day" else "🕓"
-        title = f"{emoji} Top 10 {'Risers' if direction == 'riser' else 'Fallers'} (🎮 Console) {period_emoji}"
+        title = f"{emoji} Top 10 {'Risers' if direction == 'riser' else 'Fallers'} (🎮 Console)"
         embed = discord.Embed(title=title, color=discord.Color.green() if direction == "riser" else discord.Color.red())
         embed.set_footer(text="Data from FUTBIN | Prices are estimates")
 
         number_emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
-        left = ""
-        right = ""
+        left_column = ""
+        right_column = ""
 
-        for i, p in enumerate(players):
+        for i, p in enumerate(top10):
             booster = ""
-            trend_val = p["trend"]
-            if direction == "riser" and trend_val > 100:
+            if direction == "riser" and p["trend"] > 100:
                 booster = " 🚀"
-            elif direction == "faller" and trend_val < 50:
+            elif direction == "faller" and p["trend"] < -50:
                 booster = " ❄️"
 
-            sign = "" if direction == "riser" else "-"
+            trend_display = f"{p['trend']:.2f}%{booster}"
+            if direction == "faller":
+                trend_display = f"-{trend_display}"
 
             entry = (
-                f"**{number_emojis[i]} {p['name']}**\n"
+                f"**{number_emojis[i]} {p['name']} ({p['rating']})**\n"
                 f"💰 {p['price']}\n"
-                f"{emoji} {sign}{trend_val:.2f}%{booster}\n\n"
+                f"{emoji} {trend_display}\n\n"
             )
-
             if i < 5:
-                left += entry
+                left_column += entry
             else:
-                right += entry
+                right_column += entry
 
-        embed.add_field(name="\u200b", value=left, inline=True)
-        embed.add_field(name="\u200b", value=right, inline=True)
+        embed.add_field(name="\u200b", value=left_column.strip(), inline=True)
+        embed.add_field(name="\u200b", value=right_column.strip(), inline=True)
+
         return embed
-
 
 async def setup(bot):
     await bot.add_cog(Trending(bot))
