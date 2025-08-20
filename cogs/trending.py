@@ -85,71 +85,83 @@ class Trending(commands.Cog):
         await self.bot.wait_until_ready()
 
     async def generate_trend_embed(self, direction: str) -> discord.Embed:
-        url = "https://www.futbin.com/market"
+        url = "https://www.futbin.com/market?interval=4"
         headers = {"User-Agent": "Mozilla/5.0"}
         response = requests.get(url, headers=headers)
         soup = BeautifulSoup(response.text, "html.parser")
 
         if direction == "riser":
-            section = soup.find("div", class_="market-gain xs-column active")
-            emoji = "📈"
-            boost_threshold = 100
-            boost_emoji = "🚀"
-            embed_color = discord.Color.green()
-            title = "📈 Top 10 Risers (🎮 Console)"
+            container = soup.select_one("div.market-gain.xs-column.active")
         else:
-            section = soup.find("div", class_="market-losers xs-column")
-            emoji = "📉"
-            boost_threshold = 50
-            boost_emoji = "❄️"
-            embed_color = discord.Color.red()
-            title = "📉 Top 10 Fallers (🎮 Console)"
+            container = soup.select_one("div.market-losers.xs-column")
 
-        players = []
-        seen = set()
+        cards = container.select("a.market-player-card") if container else []
+        all_players = []
 
-        if section:
-            cards = section.select("a.market-player-card")
-            for card in cards:
-                try:
-                    name = card.select_one(".playercard-s-25-name").text.strip()
-                    rating = card.select_one(".playercard-s-25-rating").text.strip()
-                    trend_tag = card.select_one(".market-player-change")
-                    price_tag = card.select_one(".platform-price-wrapper-small")
+        for card in cards:
+            trend_tag = card.select_one(".market-player-change")
+            if not trend_tag or "%" not in trend_tag.text:
+                continue
+            trend_text = trend_tag.text.strip().replace("%", "").replace("+", "").replace(",", "")
+            try:
+                trend = float(trend_text)
+            except ValueError:
+                continue
 
-                    key = f"{name}-{rating}"
-                    if key in seen:
-                        continue
-                    seen.add(key)
+            if (direction == "riser" and trend <= 0) or (direction == "faller" and trend >= 0):
+                continue
 
-                    raw_trend = trend_tag.text.strip().replace("▲", "").replace("▼", "").replace("%", "").replace(",", "")
-                    trend_val = float(raw_trend)
-                    booster = boost_emoji if trend_val > boost_threshold else ""
-                    trend = f"{trend_val:.2f}% {booster}".strip()
+            name_tag = card.select_one(".playercard-s-25-name")
+            rating_tag = card.select_one(".playercard-s-25-rating")
+            if not name_tag or not rating_tag:
+                continue
+            name = name_tag.text.strip()
+            rating = rating_tag.text.strip()
 
-                    price = price_tag.text.strip() if price_tag else "?"
+            price_tag = card.select_one(".platform-price-wrapper-small")
+            price = price_tag.text.strip() if price_tag else "?"
 
-                    players.append({
-                        "name": name,
-                        "rating": rating,
-                        "trend": trend,
-                        "price": price
-                    })
-                except Exception:
-                    continue
+            all_players.append({
+                "name": name,
+                "rating": rating,
+                "trend": trend,
+                "price": price
+            })
 
-        top10 = players[:10]
-        embed = discord.Embed(title=title, color=embed_color)
+        sorted_players = sorted(all_players, key=lambda x: x["trend"], reverse=(direction == "riser"))
+        top10 = sorted_players[:10]
+
+        emoji = "📈" if direction == "riser" else "📉"
+        title = f"{emoji} Top 10 {'Risers' if direction == 'riser' else 'Fallers'} (🎮 Console)"
+        embed = discord.Embed(title=title, color=discord.Color.green() if direction == "riser" else discord.Color.red())
         embed.set_footer(text="Data from FUTBIN | Prices are estimates")
 
-        for i, p in enumerate(top10, start=1):
-            embed.add_field(
-                name=f"{i}️⃣ {p['name']} ({p['rating']})",
-                value=f"💰 {p['price']}\n{emoji} {p['trend']}",
-                inline=False
+        number_emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+        left = ""
+        right = ""
+
+        for i, p in enumerate(top10):
+            booster = ""
+            if direction == "riser" and p["trend"] > 100:
+                booster = " 🚀"
+            elif direction == "faller" and p["trend"] < -50:
+                booster = " ❄️"
+
+            entry = (
+                f"{number_emojis[i]} {p['name']} ({p['rating']})\n"
+                f"💰 {p['price']}\n"
+                f"{emoji} {p['trend']:.2f}%{booster}\n\n"
             )
+            if i < 5:
+                left += entry
+            else:
+                right += entry
+
+        embed.add_field(name="\u200b", value=left, inline=True)
+        embed.add_field(name="\u200b", value=right, inline=True)
 
         return embed
+
 
 async def setup(bot):
     await bot.add_cog(Trending(bot))
