@@ -30,7 +30,7 @@ COGS = [
     "cogs.setupsniping",
     "cogs.submitfilter",
     "cogs.trending",
-    "cogs.postatrade"
+    "cogs.postatrade",
     "cogs.portfolio"
 ]
 
