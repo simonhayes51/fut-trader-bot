@@ -1,11 +1,14 @@
+# cogs/trending.py
+
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 from discord import app_commands
 from bs4 import BeautifulSoup
 import aiohttp
 import json
 import os
 import logging
+from datetime import datetime
 
 CONFIG_FILE = "autotrend_config.json"
 logging.basicConfig(level=logging.INFO)
@@ -18,11 +21,16 @@ def load_config():
     with open(CONFIG_FILE, "r") as f:
         return json.load(f)
 
+def save_config(data):
+    with open(CONFIG_FILE, "w") as f:
+        json.dump(data, f, indent=2)
+
 class Trending(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.config = load_config()
         self.session = None
+        self.config = load_config()
+        self.auto_post_trends.start()
 
     async def cog_load(self):
         self.session = aiohttp.ClientSession(
@@ -33,6 +41,7 @@ class Trending(commands.Cog):
     async def cog_unload(self):
         if self.session:
             await self.session.close()
+        self.auto_post_trends.cancel()
 
     async def fetch_url(self, url: str) -> str:
         if not self.session:
@@ -97,6 +106,7 @@ class Trending(commands.Cog):
 
     async def generate_trend_embed(self, direction, timeframe):
         number_emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+        left, right = "", ""
 
         if direction == "smart":
             short = await self.fetch_trending_data("4h")
@@ -108,53 +118,54 @@ class Trending(commands.Cog):
                 if key in map_4h and ((map_4h[key] > 0 > p["trend"]) or (map_4h[key] < 0 < p["trend"])):
                     price = await self.get_ps_price(p["url"], p["rating"])
                     p["price"] = price or "N/A"
-                    p["trend"] = f"🔁 4h: {map_4h[key]:+.1f}%\n🔁 24h: {p['trend']:+.1f}%"
+                    p["trend_4h"] = map_4h[key]
                     smart.append(p)
             players = smart[:10]
-            emoji = "🧠"
-            title = f"{emoji} Smart Movers – Trend flipped from 4h to 24h"
+            title = "🧠 Smart Movers – 4h vs 24h"
+            for i, p in enumerate(players):
+                line = (
+                    f"**{number_emojis[i]} {p['name']} ({p['rating']})**\n"
+                    f"💰 {p['price']}\n"
+                    f"🔁 4h: {p['trend_4h']:+.1f}%\n"
+                    f"🔁 24h: {p['trend']:+.1f}%\n\n"
+                )
+                if i < 5:
+                    left += line
+                else:
+                    right += line
         else:
             raw = await self.fetch_trending_data(timeframe)
             emoji = "📈" if direction == "riser" else "📉"
             tf_emoji = "🗓️" if timeframe == "24h" else "🕓"
-            trend_icon = emoji
-            title = f"{emoji} Top 10 {'Risers' if direction == 'riser' else 'Fallers'} (🎮 Console) – {tf_emoji} {timeframe}"
+            title = f"{emoji} Top 10 {'Risers' if direction == 'riser' else 'Fallers'} – {tf_emoji} {timeframe}"
             players = []
             for p in raw:
                 if (p["trend"] > 0 if direction == "riser" else p["trend"] < 0):
                     price = await self.get_ps_price(p["url"], p["rating"])
                     p["price"] = price or "N/A"
-                    p["trend"] = f"{trend_icon} {p['trend']:+.2f}%"
                     players.append(p)
                 if len(players) == 10:
                     break
-
-        if not players:
-            return None
+            for i, p in enumerate(players):
+                trend_emoji = "📈" if direction == "riser" else "📉"
+                line = (
+                    f"**{number_emojis[i]} {p['name']} ({p['rating']})**\n"
+                    f"💰 {p['price']}\n"
+                    f"{trend_emoji} {p['trend']:+.2f}%\n\n"
+                )
+                if direction == "faller":
+                    left += line
+                else:
+                    right += line
 
         embed = discord.Embed(title=title, color=discord.Color.green() if direction == "riser" else discord.Color.red())
-        embed.set_footer(text="Data from FUTBIN | Prices are estimates")
-
-        left = ""
-        right = ""
-        for i, p in enumerate(players):
-            line = (
-                f"**{number_emojis[i]} {p['name']} ({p['rating']})**\n"
-                f"💰 {p.get('price','N/A')}\n"
-                f"{p['trend']}\n\n"
-            )
-            if i < 5:
-                left += line
-            else:
-                right += line
-
-        embed.add_field(name="\u200b", value=left.strip(), inline=True)
-        embed.add_field(name="\u200b", value=right.strip(), inline=True)
-
+        embed.set_footer(text="Data from FUTBIN | Console only")
+        embed.add_field(name="\u200b", value=left or "No data", inline=True)
+        embed.add_field(name="\u200b", value=right or "No data", inline=True)
         return embed
 
     @app_commands.command(name="trending", description="📊 Show trending players")
-    @app_commands.describe(direction="Select trend type", timeframe="Select timeframe")
+    @app_commands.describe(direction="Risers, Fallers, or Smart Movers", timeframe="Timeframe to compare")
     @app_commands.choices(
         direction=[
             app_commands.Choice(name="📈 Risers", value="riser"),
@@ -169,12 +180,9 @@ class Trending(commands.Cog):
     async def trending(self, interaction: discord.Interaction, direction: app_commands.Choice[str], timeframe: app_commands.Choice[str]):
         await interaction.response.defer()
         embed = await self.generate_trend_embed(direction.value, timeframe.value)
-        if embed:
-            view = discord.ui.View(timeout=None)
-            view.add_item(discord.ui.Button(label="🔁 Refresh", style=discord.ButtonStyle.primary, custom_id=f"refresh_{direction.value}_{timeframe.value}"))
-            await interaction.followup.send(embed=embed, view=view)
-        else:
-            await interaction.followup.send("⚠️ Could not generate embed.")
+        view = discord.ui.View(timeout=None)
+        view.add_item(discord.ui.Button(label="🔁 Refresh", style=discord.ButtonStyle.primary, custom_id=f"refresh_{direction.value}_{timeframe.value}"))
+        await interaction.followup.send(embed=embed, view=view)
 
     @commands.Cog.listener()
     async def on_interaction(self, interaction: discord.Interaction):
@@ -186,8 +194,47 @@ class Trending(commands.Cog):
                 embed = await self.generate_trend_embed(direction, timeframe)
                 if embed:
                     await interaction.edit_original_response(embed=embed)
-                else:
-                    await interaction.followup.send("⚠️ Refresh failed.", ephemeral=True)
+
+    @tasks.loop(minutes=1)
+    async def auto_post_trends(self):
+        now = datetime.utcnow().strftime("%H:%M")
+        for guild_id, conf in self.config.items():
+            if now != conf.get("start_time", "00:00"):
+                continue
+            if not conf.get("enabled", False):
+                continue
+            channel_id = conf.get("channel_id")
+            frequency = int(conf.get("frequency", 24))
+            last = conf.get("last_post")
+            if last and last == now:
+                continue  # Already posted this hour
+            try:
+                channel = self.bot.get_channel(channel_id)
+                if channel:
+                    fallers = await self.generate_trend_embed("faller", "24h")
+                    risers = await self.generate_trend_embed("riser", "24h")
+                    ping = f"<@&{conf['ping_role']}>" if "ping_role" in conf else ""
+                    await channel.send(content=ping or None, embed=fallers)
+                    await channel.send(embed=risers)
+                    self.config[guild_id]["last_post"] = now
+                    save_config(self.config)
+            except Exception as e:
+                logger.error(f"[AutoPost] Error in guild {guild_id}: {e}")
+
+    @app_commands.command(name="setupautotrending", description="⚙️ Configure auto-posting of trends")
+    @app_commands.describe(channel="Where to post", frequency="How often (hours)", start_time="When to start (HH:MM UTC)", ping_role="Optional ping role")
+    async def setupautotrending(self, interaction: discord.Interaction, channel: discord.TextChannel, frequency: int, start_time: str, ping_role: discord.Role = None):
+        if not interaction.user.guild_permissions.administrator:
+            return await interaction.response.send_message("❌ You need admin permissions.", ephemeral=True)
+        self.config[str(interaction.guild.id)] = {
+            "channel_id": channel.id,
+            "frequency": frequency,
+            "start_time": start_time,
+            "enabled": True,
+            "ping_role": ping_role.id if ping_role else None
+        }
+        save_config(self.config)
+        await interaction.response.send_message("✅ Auto trending setup complete.")
 
 async def setup(bot):
     await bot.add_cog(Trending(bot))
