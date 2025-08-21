@@ -172,7 +172,7 @@ class PortfolioSlash(commands.Cog):
 
         fig, ax = plt.subplots()
         ax.plot(timestamps, profits, marker='o', color='lime')
-        ax.set_title("\ud83d\udcc8 Coin Balance Over Time")
+        ax.set_title("Coin Balance Over Time")
         ax.set_ylabel("Coins")
         ax.set_xlabel("Time")
         ax.grid(True)
