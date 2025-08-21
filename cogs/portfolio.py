@@ -1,18 +1,20 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
+import json
+import os
 import sqlite3
 from datetime import datetime
 import matplotlib.pyplot as plt
-import os
 
 DB_FILE = "portfolio.db"
+PLAYERS_FILE = "players_temp.json"
 
-# Set up database
+# Ensure DB exists and is structured
 conn = sqlite3.connect(DB_FILE)
 c = conn.cursor()
 c.execute('''CREATE TABLE IF NOT EXISTS portfolio (
-    user_id TEXT,
+    user_id TEXT PRIMARY KEY,
     starting_balance INTEGER DEFAULT 0
 )''')
 c.execute('''CREATE TABLE IF NOT EXISTS trades (
@@ -32,9 +34,23 @@ c.execute('''CREATE TABLE IF NOT EXISTS trades (
 conn.commit()
 conn.close()
 
-class Portfolio(commands.Cog):
+# Load players
+try:
+    with open(PLAYERS_FILE, "r", encoding="utf-8") as f:
+        PLAYERS = json.load(f)
+except:
+    PLAYERS = []
+
+class PortfolioSlash(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+
+    async def player_autocomplete(self, interaction: discord.Interaction, current: str):
+        results = [
+            app_commands.Choice(name=f"{p['name']} ({p['rating']})", value=p["name"])
+            for p in PLAYERS if current.lower() in p["name"].lower()
+        ]
+        return results[:25]
 
     @app_commands.command(name="setcoins", description="💰 Set your starting coin balance")
     async def setcoins(self, interaction: discord.Interaction, amount: int):
@@ -52,9 +68,9 @@ class Portfolio(commands.Cog):
         version="Card version (e.g. Gold Rare, TOTW)",
         buy="Buy price",
         sell="Sell price",
-        quantity="How many you bought",
-        platform="Console platform",
-        tag="Tag or type (e.g. fodder)",
+        quantity="Quantity bought",
+        platform="Platform used",
+        tag="Optional tag/category",
         notes="Optional notes"
     )
     @app_commands.choices(platform=[
@@ -62,6 +78,7 @@ class Portfolio(commands.Cog):
         app_commands.Choice(name="Xbox", value="XBOX"),
         app_commands.Choice(name="PC", value="PC")
     ])
+    @app_commands.autocomplete(player=player_autocomplete)
     async def logtrade(self, interaction: discord.Interaction, player: str, version: str, buy: int, sell: int, quantity: int, platform: app_commands.Choice[str], tag: str = None, notes: str = None):
         user_id = str(interaction.user.id)
         ea_tax = round(sell * 0.05 * quantity)
@@ -70,10 +87,8 @@ class Portfolio(commands.Cog):
 
         conn = sqlite3.connect(DB_FILE)
         c = conn.cursor()
-        c.execute("""
-            INSERT INTO trades (user_id, player, version, buy, sell, quantity, platform, tag, notes, ea_tax, profit, timestamp)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (user_id, player, version, buy, sell, quantity, platform.value, tag, notes, ea_tax, profit, timestamp))
+        c.execute("INSERT INTO trades VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                  (user_id, player, version, buy, sell, quantity, platform.value, tag, notes, ea_tax, profit, timestamp))
         conn.commit()
         conn.close()
 
@@ -84,47 +99,80 @@ class Portfolio(commands.Cog):
         user_id = str(interaction.user.id)
         conn = sqlite3.connect(DB_FILE)
         c = conn.cursor()
-        c.execute("SELECT starting_balance FROM portfolio WHERE user_id = ?", (user_id,))
+        c.execute("SELECT starting_balance FROM portfolio WHERE user_id=?", (user_id,))
         row = c.fetchone()
         starting_balance = row[0] if row else 0
-        c.execute("SELECT SUM(profit), SUM(ea_tax), COUNT(*) FROM trades WHERE user_id = ?", (user_id,))
-        profit, tax, count = c.fetchone()
+        c.execute("SELECT SUM(profit), SUM(ea_tax), COUNT(*) FROM trades WHERE user_id=?", (user_id,))
+        total_profit, total_tax, count = c.fetchone()
         conn.close()
 
-        profit = profit or 0
-        tax = tax or 0
-        count = count or 0
-        current_balance = starting_balance + profit
+        current_balance = (starting_balance or 0) + (total_profit or 0)
 
-        embed = discord.Embed(title="📊 Your Trading Portfolio", description=f"Tracked for <@{interaction.user.id}>", color=0x2ecc71)
-        embed.add_field(name="💰 Net Profit", value=f"`{profit:,}`", inline=True)
-        embed.add_field(name="💸 EA Tax Paid", value=f"`{tax:,}`", inline=True)
+        embed = discord.Embed(title="📊 Your Trading Portfolio", color=0x2ecc71)
+        embed.add_field(name="💰 Net Profit", value=f"`{total_profit or 0:,}`", inline=True)
+        embed.add_field(name="💸 EA Tax Paid", value=f"`{total_tax or 0:,}`", inline=True)
         embed.add_field(name="🛆 Trades Logged", value=f"`{count}`", inline=True)
         embed.add_field(name="🏦 Current Balance", value=f"`{current_balance:,}`", inline=True)
 
         await interaction.response.send_message(embed=embed)
 
-    @app_commands.command(name="tradehistory", description="📄 View your latest trades")
-    async def trade_history(self, interaction: discord.Interaction):
+    @app_commands.command(name="traderprofile", description="🧳 View your trader stats")
+    async def trader_profile(self, interaction: discord.Interaction):
         user_id = str(interaction.user.id)
         conn = sqlite3.connect(DB_FILE)
         c = conn.cursor()
-        c.execute("SELECT player, sell, quantity, profit, timestamp FROM trades WHERE user_id = ? ORDER BY timestamp DESC LIMIT 10", (user_id,))
+        c.execute("SELECT * FROM trades WHERE user_id=?", (user_id,))
         trades = c.fetchall()
+
+        total_profit = sum(t[10] for t in trades)
+        win_count = len([t for t in trades if t[10] > 0])
+        win_rate = (win_count / len(trades) * 100) if trades else 0
+
+        # Most used tag
+        tag_count = {}
+        for t in trades:
+            tag = t[7] or "N/A"
+            tag_count[tag] = tag_count.get(tag, 0) + 1
+        most_used_tag = max(tag_count.items(), key=lambda x: x[1])[0] if tag_count else "N/A"
+
+        best_trade = max(trades, key=lambda t: t[10], default=None)
+        embed = discord.Embed(title="🧳 Your Trader Profile", color=0x7289da)
+        embed.add_field(name="💰 Total Profit", value=f"`{total_profit:,}`", inline=True)
+        embed.add_field(name="🛆 Trades Logged", value=f"`{len(trades)}`", inline=True)
+        embed.add_field(name="📈 Win Rate", value=f"`{win_rate:.1f}%`", inline=True)
+        embed.add_field(name="🏛️ Most Used Tag", value=f"`{most_used_tag}`", inline=True)
+
+        if best_trade:
+            embed.add_field(name="🏆 Best Trade", value=f"{best_trade[1]} (+{best_trade[10]:,})", inline=False)
+
+        await interaction.response.send_message(embed=embed)
+
+    @app_commands.command(name="saleshistory", description="📄 View a log of your recent sales")
+    async def sales_history(self, interaction: discord.Interaction):
+        user_id = str(interaction.user.id)
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        c.execute("SELECT player, quantity, sell, profit, timestamp FROM trades WHERE user_id=? ORDER BY timestamp DESC LIMIT 10", (user_id,))
+        rows = c.fetchall()
         conn.close()
 
-        if not trades:
-            await interaction.response.send_message("📭 No trades found.", ephemeral=True)
+        if not rows:
+            await interaction.response.send_message("📭 You haven’t logged any trades yet.", ephemeral=True)
             return
 
         embed = discord.Embed(title="📄 Recent Sales History", color=0x00b0f4)
-        for i, t in enumerate(trades, 1):
-            date = datetime.fromisoformat(t[4]).strftime("%d %b @ %H:%M")
+        for i, row in enumerate(rows, 1):
+            date = datetime.fromisoformat(row[4]).strftime("%d %b @ %H:%M")
             embed.add_field(
-                name=f"{i}. {t[0]} x{t[2]}",
-                value=f"💸 Sold for: `{t[1] * t[2]:,}`\n🟢 Profit: `{t[3]:,}`\n🕒 {date}",
+                name=f"{i}. {row[0]} x{row[1]}",
+                value=(
+                    f"💸 Sold for: `{row[2] * row[1]:,}`\n"
+                    f"🟢 Profit: `{row[3]:,}`\n"
+                    f"🕒 {date}"
+                ),
                 inline=False
             )
+
         await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="profitgraph", description="📈 Visualise your profit over time")
@@ -132,41 +180,38 @@ class Portfolio(commands.Cog):
         user_id = str(interaction.user.id)
         conn = sqlite3.connect(DB_FILE)
         c = conn.cursor()
-        c.execute("SELECT starting_balance FROM portfolio WHERE user_id = ?", (user_id,))
+        c.execute("SELECT starting_balance FROM portfolio WHERE user_id=?", (user_id,))
         row = c.fetchone()
-        starting_balance = row[0] if row else 0
-
-        c.execute("SELECT timestamp, profit FROM trades WHERE user_id = ? ORDER BY timestamp", (user_id,))
+        start = row[0] if row else 0
+        c.execute("SELECT profit, timestamp FROM trades WHERE user_id=? ORDER BY timestamp", (user_id,))
         rows = c.fetchall()
         conn.close()
 
         if not rows:
-            await interaction.response.send_message("📅 No trades to plot.", ephemeral=True)
+            await interaction.response.send_message("📅 No trades found to generate graph.", ephemeral=True)
             return
 
-        timestamps = []
-        balances = []
-        balance = starting_balance
+        timestamps = [datetime.fromisoformat(r[1]) for r in rows]
+        profits = []
+        running = start
+        for r in rows:
+            running += r[0]
+            profits.append(running)
 
-        for t, p in rows:
-            balance += p
-            timestamps.append(datetime.fromisoformat(t))
-            balances.append(balance)
-
-        graph_path = f"{user_id}_profit_graph.png"
         fig, ax = plt.subplots()
-        ax.plot(timestamps, balances, marker='o', color='lime')
+        ax.plot(timestamps, profits, marker='o', color='lime')
         ax.set_title("Coin Balance Over Time")
         ax.set_ylabel("Coins")
         ax.set_xlabel("Time")
         ax.grid(True)
         fig.autofmt_xdate()
         plt.tight_layout()
-        plt.savefig(graph_path)
+        path = f"{user_id}_graph.png"
+        plt.savefig(path)
         plt.close(fig)
 
-        file = discord.File(graph_path)
+        file = discord.File(path, filename="profit_graph.png")
         await interaction.response.send_message(file=file)
 
 async def setup(bot):
-    await bot.add_cog(Portfolio(bot))
+    await bot.add_cog(PortfolioSlash(bot))
