@@ -144,8 +144,7 @@ class Trending(commands.Cog):
             trend = p["trend"] if isinstance(p["trend"], str) else f"{p['trend']:+.1f}%"
             embed.add_field(
                 name=f"{number_emojis[idx]} {p['name']} ({p['rating']})",
-                value=f"ð° {price}
-{emoji} {trend}",
+                value=f"💰 {price}\n{emoji} {trend}",
                 inline=True
             )
         return embed
