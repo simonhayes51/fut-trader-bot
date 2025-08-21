@@ -160,31 +160,68 @@ class PortfolioSlash(commands.Cog):
             await interaction.response.send_message("📅 No trades found to generate graph.", ephemeral=True)
             return
 
-        trades.sort(key=lambda x: x["timestamp"])
-        profits = []
-        balance = data["starting_balance"]
-        timestamps = []
+        try:
+            trades.sort(key=lambda x: x["timestamp"])
+            profits = []
+            balance = data["starting_balance"]
+            timestamps = []
 
-        for t in trades:
-            balance += t["profit"]
-            profits.append(balance)
-            timestamps.append(datetime.fromisoformat(t["timestamp"]))
+            for t in trades:
+                try:
+                    balance += t["profit"]
+                    profits.append(balance)
+                    timestamps.append(datetime.fromisoformat(t["timestamp"]))
+                except Exception as e:
+                    print(f"[⚠️ Skipping bad trade] {e}")
 
-        fig, ax = plt.subplots()
-        ax.plot(timestamps, profits, marker='o', color='lime')
-        ax.set_title("Coin Balance Over Time")
-        ax.set_ylabel("Coins")
-        ax.set_xlabel("Time")
-        ax.grid(True)
-        fig.autofmt_xdate()
+            if not timestamps or not profits:
+                await interaction.response.send_message("❌ Could not generate graph due to missing or invalid data.", ephemeral=True)
+                return
 
-        graph_path = f"{PORTFOLIO_DATA_PATH}/{user_id}_profit_graph.png"
-        plt.tight_layout()
-        plt.savefig(graph_path)
-        plt.close(fig)
+            fig, ax = plt.subplots()
+            ax.plot(timestamps, profits, marker='o', color='lime')
+            ax.set_title("Coin Balance Over Time")
+            ax.set_ylabel("Coins")
+            ax.set_xlabel("Time")
+            ax.grid(True)
+            fig.autofmt_xdate()
 
-        file = discord.File(graph_path, filename="profit_graph.png")
-        await interaction.response.send_message(file=file)
+            graph_path = f"{PORTFOLIO_DATA_PATH}/{user_id}_profit_graph.png"
+            plt.tight_layout()
+            plt.savefig(graph_path)
+            plt.close(fig)
+
+            file = discord.File(graph_path, filename="profit_graph.png")
+            await interaction.response.send_message(file=file)
+
+        except Exception as e:
+            print(f"[❌ profit_graph error] {e}")
+            await interaction.response.send_message("❌ Something went wrong while generating the graph.", ephemeral=True)
+
+    @app_commands.command(name="saleshistory", description="📄 View a log of your recent sales")
+    async def sales_history(self, interaction: discord.Interaction):
+        user_id = str(interaction.user.id)
+        data = load_user_data(user_id)
+        trades = sorted(data["trades"], key=lambda t: t["timestamp"], reverse=True)[:10]
+
+        if not trades:
+            await interaction.response.send_message("📭 You haven’t logged any trades yet.", ephemeral=True)
+            return
+
+        embed = discord.Embed(title="📄 Recent Sales History", color=0x00b0f4)
+        for i, t in enumerate(trades, 1):
+            date = datetime.fromisoformat(t["timestamp"]).strftime("%d %b @ %H:%M")
+            embed.add_field(
+                name=f"{i}. {t['player']} x{t['quantity']}",
+                value=(
+                    f"💸 Sold for: `{t['sell'] * t['quantity']:,}`\n"
+                    f"🟢 Profit: `{t['profit']:,}`\n"
+                    f"🕒 {date}"
+                ),
+                inline=False
+            )
+
+        await interaction.response.send_message(embed=embed)
 
 async def setup(bot):
     await bot.add_cog(PortfolioSlash(bot))
