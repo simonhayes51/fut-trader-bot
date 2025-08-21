@@ -116,7 +116,7 @@ class PortfolioSlash(commands.Cog):
         embed = discord.Embed(title="📊 Your Trading Portfolio", color=0x2ecc71)
         embed.add_field(name="💰 Net Profit", value=f"`{total_profit:,}`", inline=True)
         embed.add_field(name="💸 EA Tax Paid", value=f"`{total_tax:,}`", inline=True)
-        embed.add_field(name="🗖️ Trades Logged", value=f"`{count}`", inline=True)
+        embed.add_field(name="🖖️ Trades Logged", value=f"`{count}`", inline=True)
         embed.add_field(name="🏦 Current Balance", value=f"`{current_balance:,}`", inline=True)
 
         await interaction.response.send_message(embed=embed)
@@ -149,6 +149,68 @@ class PortfolioSlash(commands.Cog):
             )
 
         await interaction.response.send_message(embed=embed)
+
+    @app_commands.command(name="traderprofile", description="🧳️ View your trader stats")
+    async def trader_profile(self, interaction: discord.Interaction):
+        user_id = str(interaction.user.id)
+        async with self.pool.acquire() as conn:
+            trades = await conn.fetch("SELECT * FROM trades WHERE user_id=$1", user_id)
+
+        total_profit = sum(t["profit"] for t in trades)
+        win_count = len([t for t in trades if t["profit"] > 0])
+        win_rate = (win_count / len(trades) * 100) if trades else 0
+
+        tag_count = {}
+        for t in trades:
+            tag = t["tag"] or "N/A"
+            tag_count[tag] = tag_count.get(tag, 0) + 1
+        most_used_tag = max(tag_count.items(), key=lambda x: x[1])[0] if tag_count else "N/A"
+
+        best_trade = max(trades, key=lambda t: t["profit"], default=None)
+        embed = discord.Embed(title="🧳️ Your Trader Profile", color=0x7289da)
+        embed.add_field(name="💰 Total Profit", value=f"`{total_profit:,}`", inline=True)
+        embed.add_field(name="🖖️ Trades Logged", value=f"`{len(trades)}`", inline=True)
+        embed.add_field(name="📈 Win Rate", value=f"`{win_rate:.1f}%`", inline=True)
+        embed.add_field(name="🏮 Most Used Tag", value=f"`{most_used_tag}`", inline=True)
+
+        if best_trade:
+            embed.add_field(name="🏆 Best Trade", value=f"{best_trade['player']} (+{best_trade['profit']:,})", inline=False)
+
+        await interaction.response.send_message(embed=embed)
+
+    @app_commands.command(name="profitgraph", description="📈 Visualise your profit over time")
+    async def profit_graph(self, interaction: discord.Interaction):
+        user_id = str(interaction.user.id)
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow("SELECT starting_balance FROM portfolio WHERE user_id=$1", user_id)
+            start = row["starting_balance"] if row else 0
+            rows = await conn.fetch("SELECT profit, timestamp FROM trades WHERE user_id=$1 ORDER BY timestamp", user_id)
+
+        if not rows:
+            await interaction.response.send_message("📅 No trades found to generate graph.", ephemeral=True)
+            return
+
+        timestamps = [datetime.fromisoformat(r["timestamp"]) for r in rows]
+        profits = []
+        running = start
+        for r in rows:
+            running += r["profit"]
+            profits.append(running)
+
+        fig, ax = plt.subplots()
+        ax.plot(timestamps, profits, marker='o', color='lime')
+        ax.set_title("Coin Balance Over Time")
+        ax.set_ylabel("Coins")
+        ax.set_xlabel("Time")
+        ax.grid(True)
+        fig.autofmt_xdate()
+        plt.tight_layout()
+        path = f"{user_id}_graph.png"
+        plt.savefig(path)
+        plt.close(fig)
+
+        file = discord.File(path, filename="profit_graph.png")
+        await interaction.response.send_message(file=file)
 
 async def setup(bot):
     await bot.add_cog(PortfolioSlash(bot))
