@@ -121,7 +121,7 @@ class Trending(commands.Cog):
                 if (p["trend"] > 0 if direction == "riser" else p["trend"] < 0):
                     price = await self.get_ps_price(p["url"], p["rating"])
                     p["price"] = price or "N/A"
-                    p["trend"] = f"{p['trend']:+.2f}% 🚀"
+                    p["trend"] = f"{p['trend']:+.2f}%"
                     players.append(p)
                 if len(players) == 10:
                     break
@@ -135,11 +135,14 @@ class Trending(commands.Cog):
         left = ""
         right = ""
         for i, p in enumerate(players):
-            line = f"**{i+1}. {p['name']} ({p['rating']})**\n💰 {p.get('price','N/A')}\n{p['trend']}\n\n"
+            line = f"**{i+1}. {p['name']} ({p['rating']})**\n💰 {p.get('price','N/A')}\n{p['trend']} 🚀\n\n"
             if i < 5:
                 left += line
             else:
                 right += line
+
+        embed.add_field(name="⬅️", value=left.strip(), inline=True)
+        embed.add_field(name="➡️", value=right.strip(), inline=True)
 
         return embed
 
