@@ -105,63 +105,87 @@ class Trending(commands.Cog):
         return players
 
     async def generate_trend_embed(self, direction, timeframe):
+    if direction == "smart":
+        short = await self.fetch_trending_data("4h")
+        long = await self.fetch_trending_data("24h")
+        map_4h = {(p["name"], p["rating"]): p["trend"] for p in short}
+        smart = []
+        for p in long:
+            key = (p["name"], p["rating"])
+            if key in map_4h and ((map_4h[key] > 0 > p["trend"]) or (map_4h[key] < 0 < p["trend"])):
+                price = await self.get_ps_price(p["url"], p["rating"])
+                p["trend_4h"] = map_4h[key]
+                p["trend_24h"] = p["trend"]
+                p["price"] = price or "N/A"
+                smart.append(p)
+        players = smart[:10]
+        title = f"🧠 Smart Movers – Trend flipped from 4h to 24h"
+        embed = discord.Embed(title=title, color=discord.Color.red())
+        embed.set_footer(text="Data from FUTBIN | Prices are estimates")
         number_emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
-        left, right = "", ""
-
-        if direction == "smart":
-            short = await self.fetch_trending_data("4h")
-            long = await self.fetch_trending_data("24h")
-            map_4h = {(p["name"], p["rating"]): p["trend"] for p in short}
-            smart = []
-            for p in long:
-                key = (p["name"], p["rating"])
-                if key in map_4h and ((map_4h[key] > 0 > p["trend"]) or (map_4h[key] < 0 < p["trend"])):
-                    price = await self.get_ps_price(p["url"], p["rating"])
-                    p["price"] = price or "N/A"
-                    p["trend_4h"] = map_4h[key]
-                    smart.append(p)
-            players = smart[:10]
-            title = "🧠 Smart Movers – 4h vs 24h"
-            for i, p in enumerate(players):
+        left = ""
+        right = ""
+        for i, p in enumerate(players):
+            try:
                 line = (
                     f"**{number_emojis[i]} {p['name']} ({p['rating']})**\n"
                     f"💰 {p['price']}\n"
                     f"🔁 4h: {p['trend_4h']:+.1f}%\n"
-                    f"🔁 24h: {p['trend']:+.1f}%\n\n"
+                    f"🔁 24h: {p['trend_24h']:+.1f}%\n\n"
                 )
-                if i < 5:
-                    left += line
-                else:
-                    right += line
-        else:
-            raw = await self.fetch_trending_data(timeframe)
-            emoji = "📈" if direction == "riser" else "📉"
-            tf_emoji = "🗓️" if timeframe == "24h" else "🕓"
-            title = f"{emoji} Top 10 {'Risers' if direction == 'riser' else 'Fallers'} – {tf_emoji} {timeframe}"
-            players = []
-            for p in raw:
-                if (p["trend"] > 0 if direction == "riser" else p["trend"] < 0):
-                    price = await self.get_ps_price(p["url"], p["rating"])
-                    p["price"] = price or "N/A"
-                    players.append(p)
-                if len(players) == 10:
-                    break
-            for i, p in enumerate(players):
-                trend_emoji = "📈" if direction == "riser" else "📉"
+            except KeyError as e:
+                logger.warning(f"Missing smart mover data: {p} | Error: {e}")
+                continue
+
+            if i < 5:
+                left += line
+            else:
+                right += line
+        embed.add_field(name="\u200b", value=left.strip(), inline=True)
+        embed.add_field(name="\u200b", value=right.strip(), inline=True)
+        return embed
+
+    else:
+        raw = await self.fetch_trending_data(timeframe)
+        emoji = "📈" if direction == "riser" else "📉"
+        tf_emoji = "🗓️" if timeframe == "24h" else "🕓"
+        title = f"{emoji} Top 10 {'Risers' if direction == 'riser' else 'Fallers'} (🎮 Console) – {tf_emoji} {timeframe}"
+        trend_icon = "📈" if direction == "riser" else "📉"
+        embed = discord.Embed(title=title, color=discord.Color.green() if direction == "riser" else discord.Color.red())
+        embed.set_footer(text="Data from FUTBIN | Prices are estimates")
+
+        number_emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+        left = ""
+        right = ""
+        players = []
+        for p in raw:
+            if (p["trend"] > 0 if direction == "riser" else p["trend"] < 0):
+                price = await self.get_ps_price(p["url"], p["rating"])
+                if not price:
+                    continue
+                p["price"] = price
+                players.append(p)
+            if len(players) == 10:
+                break
+
+        for i, p in enumerate(players):
+            try:
                 line = (
                     f"**{number_emojis[i]} {p['name']} ({p['rating']})**\n"
                     f"💰 {p['price']}\n"
-                    f"{trend_emoji} {p['trend']:+.2f}%\n\n"
+                    f"{trend_icon} {p['trend']:+.2f}%\n\n"
                 )
-                if direction == "faller":
-                    left += line
-                else:
-                    right += line
+            except KeyError as e:
+                logger.warning(f"Missing data for {p['name']} | Error: {e}")
+                continue
 
-        embed = discord.Embed(title=title, color=discord.Color.green() if direction == "riser" else discord.Color.red())
-        embed.set_footer(text="Data from FUTBIN | Console only")
-        embed.add_field(name="\u200b", value=left or "No data", inline=True)
-        embed.add_field(name="\u200b", value=right or "No data", inline=True)
+            if i < 5:
+                left += line
+            else:
+                right += line
+
+        embed.add_field(name="\u200b", value=left.strip(), inline=True)
+        embed.add_field(name="\u200b", value=right.strip(), inline=True)
         return embed
 
     @app_commands.command(name="trending", description="📊 Show trending players")
