@@ -96,6 +96,8 @@ class Trending(commands.Cog):
         return players
 
     async def generate_trend_embed(self, direction, timeframe):
+        number_emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+
         if direction == "smart":
             short = await self.fetch_trending_data("4h")
             long = await self.fetch_trending_data("24h")
@@ -105,25 +107,24 @@ class Trending(commands.Cog):
                 key = (p["name"], p["rating"])
                 if key in map_4h and ((map_4h[key] > 0 > p["trend"]) or (map_4h[key] < 0 < p["trend"])):
                     price = await self.get_ps_price(p["url"], p["rating"])
-                    p["trend"] = f"🔁 4h: {map_4h[key]:+.1f}%, 24h: {p['trend']:+.1f}%"
                     p["price"] = price or "N/A"
+                    p["trend"] = f"🔁 4h: {map_4h[key]:+.1f}%\n🔁 24h: {p['trend']:+.1f}%"
                     smart.append(p)
             players = smart[:10]
             emoji = "🧠"
             title = f"{emoji} Smart Movers – Trend flipped from 4h to 24h"
-            trend_icon = "🔁"
         else:
             raw = await self.fetch_trending_data(timeframe)
             emoji = "📈" if direction == "riser" else "📉"
             tf_emoji = "🗓️" if timeframe == "24h" else "🕓"
+            trend_icon = emoji
             title = f"{emoji} Top 10 {'Risers' if direction == 'riser' else 'Fallers'} (🎮 Console) – {tf_emoji} {timeframe}"
-            trend_icon = "📈" if direction == "riser" else "📉"
             players = []
             for p in raw:
                 if (p["trend"] > 0 if direction == "riser" else p["trend"] < 0):
                     price = await self.get_ps_price(p["url"], p["rating"])
                     p["price"] = price or "N/A"
-                    p["trend"] = f"{p['trend']:+.2f}%"
+                    p["trend"] = f"{trend_icon} {p['trend']:+.2f}%"
                     players.append(p)
                 if len(players) == 10:
                     break
@@ -134,15 +135,13 @@ class Trending(commands.Cog):
         embed = discord.Embed(title=title, color=discord.Color.green() if direction == "riser" else discord.Color.red())
         embed.set_footer(text="Data from FUTBIN | Prices are estimates")
 
-        number_emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
         left = ""
         right = ""
-
         for i, p in enumerate(players):
             line = (
                 f"**{number_emojis[i]} {p['name']} ({p['rating']})**\n"
                 f"💰 {p.get('price','N/A')}\n"
-                f"{p['trend']} {trend_icon}\n\n"
+                f"{p['trend']}\n\n"
             )
             if i < 5:
                 left += line
