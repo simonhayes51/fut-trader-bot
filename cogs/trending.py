@@ -111,11 +111,13 @@ class Trending(commands.Cog):
             players = smart[:10]
             emoji = "🧠"
             title = f"{emoji} Smart Movers – Trend flipped from 4h to 24h"
+            trend_icon = "🔁"
         else:
             raw = await self.fetch_trending_data(timeframe)
             emoji = "📈" if direction == "riser" else "📉"
             tf_emoji = "🗓️" if timeframe == "24h" else "🕓"
             title = f"{emoji} Top 10 {'Risers' if direction == 'riser' else 'Fallers'} (🎮 Console) – {tf_emoji} {timeframe}"
+            trend_icon = "📈" if direction == "riser" else "📉"
             players = []
             for p in raw:
                 if (p["trend"] > 0 if direction == "riser" else p["trend"] < 0):
@@ -132,17 +134,23 @@ class Trending(commands.Cog):
         embed = discord.Embed(title=title, color=discord.Color.green() if direction == "riser" else discord.Color.red())
         embed.set_footer(text="Data from FUTBIN | Prices are estimates")
 
+        number_emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
         left = ""
         right = ""
+
         for i, p in enumerate(players):
-            line = f"**{i+1}. {p['name']} ({p['rating']})**\n💰 {p.get('price','N/A')}\n{p['trend']} 🚀\n\n"
+            line = (
+                f"**{number_emojis[i]} {p['name']} ({p['rating']})**\n"
+                f"💰 {p.get('price','N/A')}\n"
+                f"{p['trend']} {trend_icon}\n\n"
+            )
             if i < 5:
                 left += line
             else:
                 right += line
 
-        embed.add_field(name="⬅️", value=left.strip(), inline=True)
-        embed.add_field(name="➡️", value=right.strip(), inline=True)
+        embed.add_field(name="\u200b", value=left.strip(), inline=True)
+        embed.add_field(name="\u200b", value=right.strip(), inline=True)
 
         return embed
 
