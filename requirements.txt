@@ -6,4 +6,4 @@ python-dotenv
 flask
 feedparser
 matplotlib
-snscrape
+aiohttp
