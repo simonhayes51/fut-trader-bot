@@ -31,7 +31,7 @@ class Trending(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.config = load_config()
-        self.auto_post_trends.start()
+        # self.auto_post_trends.start()  # Enable if using auto-post
 
     @app_commands.command(name="trending", description="📊 Show top trending players")
     @app_commands.describe(direction="Choose trend direction", timeframe="Select timeframe")
@@ -57,45 +57,6 @@ class Trending(commands.Cog):
             await interaction.followup.send(embed=embed)
         else:
             await interaction.followup.send("⚠️ No trend data found.")
-
-    @app_commands.command(name="setupautotrending", description="🛠️ Set daily auto-post channel and time (HH:MM 24hr)")
-    @app_commands.describe(channel="Channel to send posts in", post_time="Time in 24h format (e.g. 09:00)")
-    async def setupautotrending(self, interaction: discord.Interaction, channel: discord.TextChannel, post_time: str):
-        if not is_admin_or_owner(interaction.user):
-            await interaction.response.send_message("❌ Only Admins/Owner can use this command.", ephemeral=True)
-            return
-        try:
-            datetime.strptime(post_time, "%H:%M")
-        except ValueError:
-            await interaction.response.send_message("❌ Invalid time format. Use HH:MM (24h)", ephemeral=True)
-            return
-
-        guild_id = str(interaction.guild.id)
-        self.config[guild_id] = {
-            "channel_id": channel.id,
-            "time": post_time
-        }
-        save_config(self.config)
-        await interaction.response.send_message(f"✅ Auto-trending set for **{post_time}** in {channel.mention}")
-
-    @tasks.loop(minutes=1)
-    async def auto_post_trends(self):
-        now = datetime.now().strftime("%H:%M")
-        for guild_id, settings in self.config.items():
-            if settings.get("time") != now:
-                continue
-
-            channel = self.bot.get_channel(settings["channel_id"])
-            if not channel:
-                continue
-
-            embed = await self.generate_combined_embed("24h")
-            if embed:
-                await channel.send(embed=embed)
-
-    @auto_post_trends.before_loop
-    async def before_auto_post(self):
-        await self.bot.wait_until_ready()
 
     async def generate_combined_embed(self, timeframe: str) -> discord.Embed:
         risers = await self.scrape_futbin_data("riser", timeframe)
@@ -138,8 +99,11 @@ class Trending(commands.Cog):
         embed.set_footer(text="Data from FUTBIN | Prices are estimates")
 
         for i, p in enumerate(players[:10]):
-            booster = " 🚀" if direction == "riser" and p["trend"] > 100 else ""
-            booster = " ❄️" if direction == "faller" and p["trend"] < -50 else booster
+            booster = ""
+            if direction == "riser" and p["trend"] > 100:
+                booster = " 🚀"
+            elif direction == "faller" and p["trend"] < -50:
+                booster = " ❄️"
             trend_str = f"{p['trend']:.2f}%{booster}" if direction == "riser" else f"-{abs(p['trend']):.2f}%{booster}"
             embed.add_field(
                 name=f"{i+1}. {p['name']} ({p['rating']})",
@@ -191,10 +155,8 @@ class Trending(commands.Cog):
             price_block = card.select_one("div.platform-price-wrapper-small")
             if price_block:
                 spans = price_block.find_all("span", class_="price")
-                for span in spans:
-                    if span and span.text.strip().replace(",", "").isdigit():
-                        price = span.text.strip()
-                        break
+                if spans and spans[0].text.strip():
+                    price = spans[0].text.strip()
 
             if not name or not rating:
                 continue
