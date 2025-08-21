@@ -9,7 +9,6 @@ import asyncio
 import logging
 from datetime import datetime
 
-# Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -25,7 +24,6 @@ def load_config():
     try:
         with open(CONFIG_FILE, "r") as f:
             config = json.load(f)
-            # Validate config structure
             valid_config = {}
             for guild_id, settings in config.items():
                 if (isinstance(settings, dict) and 
@@ -62,26 +60,27 @@ class Trending(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.config = load_config()
+        logger.info(f"Loaded config: {self.config}")
         self.session = None
-        self.auto_post_trends.start()
+
+        if not self.auto_post_trends.is_running():
+            self.auto_post_trends.start()
+            logger.info("Auto-post trends task started")
 
     async def cog_load(self):
-        """Initialize aiohttp session when cog loads"""
         self.session = aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=15),
-            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+            headers={"User-Agent": "Mozilla/5.0"}
         )
 
     async def cog_unload(self):
-        """Clean up aiohttp session when cog unloads"""
         if self.session:
             await self.session.close()
 
     async def fetch_url(self, url: str) -> str:
-        """Fetch URL content with error handling"""
         if not self.session:
             await self.cog_load()
-        
+
         try:
             async with self.session.get(url) as response:
                 if response.status == 200:
@@ -95,6 +94,34 @@ class Trending(commands.Cog):
         except Exception as e:
             logger.error(f"Error fetching {url}: {e}")
             return None
+
+    async def get_ps_price(self, url: str, expected_rating: str) -> str:
+        """Get PS price for the correct version of the player matching expected rating"""
+        try:
+            html_content = await self.fetch_url(url)
+            if not html_content:
+                return None
+            
+            soup = BeautifulSoup(html_content, "html.parser")
+            
+            price_blocks = soup.select("div.player-page-price-versions > div")
+            for block in price_blocks:
+                rating_tag = block.select_one(".player-rating")
+                price_tag = block.select_one("div.price.inline-with-icon.lowest-price-1")
+                
+                if rating_tag and price_tag:
+                    if rating_tag.text.strip() == expected_rating:
+                        return price_tag.text.strip()
+            
+            fallback = soup.select_one("div.price.inline-with-icon.lowest-price-1")
+            if fallback:
+                return fallback.text.strip()
+
+        except Exception as e:
+            logger.error(f"Error getting PS price for {url}: {e}")
+            return None
+
+        return None
 
     @app_commands.command(name="trending", description="📊 Show top trending players (Risers/Fallers)")
     @app_commands.describe(direction="Risers or Fallers", timeframe="4h or 24h timeframe")
@@ -110,18 +137,13 @@ class Trending(commands.Cog):
     )
     async def trending(self, interaction: discord.Interaction, direction: app_commands.Choice[str], timeframe: app_commands.Choice[str]):
         await interaction.response.defer()
-        logger.info(f"Fetching trends: {direction.value} {timeframe.value} for guild {interaction.guild.id}")
-        
         embed = await self.generate_trend_embed(direction.value, timeframe.value)
         if embed:
             await interaction.followup.send(embed=embed)
-            logger.info("Successfully sent trend embed")
         else:
             await interaction.followup.send("⚠️ Could not fetch trend data. Please try again later.")
-            logger.warning("Failed to generate trend embed")
 
     async def generate_trend_embed(self, direction: str, timeframe: str) -> discord.Embed:
-        """Generate trending players embed with 5x2 layout"""
         tf_map = {
             "24h": "div.market-players-wrapper.market-24-hours.m-row.space-between",
             "4h": "div.market-players-wrapper.market-4-hours.m-row.space-between"
@@ -131,13 +153,11 @@ class Trending(commands.Cog):
             url = "https://www.futbin.com/market"
             html_content = await self.fetch_url(url)
             if not html_content:
-                logger.error("Failed to fetch market page")
                 return None
 
             soup = BeautifulSoup(html_content, "html.parser")
             container = soup.select_one(tf_map[timeframe])
             if not container:
-                logger.error(f"Could not find container for timeframe {timeframe}")
                 return None
 
             cards = container.select("a.market-player-card")
@@ -147,7 +167,7 @@ class Trending(commands.Cog):
                 trend_tag = card.select_one(".market-player-change")
                 if not trend_tag or "%" not in trend_tag.text:
                     continue
-                
+
                 try:
                     trend_text = trend_tag.text.strip().replace("%", "").replace("+", "").replace(",", "")
                     trend = float(trend_text)
@@ -172,11 +192,8 @@ class Trending(commands.Cog):
                 rating = rating_tag.text.strip()
                 player_url = f"https://www.futbin.com{link}?platform=ps"
 
-                # Add delay between requests to be respectful
                 await asyncio.sleep(0.3)
-                
-                # Scrape player page for PS price
-                price = await self.get_ps_price(player_url)
+                price = await self.get_ps_price(player_url, rating)
                 if not price:
                     continue
 
@@ -191,7 +208,6 @@ class Trending(commands.Cog):
                     break
 
             if not players:
-                logger.warning(f"No {direction} players found for {timeframe}")
                 return None
 
             emoji = "📈" if direction == "riser" else "📉"
@@ -199,129 +215,74 @@ class Trending(commands.Cog):
             title = f"{emoji} Top 10 {'Risers' if direction == 'riser' else 'Fallers'} (🎮 PS) – {timeframe_emoji} {timeframe}"
 
             embed = discord.Embed(
-                title=title, 
+                title=title,
                 color=discord.Color.green() if direction == "riser" else discord.Color.red(),
                 timestamp=datetime.now()
             )
             embed.set_footer(text="Data from FUTBIN | PS prices only")
 
             number_emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
-            
             for i in range(0, len(players), 2):
-                left_player = players[i]
-                booster_left = (" 🚀" if left_player["trend"] > 100 and direction == "riser" 
-                                else " ❄️" if left_player["trend"] < -50 and direction == "faller" 
-                                else "")
-                trend_str_left = (f"-{abs(left_player['trend']):.1f}%" if direction == "faller" 
-                                else f"{left_player['trend']:.1f}%")
-                left_content = f"💰 {left_player['price']}\n{emoji} {trend_str_left}{booster_left}"
+                left = players[i]
+                trend_str = f"-{abs(left['trend']):.1f}%" if direction == "faller" else f"{left['trend']:.1f}%"
+                left_value = f"💰 {left['price']}\n{emoji} {trend_str}"
 
                 if i + 1 < len(players):
-                    right_player = players[i + 1]
-                    booster_right = (" 🚀" if right_player["trend"] > 100 and direction == "riser" 
-                                    else " ❄️" if right_player["trend"] < -50 and direction == "faller" 
-                                    else "")
-                    trend_str_right = (f"-{abs(right_player['trend']):.1f}%" if direction == "faller" 
-                                    else f"{right_player['trend']:.1f}%")
-                    right_content = f"💰 {right_player['price']}\n{emoji} {trend_str_right}{booster_right}"
+                    right = players[i + 1]
+                    trend_str_r = f"-{abs(right['trend']):.1f}%" if direction == "faller" else f"{right['trend']:.1f}%"
+                    right_value = f"💰 {right['price']}\n{emoji} {trend_str_r}"
 
-                    embed.add_field(
-                        name=f"{number_emojis[i]} {left_player['name']} ({left_player['rating']})",
-                        value=left_content,
-                        inline=True
-                    )
-                    embed.add_field(
-                        name=f"{number_emojis[i + 1]} {right_player['name']} ({right_player['rating']})",
-                        value=right_content,
-                        inline=True
-                    )
+                    embed.add_field(name=f"{number_emojis[i]} {left['name']} ({left['rating']})", value=left_value, inline=True)
+                    embed.add_field(name=f"{number_emojis[i+1]} {right['name']} ({right['rating']})", value=right_value, inline=True)
                     embed.add_field(name="\u200b", value="\u200b", inline=True)
                 else:
-                    embed.add_field(
-                        name=f"{number_emojis[i]} {left_player['name']} ({left_player['rating']})",
-                        value=left_content,
-                        inline=True
-                    )
+                    embed.add_field(name=f"{number_emojis[i]} {left['name']} ({left['rating']})", value=left_value, inline=True)
 
-            logger.info(f"Generated embed with {len(players)} players")
             return embed
 
         except Exception as e:
-            logger.error(f"Error generating trend embed: {e}")
+            logger.error(f"Trend embed error: {e}")
             return None
-
-    async def get_ps_price(self, url: str) -> str:
-        """Get PlayStation price for a player"""
-        try:
-            html_content = await self.fetch_url(url)
-            if not html_content:
-                return None
-            
-            soup = BeautifulSoup(html_content, "html.parser")
-            price_tag = soup.select_one("div.price.inline-with-icon.lowest-price-1")
-            if price_tag:
-                price = price_tag.text.strip()
-                logger.debug(f"Found price: {price} for {url}")
-                return price
-        except Exception as e:
-            logger.error(f"Error getting PS price for {url}: {e}")
-            return None
-        return None
 
     @tasks.loop(minutes=1)
     async def auto_post_trends(self):
-        """Auto-post trends at scheduled times"""
         now = datetime.now().strftime("%H:%M")
-        
         for guild_id, settings in self.config.items():
             if settings.get("time") != now:
                 continue
-            
+
             channel = self.bot.get_channel(settings["channel_id"])
             if not channel:
-                logger.warning(f"Could not find channel {settings['channel_id']} for guild {guild_id}")
                 continue
-            
-            logger.info(f"Auto-posting trends for guild {guild_id} at {now}")
-            
+
             try:
                 for direction in ["riser", "faller"]:
                     embed = await self.generate_trend_embed(direction, "24h")
                     if embed:
                         await channel.send(embed=embed)
                         await asyncio.sleep(2)
-                    else:
-                        logger.warning(f"Failed to generate {direction} embed for auto-post")
-                        
-            except discord.Forbidden:
-                logger.error(f"No permission to send messages in channel {settings['channel_id']}")
-            except discord.HTTPException as e:
-                logger.error(f"Discord API error during auto-post: {e}")
             except Exception as e:
-                logger.error(f"Unexpected error during auto-post: {e}")
+                logger.error(f"Auto-post error: {e}")
 
     @auto_post_trends.before_loop
     async def before_auto_post(self):
-        """Wait for bot to be ready before starting auto-post loop"""
         await self.bot.wait_until_ready()
-        logger.info("Auto-post trends task started")
 
     @app_commands.command(name="setupautotrending", description="🛠️ Set daily auto-post channel and time (HH:MM 24hr)")
-    @app_commands.describe(channel="Channel to send posts in", post_time="Time in 24h format (e.g. 09:00)")
     async def setupautotrending(self, interaction: discord.Interaction, channel: discord.TextChannel, post_time: str):
         if not is_admin_or_owner(interaction.user):
             await interaction.response.send_message("❌ Only Admins/Owner can use this command.", ephemeral=True)
             return
-        
+
         try:
             datetime.strptime(post_time, "%H:%M")
         except ValueError:
-            await interaction.response.send_message("❌ Invalid time format. Use HH:MM (24h format, e.g., 09:00)", ephemeral=True)
+            await interaction.response.send_message("❌ Invalid time format.", ephemeral=True)
             return
 
         bot_member = interaction.guild.get_member(self.bot.user.id)
         if not channel.permissions_for(bot_member).send_messages:
-            await interaction.response.send_message("❌ I don't have permission to send messages in that channel.", ephemeral=True)
+            await interaction.response.send_message("❌ Missing send permissions in that channel.", ephemeral=True)
             return
 
         guild_id = str(interaction.guild.id)
@@ -330,12 +291,7 @@ class Trending(commands.Cog):
             "time": post_time
         }
         save_config(self.config)
-        
-        logger.info(f"Auto-trending configured for guild {guild_id}: {post_time} in channel {channel.id}")
-        await interaction.response.send_message(
-            f"✅ Auto-trending set for **{post_time}** in {channel.mention}\n"
-            f"📊 Daily risers and fallers will be posted automatically!"
-        )
+        await interaction.response.send_message(f"✅ Auto-trending set for **{post_time}** in {channel.mention}")
 
     @app_commands.command(name="removeautotrending", description="🗑️ Remove auto-trending for this server")
     async def removeautotrending(self, interaction: discord.Interaction):
@@ -347,10 +303,79 @@ class Trending(commands.Cog):
         if guild_id in self.config:
             del self.config[guild_id]
             save_config(self.config)
-            logger.info(f"Auto-trending removed for guild {guild_id}")
-            await interaction.response.send_message("✅ Auto-trending has been disabled for this server.")
+            await interaction.response.send_message("✅ Auto-trending disabled.")
         else:
-            await interaction.response.send_message("❌ Auto-trending is not currently set up for this server.")
+            await interaction.response.send_message("❌ Auto-trending wasn't enabled.")
+
+    @app_commands.command(name="debugautopost", description="🔍 Debug auto-posting (Admin only)")
+    async def debugautopost(self, interaction: discord.Interaction):
+        if not is_admin_or_owner(interaction.user):
+            await interaction.response.send_message("❌ Only Admins/Owner can use this command.", ephemeral=True)
+            return
+
+        now = datetime.now()
+        current_time = now.strftime("%H:%M")
+
+        debug_info = []
+        debug_info.append(f"**Current Time:** {current_time}")
+        debug_info.append(f"**Task Running:** {'✅ Yes' if self.auto_post_trends.is_running() else '❌ No'}")
+        debug_info.append(f"**Config Entries:** {len(self.config)}")
+
+        guild_id = str(interaction.guild.id)
+        if guild_id in self.config:
+            settings = self.config[guild_id]
+            debug_info.append("**This Guild Config:**")
+            debug_info.append(f"  - Channel ID: {settings['channel_id']}")
+            debug_info.append(f"  - Scheduled Time: {settings['time']}")
+            debug_info.append(f"  - Time Match: {'✅ Yes' if settings['time'] == current_time else '❌ No'}")
+
+            channel = self.bot.get_channel(settings["channel_id"])
+            debug_info.append(f"  - Channel Found: {'✅ Yes' if channel else '❌ No'}")
+            if channel:
+                bot_member = interaction.guild.get_member(self.bot.user.id)
+                can_send = channel.permissions_for(bot_member).send_messages
+                debug_info.append(f"  - Can Send Messages: {'✅ Yes' if can_send else '❌ No'}")
+        else:
+            debug_info.append("**This Guild:** No auto-post configured")
+
+        debug_info.append("\n**All Configured Guilds:**")
+        for gid, settings in self.config.items():
+            debug_info.append(f"Guild {gid}: {settings['time']} → Channel {settings['channel_id']}")
+
+        await interaction.response.send_message("\n".join(debug_info))
+
+    @app_commands.command(name="testautopost", description="🧪 Test auto-post now (Admin only)")
+    async def testautopost(self, interaction: discord.Interaction):
+        if not is_admin_or_owner(interaction.user):
+            await interaction.response.send_message("❌ Only Admins/Owner can use this command.", ephemeral=True)
+            return
+
+        await interaction.response.defer()
+        guild_id = str(interaction.guild.id)
+        if guild_id not in self.config:
+            await interaction.followup.send("❌ Auto-posting not configured for this server.")
+            return
+
+        settings = self.config[guild_id]
+        channel = self.bot.get_channel(settings["channel_id"])
+        if not channel:
+            await interaction.followup.send(f"❌ Could not find channel with ID {settings['channel_id']}")
+            return
+
+        try:
+            await interaction.followup.send("🧪 Testing auto-post... This may take a moment.")
+            for direction in ["riser", "faller"]:
+                embed = await self.generate_trend_embed(direction, "24h")
+                if embed:
+                    await channel.send(f"🧪 **TEST POST** - {direction.title()}s", embed=embed)
+                    await asyncio.sleep(2)
+                else:
+                    await interaction.followup.send(f"❌ Failed to generate {direction} embed")
+                    return
+            await interaction.followup.send("✅ Test auto-post completed successfully!")
+        except Exception as e:
+            await interaction.followup.send(f"❌ Error during test: {str(e)}")
+            logger.error(f"Test auto-post error: {e}")
 
 async def setup(bot):
     await bot.add_cog(Trending(bot))
