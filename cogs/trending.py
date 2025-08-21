@@ -1,9 +1,8 @@
 import discord
-from discord.ext import commands, tasks
+from discord.ext import commands
 from discord import app_commands
 from bs4 import BeautifulSoup
 import aiohttp
-import asyncio
 import json
 import os
 import logging
@@ -20,28 +19,13 @@ def load_config():
     with open(CONFIG_FILE, "r") as f:
         return json.load(f)
 
-def save_config(data):
-    with open(CONFIG_FILE, "w") as f:
-        json.dump(data, f, indent=2)
-
-def is_admin_or_owner(member: discord.Member) -> bool:
-    if member.guild and member.id == member.guild.owner_id:
-        return True
-    allowed_roles = ["Admin", "Owner"]
-    role_names = [role.name.lower() for role in member.roles]
-    return any(allowed.lower() in role_names for allowed in allowed_roles)
-
 class Trending(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.config = load_config()
-        logger.info(f"Loaded config: {self.config}")
         self.session = None
-        self.cached_data = {}
 
     async def cog_load(self):
-        if not self.auto_post_trends.is_running():
-            self.auto_post_trends.start()
         self.session = aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=15),
             headers={"User-Agent": "Mozilla/5.0"}
@@ -121,71 +105,93 @@ class Trending(commands.Cog):
             for p in long:
                 key = (p["name"], p["rating"])
                 if key in map_4h and ((map_4h[key] > 0 > p["trend"]) or (map_4h[key] < 0 < p["trend"])):
-                    p["trend"] = f"ð 4h: {map_4h[key]:.1f}%, 24h: {p['trend']:.1f}%"
+                    price = await self.get_ps_price(p["url"], p["rating"])
+                    p["trend"] = f"🔁 4h: {map_4h[key]:.1f}%, 24h: {p['trend']:.1f}%"
+                    p["price"] = price or "N/A"
                     smart.append(p)
             players = smart[:10]
-            emoji = "ð§ "
-            title = f"{emoji} Smart Movers â Trend flipped from 4h to 24h"
+            emoji = "🧠"
+            title = f"{emoji} Smart Movers – Trend flipped from 4h to 24h"
         else:
             raw = await self.fetch_trending_data(timeframe)
-            players = [p for p in raw if (p["trend"] > 0 if direction == "riser" else p["trend"] < 0)][:10]
-            emoji = "ð" if direction == "riser" else "ð"
-            tf_emoji = "ðï¸" if timeframe == "24h" else "ð"
-            title = f"{emoji} Top 10 {'Risers' if direction == 'riser' else 'Fallers'} (ð® Console) â {tf_emoji} {timeframe}"
+            emoji = "📈" if direction == "riser" else "📉"
+            tf_emoji = "🗓️" if timeframe == "24h" else "🕓"
+            title = f"{emoji} Top 10 {'Risers' if direction == 'riser' else 'Fallers'} (🎮 Console) – {tf_emoji} {timeframe}"
+            players = []
+            for p in raw:
+                if (p["trend"] > 0 if direction == "riser" else p["trend"] < 0):
+                    price = await self.get_ps_price(p["url"], p["rating"])
+                    p["price"] = price or "N/A"
+                    players.append(p)
+                if len(players) == 10:
+                    break
 
         if not players:
             return None
 
         embed = discord.Embed(title=title, color=discord.Color.green() if direction == "riser" else discord.Color.red())
         embed.set_footer(text="Data from FUTBIN")
-        number_emojis = ["1ï¸â£", "2ï¸â£", "3ï¸â£", "4ï¸â£", "5ï¸â£", "6ï¸â£", "7ï¸â£", "8ï¸â£", "9ï¸â£", "ð"]
 
-        for idx, p in enumerate(players):
-            price = await self.get_ps_price(p["url"], p["rating"]) if direction != "smart" else "N/A"
-            trend = p["trend"] if isinstance(p["trend"], str) else f"{p['trend']:+.1f}%"
-            embed.add_field(
-                name=f"{number_emojis[idx]} {p['name']} ({p['rating']})",
-                value=f"💰 {price}\n{emoji} {trend}",
-                inline=True
-            )
+        left = ""
+        right = ""
+        for i, p in enumerate(players):
+            line = f"**{i+1}. {p['name']} ({p['rating']})**\n💰 {p.get('price','N/A')}\n{p['trend']}\n\n"
+            if i < 5:
+                left += line
+            else:
+                right += line
+
+        embed.add_field(name="⬅️", value=left.strip(), inline=True)
+        embed.add_field(name="➡️", value=right.strip(), inline=True)
+
         return embed
 
-    @app_commands.command(name="trending", description="ð Show trending players")
-    @app_commands.choices(
-        direction=[
-            app_commands.Choice(name="ð Risers", value="riser"),
-            app_commands.Choice(name="ð Fallers", value="faller"),
-            app_commands.Choice(name="ð§  Smart Movers", value="smart")
-        ],
-        timeframe=[
-            app_commands.Choice(name="ðï¸ 24 Hours", value="24h"),
-            app_commands.Choice(name="ð 4 Hours", value="4h")
-        ]
-    )
-    async def trending(self, interaction: discord.Interaction, direction: app_commands.Choice[str], timeframe: app_commands.Choice[str] = None):
-        await interaction.response.defer()
-        embed = await self.generate_trend_embed(direction.value, timeframe.value if timeframe else "24h")
-        if embed:
-            view = discord.ui.View(timeout=None)
-            view.add_item(discord.ui.Button(label="ð Refresh", style=discord.ButtonStyle.primary, custom_id=f"refresh_{direction.value}_{timeframe.value if timeframe else '24h'}"))
-            await interaction.followup.send(embed=embed, view=view)
-        else:
-            await interaction.followup.send("â ï¸ Could not generate embed.")
+    @app_commands.command(name="trending", description="📊 Show trending players with dropdowns")
+    async def trending(self, interaction: discord.Interaction):
+        class DirectionDropdown(discord.ui.Select):
+            def __init__(self):
+                options = [
+                    discord.SelectOption(label="📈 Risers", value="riser"),
+                    discord.SelectOption(label="📉 Fallers", value="faller"),
+                    discord.SelectOption(label="🧠 Smart Movers", value="smart"),
+                ]
+                super().__init__(placeholder="Select Trend Type", min_values=1, max_values=1, options=options, custom_id="direction")
 
-    @commands.Cog.listener()
-    async def on_interaction(self, interaction: discord.Interaction):
-        if interaction.type == discord.InteractionType.component:
-            cid = interaction.data.get("custom_id")
-            if cid and cid.startswith("refresh_"):
-                parts = cid.split("_")
-                if len(parts) == 3:
-                    _, direction, timeframe = parts
-                    await interaction.response.defer()
-                    embed = await self.generate_trend_embed(direction, timeframe)
-                    if embed:
-                        await interaction.edit_original_response(embed=embed)
-                    else:
-                        await interaction.followup.send("â ï¸ Refresh failed.", ephemeral=True)
+        class TimeframeDropdown(discord.ui.Select):
+            def __init__(self):
+                options = [
+                    discord.SelectOption(label="🗓️ 24 Hours", value="24h"),
+                    discord.SelectOption(label="🕓 4 Hours", value="4h"),
+                ]
+                super().__init__(placeholder="Select Timeframe", min_values=1, max_values=1, options=options, custom_id="timeframe")
+
+        class RefreshView(discord.ui.View):
+            def __init__(self, bot):
+                super().__init__(timeout=None)
+                self.bot = bot
+                self.direction = "riser"
+                self.timeframe = "24h"
+                self.dir_select = DirectionDropdown()
+                self.time_select = TimeframeDropdown()
+                self.add_item(self.dir_select)
+                self.add_item(self.time_select)
+
+            @discord.ui.button(label="🔁 Refresh", style=discord.ButtonStyle.primary)
+            async def refresh_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+                cog = self.bot.get_cog("Trending")
+                embed = await cog.generate_trend_embed(self.direction, self.timeframe)
+                await interaction.response.edit_message(embed=embed)
+
+            async def interaction_check(self, interaction: discord.Interaction) -> bool:
+                self.direction = self.dir_select.values[0]
+                self.timeframe = self.time_select.values[0]
+                return True
+
+        await interaction.response.defer()
+        cog = self.bot.get_cog("Trending")
+        embed = await cog.generate_trend_embed("riser", "24h")
+        view = RefreshView(self.bot)
+        await interaction.followup.send(embed=embed, view=view)
 
 async def setup(bot):
     await bot.add_cog(Trending(bot))
