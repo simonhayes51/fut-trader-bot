@@ -1,37 +1,12 @@
 import discord
-from discord.ext import commands, tasks
+from discord.ext import commands
 from discord import app_commands
 from bs4 import BeautifulSoup
 import requests
-import json
-import os
-from datetime import datetime
-
-CONFIG_FILE = "autotrend_config.json"
-
-def load_config():
-    if not os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, "w") as f:
-            json.dump({}, f)
-    with open(CONFIG_FILE, "r") as f:
-        return json.load(f)
-
-def save_config(data):
-    with open(CONFIG_FILE, "w") as f:
-        json.dump(data, f, indent=2)
-
-def is_admin_or_owner(member: discord.Member) -> bool:
-    if member.guild and member.id == member.guild.owner_id:
-        return True
-    allowed_roles = ["Admin", "Owner"]
-    role_names = [role.name.lower() for role in member.roles]
-    return any(allowed.lower() in role_names for allowed in allowed_roles)
 
 class Trending(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.config = load_config()
-        # self.auto_post_trends.start()  # Enable if using auto-post
 
     @app_commands.command(name="trending", description="📊 Show top trending players")
     @app_commands.describe(direction="Choose trend direction", timeframe="Select timeframe")
@@ -120,6 +95,7 @@ class Trending(commands.Cog):
         if response.status_code != 200:
             return []
 
+        from bs4 import BeautifulSoup
         soup = BeautifulSoup(response.text, "html.parser")
         wrapper_class = "market-24-hours" if timeframe == "24h" else "market-4-hours"
         container = soup.select_one(f"div.market-players-wrapper.{wrapper_class}.m-row.space-between")
@@ -150,13 +126,11 @@ class Trending(commands.Cog):
 
             name = card.select_one(".playercard-s-25-name")
             rating = card.select_one(".playercard-s-25-rating")
+            price_spans = card.select("div.platform-price-wrapper-small span.price")
 
-            price = "?"
-            price_block = card.select_one("div.platform-price-wrapper-small")
-            if price_block:
-                spans = price_block.find_all("span", class_="price")
-                if spans and spans[0].text.strip():
-                    price = spans[0].text.strip()
+            ps_price = price_spans[1].text.strip() if len(price_spans) > 1 else "N/A"
+            xbox_price = price_spans[2].text.strip() if len(price_spans) > 2 else "N/A"
+            price = f"🎮 PS: {ps_price} | 🟩 Xbox: {xbox_price}"
 
             if not name or not rating:
                 continue
