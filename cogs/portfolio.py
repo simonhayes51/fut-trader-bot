@@ -10,45 +10,49 @@ import matplotlib.pyplot as plt
 DB_FILE = "portfolio.db"
 PLAYERS_FILE = "players_temp.json"
 
-# Ensure DB exists and is structured
-conn = sqlite3.connect(DB_FILE)
-c = conn.cursor()
-c.execute('''CREATE TABLE IF NOT EXISTS portfolio (
-    user_id TEXT PRIMARY KEY,
-    starting_balance INTEGER DEFAULT 0
-)''')
-c.execute('''CREATE TABLE IF NOT EXISTS trades (
-    user_id TEXT,
-    player TEXT,
-    version TEXT,
-    buy INTEGER,
-    sell INTEGER,
-    quantity INTEGER,
-    platform TEXT,
-    tag TEXT,
-    notes TEXT,
-    ea_tax INTEGER,
-    profit INTEGER,
-    timestamp TEXT
-)''')
-conn.commit()
-conn.close()
-
-# Load players
-try:
-    with open(PLAYERS_FILE, "r", encoding="utf-8") as f:
-        PLAYERS = json.load(f)
-except:
-    PLAYERS = []
-
 class PortfolioSlash(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.ensure_db()
+        self.players = self.load_players()
+
+    def ensure_db(self):
+        if not os.path.exists(DB_FILE):
+            print("📁 Creating portfolio.db...")
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        c.execute('''CREATE TABLE IF NOT EXISTS portfolio (
+            user_id TEXT PRIMARY KEY,
+            starting_balance INTEGER DEFAULT 0
+        )''')
+        c.execute('''CREATE TABLE IF NOT EXISTS trades (
+            user_id TEXT,
+            player TEXT,
+            version TEXT,
+            buy INTEGER,
+            sell INTEGER,
+            quantity INTEGER,
+            platform TEXT,
+            tag TEXT,
+            notes TEXT,
+            ea_tax INTEGER,
+            profit INTEGER,
+            timestamp TEXT
+        )''')
+        conn.commit()
+        conn.close()
+
+    def load_players(self):
+        try:
+            with open(PLAYERS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            return []
 
     async def player_autocomplete(self, interaction: discord.Interaction, current: str):
         results = [
             app_commands.Choice(name=f"{p['name']} ({p['rating']})", value=p["name"])
-            for p in PLAYERS if current.lower() in p["name"].lower()
+            for p in self.players if current.lower() in p["name"].lower()
         ]
         return results[:25]
 
@@ -111,7 +115,7 @@ class PortfolioSlash(commands.Cog):
         embed = discord.Embed(title="📊 Your Trading Portfolio", color=0x2ecc71)
         embed.add_field(name="💰 Net Profit", value=f"`{total_profit or 0:,}`", inline=True)
         embed.add_field(name="💸 EA Tax Paid", value=f"`{total_tax or 0:,}`", inline=True)
-        embed.add_field(name="🛆 Trades Logged", value=f"`{count}`", inline=True)
+        embed.add_field(name="🗖️ Trades Logged", value=f"`{count}`", inline=True)
         embed.add_field(name="🏦 Current Balance", value=f"`{current_balance:,}`", inline=True)
 
         await interaction.response.send_message(embed=embed)
@@ -128,7 +132,6 @@ class PortfolioSlash(commands.Cog):
         win_count = len([t for t in trades if t[10] > 0])
         win_rate = (win_count / len(trades) * 100) if trades else 0
 
-        # Most used tag
         tag_count = {}
         for t in trades:
             tag = t[7] or "N/A"
@@ -138,9 +141,9 @@ class PortfolioSlash(commands.Cog):
         best_trade = max(trades, key=lambda t: t[10], default=None)
         embed = discord.Embed(title="🧳 Your Trader Profile", color=0x7289da)
         embed.add_field(name="💰 Total Profit", value=f"`{total_profit:,}`", inline=True)
-        embed.add_field(name="🛆 Trades Logged", value=f"`{len(trades)}`", inline=True)
+        embed.add_field(name="🗖️ Trades Logged", value=f"`{len(trades)}`", inline=True)
         embed.add_field(name="📈 Win Rate", value=f"`{win_rate:.1f}%`", inline=True)
-        embed.add_field(name="🏛️ Most Used Tag", value=f"`{most_used_tag}`", inline=True)
+        embed.add_field(name="🏧 Most Used Tag", value=f"`{most_used_tag}`", inline=True)
 
         if best_trade:
             embed.add_field(name="🏆 Best Trade", value=f"{best_trade[1]} (+{best_trade[10]:,})", inline=False)
@@ -157,7 +160,7 @@ class PortfolioSlash(commands.Cog):
         conn.close()
 
         if not rows:
-            await interaction.response.send_message("📭 You haven’t logged any trades yet.", ephemeral=True)
+            await interaction.response.send_message("👭 You haven’t logged any trades yet.", ephemeral=True)
             return
 
         embed = discord.Embed(title="📄 Recent Sales History", color=0x00b0f4)
