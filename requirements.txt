@@ -7,3 +7,5 @@ flask
 feedparser
 matplotlib
 aiohttp
+asyncpg
+sqlalchemy
