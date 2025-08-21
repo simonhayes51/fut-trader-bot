@@ -1,4 +1,4 @@
 flask
-request
+requests
 matplotlib
 python-dotenv
