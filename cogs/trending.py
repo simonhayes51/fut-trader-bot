@@ -135,13 +135,11 @@ class Trending(commands.Cog):
             except ValueError:
                 continue
 
-            # Force proper sign based on class
             if "day-change-negative" in trend_tag.get("class", []):
                 trend = -abs(trend)
             else:
                 trend = abs(trend)
 
-            # Skip irrelevant direction
             if direction == "riser" and trend <= 0:
                 continue
             if direction == "faller" and trend >= 0:
@@ -154,11 +152,15 @@ class Trending(commands.Cog):
             name = name_tag.text.strip()
             rating = rating_tag.text.strip()
 
-            # ✅ Select PlayStation price only (first span)
-            price_tag = card.select("div.platform-price-wrapper-small span")
+            # ✅ Accurate PS price pull
             price = "?"
-            if price_tag and len(price_tag) >= 1:
-                price = price_tag[0].text.strip()  # PlayStation is always first
+            price_wrapper = card.select_one("div.platform-price-wrapper-small")
+            if price_wrapper:
+                spans = price_wrapper.find_all("span")
+                for i in range(len(spans) - 1):
+                    if spans[i].text.strip().lower() == "ps":
+                        price = spans[i + 1].text.strip()
+                        break
 
             all_players.append({
                 "name": name,
@@ -175,7 +177,7 @@ class Trending(commands.Cog):
 
         emoji = "📈" if direction == "riser" else "📉"
         time_emoji = tf_map[timeframe]["emoji"]
-        title = f"{emoji} Top 10 {'Risers' if direction == 'riser' else 'Fallers'} (🎮 Console) – {time_emoji} {timeframe}"
+        title = f"{emoji} Top 10 {'Risers' if direction == 'riser' else 'Fallers'} (🎮 PS) – {time_emoji} {timeframe}"
 
         embed = discord.Embed(title=title, color=discord.Color.green() if direction == "riser" else discord.Color.red())
         embed.set_footer(text="Data from FUTBIN | Prices are estimates")
