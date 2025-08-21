@@ -110,7 +110,7 @@ class Trending(commands.Cog):
             }
         }
 
-        url = "https://www.futbin.com/market"
+        url = "https://www.futbin.com/market?platform=ps"
         headers = {"User-Agent": "Mozilla/5.0"}
         response = requests.get(url, headers=headers)
         if response.status_code != 200:
@@ -125,7 +125,6 @@ class Trending(commands.Cog):
         all_players = []
 
         for card in cards:
-            # Trend %
             trend_tag = card.select_one(".market-player-change")
             if not trend_tag or "%" not in trend_tag.text:
                 continue
@@ -135,13 +134,11 @@ class Trending(commands.Cog):
             except ValueError:
                 continue
 
-            # Force proper sign based on class
             if "day-change-negative" in trend_tag.get("class", []):
                 trend = -abs(trend)
             else:
                 trend = abs(trend)
 
-            # Skip irrelevant direction
             if direction == "riser" and trend <= 0:
                 continue
             if direction == "faller" and trend >= 0:
@@ -172,7 +169,7 @@ class Trending(commands.Cog):
 
         emoji = "📈" if direction == "riser" else "📉"
         time_emoji = tf_map[timeframe]["emoji"]
-        title = f"{emoji} Top 10 {'Risers' if direction == 'riser' else 'Fallers'} (🎮 Console) – {time_emoji} {timeframe}"
+        title = f"{emoji} Top 10 {'Risers' if direction == 'riser' else 'Fallers'} (🎮 PlayStation) – {time_emoji} {timeframe}"
 
         embed = discord.Embed(title=title, color=discord.Color.green() if direction == "riser" else discord.Color.red())
         embed.set_footer(text="Data from FUTBIN | Prices are estimates")
