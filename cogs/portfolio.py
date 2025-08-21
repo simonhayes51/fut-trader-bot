@@ -1,12 +1,13 @@
-
 import discord
 from discord.ext import commands
+from discord import app_commands
 import os
 import json
 from datetime import datetime
 import matplotlib.pyplot as plt
 
 PORTFOLIO_DATA_PATH = "portfolio_data"
+PLAYERS_FILE = "players_temp.json"
 os.makedirs(PORTFOLIO_DATA_PATH, exist_ok=True)
 
 def get_data_path(user_id):
@@ -24,21 +25,52 @@ def save_user_data(user_id, data):
     with open(path, "w") as f:
         json.dump(data, f, indent=2)
 
-class Portfolio(commands.Cog):
+def load_players():
+    try:
+        with open(PLAYERS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except:
+        return []
+
+class PortfolioSlash(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.players = load_players()
 
-    @commands.command(name="setcoins")
-    async def set_coins(self, ctx, amount: int):
-        user_id = str(ctx.author.id)
+    async def player_autocomplete(self, interaction: discord.Interaction, current: str):
+        results = [
+            app_commands.Choice(name=f"{p['name']} ({p['rating']})", value=p["name"])
+            for p in self.players if current.lower() in p["name"].lower()
+        ]
+        return results[:25]
+
+    @app_commands.command(name="setcoins", description="💰 Set your starting coin balance")
+    async def setcoins(self, interaction: discord.Interaction, amount: int):
+        user_id = str(interaction.user.id)
         data = load_user_data(user_id)
         data["starting_balance"] = amount
         save_user_data(user_id, data)
-        await ctx.send(f"💰 **Starting balance set to `{amount:,}` coins.**")
+        await interaction.response.send_message(f"✅ Starting balance set to **{amount:,} coins**", ephemeral=True)
 
-    @commands.command(name="logtrade")
-    async def log_trade(self, ctx, player, version, buy: int, sell: int, quantity: int, platform, tag=None, *, notes=None):
-        user_id = str(ctx.author.id)
+    @app_commands.command(name="logtrade", description="💼 Log a new trade")
+    @app_commands.describe(
+        player="Player name",
+        version="Card version (e.g. Gold Rare, TOTW)",
+        buy="Buy price",
+        sell="Sell price",
+        quantity="How many you bought",
+        platform="Console platform",
+        tag="Tag or type (e.g. fodder)",
+        notes="Optional notes"
+    )
+    @app_commands.choices(platform=[
+        app_commands.Choice(name="PlayStation", value="PS"),
+        app_commands.Choice(name="Xbox", value="XBOX"),
+        app_commands.Choice(name="PC", value="PC")
+    ])
+    @app_commands.autocomplete(player=player_autocomplete)
+    async def logtrade(self, interaction: discord.Interaction, player: str, version: str, buy: int, sell: int, quantity: int, platform: app_commands.Choice[str], tag: str = None, notes: str = None):
+        user_id = str(interaction.user.id)
         data = load_user_data(user_id)
 
         ea_tax = round(sell * 0.05 * quantity)
@@ -50,7 +82,7 @@ class Portfolio(commands.Cog):
             "buy": buy,
             "sell": sell,
             "quantity": quantity,
-            "platform": platform.upper(),
+            "platform": platform.value,
             "ea_tax": ea_tax,
             "profit": profit,
             "tag": tag,
@@ -61,12 +93,11 @@ class Portfolio(commands.Cog):
         data["trades"].append(trade)
         save_user_data(user_id, data)
 
-        await ctx.send(
-            f"✅ **Logged:** `{player}` x{quantity} | 🟢 Profit: `{profit:,}` coins | 💸 Tax: `{ea_tax:,}`")
+        await interaction.response.send_message(f"✅ Logged: `{player}` x{quantity} | 🟢 Profit: `{profit:,}` coins | 💸 Tax: `{ea_tax:,}`", ephemeral=True)
 
-    @commands.command(name="checkprofit")
-    async def check_profit(self, ctx):
-        user_id = str(ctx.author.id)
+    @app_commands.command(name="checkprofit", description="📊 View your profit summary")
+    async def check_profit(self, interaction: discord.Interaction):
+        user_id = str(interaction.user.id)
         data = load_user_data(user_id)
 
         total_profit = sum(t["profit"] for t in data["trades"])
@@ -76,42 +107,19 @@ class Portfolio(commands.Cog):
 
         embed = discord.Embed(
             title="📊 Your Trading Portfolio",
-            description=f"Tracked for <@{ctx.author.id}>",
+            description=f"Tracked for <@{interaction.user.id}>",
             color=0x2ecc71
         )
         embed.add_field(name="💰 Net Profit", value=f"`{total_profit:,}`", inline=True)
         embed.add_field(name="💸 EA Tax Paid", value=f"`{total_tax:,}`", inline=True)
-        embed.add_field(name="📦 Trades Logged", value=f"`{trade_count}`", inline=True)
+        embed.add_field(name="🛆 Trades Logged", value=f"`{trade_count}`", inline=True)
         embed.add_field(name="🏦 Current Balance", value=f"`{current_balance:,}`", inline=True)
 
-        await ctx.send(embed=embed)
+        await interaction.response.send_message(embed=embed)
 
-    @commands.command(name="checktradehistory")
-    async def check_trade_history(self, ctx, limit: int = 5):
-        user_id = str(ctx.author.id)
-        data = load_user_data(user_id)
-        trades = data["trades"][-limit:]
-
-        if not trades:
-            await ctx.send("📭 No trades logged yet.")
-            return
-
-        embed = discord.Embed(title="📋 Recent Trades", color=0x3498db)
-        for i, trade in enumerate(reversed(trades), 1):
-            embed.add_field(
-                name=f"{i}. {trade['player']} ({trade['version']}) x{trade['quantity']}",
-                value=(
-                    f"💰 Buy: `{trade['buy']}` | 💸 Sell: `{trade['sell']}` | 🟢 Profit: `{trade['profit']:,}`\n"
-                    f"🎮 Platform: `{trade['platform']}` | 🏷️ Tag: `{trade.get('tag', 'N/A')}`"
-                ),
-                inline=False
-            )
-
-        await ctx.send(embed=embed)
-
-    @commands.command(name="traderprofile")
-    async def trader_profile(self, ctx):
-        user_id = str(ctx.author.id)
+    @app_commands.command(name="traderprofile", description="🧳 View your trader stats")
+    async def trader_profile(self, interaction: discord.Interaction):
+        user_id = str(interaction.user.id)
         data = load_user_data(user_id)
 
         trades = data["trades"]
@@ -125,13 +133,13 @@ class Portfolio(commands.Cog):
             tag = t.get("tag", "N/A")
             tag_usage[tag] = tag_usage.get(tag, 0) + 1
 
-        most_used_tag = max(tag_usage.items(), key=lambda x: x[1]) if tag_usage else "N/A"
+        most_used_tag = max(tag_usage.items(), key=lambda x: x[1])[0] if tag_usage else "N/A"
 
-        embed = discord.Embed(title="🧾 Your Trader Profile", color=0x7289da)
+        embed = discord.Embed(title="🧳 Your Trader Profile", color=0x7289da)
         embed.add_field(name="💰 Total Profit", value=f"`{total_profit:,}`", inline=True)
-        embed.add_field(name="📦 Trades Logged", value=f"`{len(trades)}`", inline=True)
+        embed.add_field(name="🛆 Trades Logged", value=f"`{len(trades)}`", inline=True)
         embed.add_field(name="📈 Win Rate", value=f"`{win_rate:.1f}%`", inline=True)
-        embed.add_field(name="🏷️ Most Used Tag", value=f"`{most_used_tag}`", inline=True)
+        embed.add_field(name="🏛️ Most Used Tag", value=f"`{most_used_tag}`", inline=True)
 
         if best_trade:
             embed.add_field(
@@ -140,16 +148,16 @@ class Portfolio(commands.Cog):
                 inline=False
             )
 
-        await ctx.send(embed=embed)
+        await interaction.response.send_message(embed=embed)
 
-    @commands.command(name="profitgraph")
-    async def profit_graph(self, ctx):
-        user_id = str(ctx.author.id)
+    @app_commands.command(name="profitgraph", description="📈 Visualise your profit over time")
+    async def profit_graph(self, interaction: discord.Interaction):
+        user_id = str(interaction.user.id)
         data = load_user_data(user_id)
-
         trades = data["trades"]
+
         if not trades:
-            await ctx.send("📭 No trades found to generate graph.")
+            await interaction.response.send_message("📅 No trades found to generate graph.", ephemeral=True)
             return
 
         trades.sort(key=lambda x: x["timestamp"])
@@ -164,7 +172,7 @@ class Portfolio(commands.Cog):
 
         fig, ax = plt.subplots()
         ax.plot(timestamps, profits, marker='o', color='lime')
-        ax.set_title("📈 Coin Balance Over Time")
+        ax.set_title("\ud83d\udcc8 Coin Balance Over Time")
         ax.set_ylabel("Coins")
         ax.set_xlabel("Time")
         ax.grid(True)
@@ -176,7 +184,7 @@ class Portfolio(commands.Cog):
         plt.close(fig)
 
         file = discord.File(graph_path, filename="profit_graph.png")
-        await ctx.send(file=file)
+        await interaction.response.send_message(file=file)
 
 async def setup(bot):
-    await bot.add_cog(Portfolio(bot))
+    await bot.add_cog(PortfolioSlash(bot))
