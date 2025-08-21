@@ -38,9 +38,10 @@ class Trending(commands.Cog):
         logger.info(f"Loaded config: {self.config}")
         self.session = None
         self.cached_data = {}
-        self.auto_post_trends.start()
 
     async def cog_load(self):
+        if not self.auto_post_trends.is_running():
+            self.auto_post_trends.start()
         self.session = aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=15),
             headers={"User-Agent": "Mozilla/5.0"}
@@ -144,7 +145,8 @@ class Trending(commands.Cog):
             trend = p["trend"] if isinstance(p["trend"], str) else f"{p['trend']:+.1f}%"
             embed.add_field(
                 name=f"{number_emojis[idx]} {p['name']} ({p['rating']})",
-                value=f"💰 {price}\n{emoji} {trend}",
+                value=f"ð° {price}
+{emoji} {trend}",
                 inline=True
             )
         return embed
