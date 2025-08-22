@@ -40,22 +40,18 @@ class PriceCheck(commands.Cog):
             res = requests.get(url, headers=headers)
             soup = BeautifulSoup(res.text, "html.parser")
 
-            # Attempt to find the second graph container (usually 4h)
-            graph_divs = soup.find_all("div", class_="highcharts-graph-wrapper")
-            log.info(f"[DEBUG] Found {len(graph_divs)} graph divs")
-
-            if len(graph_divs) >= 2:
-                hourly_graph = graph_divs[1]
-            elif graph_divs:
-                hourly_graph = graph_divs[0]
-            else:
-                log.warning("[SCRAPE] No graph container found")
+            # Find the updated graph container
+            graph_div = soup.find("div", class_="highcharts-graph-wrapper market-prices-only")
+            if not graph_div:
+                log.warning("[SCRAPE] No chart container found")
                 return []
-
-            data_ps_raw = hourly_graph.get("data-ps-data", "[]")
+            
+            data_ps_raw = graph_div.get("data-ps-data", "[]")
             price_data = json.loads(data_ps_raw)
+            
+            # Filter and convert
+            return [(datetime.fromtimestamp(ts / 1000), price) for ts, price in price_data if price > 0]
 
-            return [(datetime.fromtimestamp(ts / 1000), price) for ts, price in price_data]
         except Exception as e:
             log.error(f"[ERROR] Failed to fetch graph data: {e}")
             return []
