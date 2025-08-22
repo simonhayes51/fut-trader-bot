@@ -40,17 +40,23 @@ class PriceCheck(commands.Cog):
             res = requests.get(url, headers=headers)
             soup = BeautifulSoup(res.text, "html.parser")
 
-            # Find the updated graph container
             graph_div = soup.find("div", class_="highcharts-graph-wrapper market-prices-only")
             if not graph_div:
-                log.warning("[SCRAPE] No chart container found")
+                log.warning("[SCRAPE] No graph container found.")
                 return []
-            
+
             data_ps_raw = graph_div.get("data-ps-data", "[]")
+            log.info(f"[SCRAPE] data-ps-data length: {len(data_ps_raw)}")
+
             price_data = json.loads(data_ps_raw)
-            
-            # Filter and convert
-            return [(datetime.fromtimestamp(ts / 1000), price) for ts, price in price_data if price > 0]
+
+            if not price_data:
+                log.warning("[SCRAPE] Graph data is empty.")
+                return []
+
+            filtered = [(datetime.fromtimestamp(ts / 1000), price) for ts, price in price_data if price > 0]
+            log.info(f"[SCRAPE] Parsed {len(filtered)} hourly price points.")
+            return filtered
 
         except Exception as e:
             log.error(f"[ERROR] Failed to fetch graph data: {e}")
@@ -58,6 +64,10 @@ class PriceCheck(commands.Cog):
 
     def generate_price_graph(self, price_data, player_name):
         try:
+            if len(price_data) < 2:
+                log.warning("[GRAPH] Not enough data points to generate graph.")
+                return None
+
             timestamps, prices = zip(*price_data)
 
             fig, ax = plt.subplots(figsize=(6, 3))
@@ -75,6 +85,8 @@ class PriceCheck(commands.Cog):
             plt.savefig(buf, format='png')
             buf.seek(0)
             plt.close(fig)
+
+            log.info("[GRAPH] Successfully generated price graph.")
             return buf
         except Exception as e:
             log.error(f"[ERROR] Failed to generate graph: {e}")
