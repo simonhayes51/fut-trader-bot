@@ -31,7 +31,7 @@ COGS = [
     "cogs.submitfilter",
     "cogs.trending",
     "cogs.postatrade",
-    "cogs.portfolio"
+    "cogs.portfolio",
     "cogs.sbcsolve",
 ]
 
