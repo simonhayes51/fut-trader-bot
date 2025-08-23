@@ -2,7 +2,7 @@
 import re, json, asyncio, aiohttp
 from bs4 import BeautifulSoup
 
-UA = {"User-Agent": "Mozilla/5.0 (compatible; FUTGG-SBCBot/2.0)"}
+UA = {"User-Agent": "Mozilla/5.0 (compatible; FUTGG-SBCBot/2.2)"}
 SEM = asyncio.Semaphore(4)
 
 def _num(txt: str) -> int:
@@ -32,78 +32,171 @@ def _extract_text_list(node) -> list[str]:
             t = p.get_text(" ", strip=True)
             if t and (":" in t or "rating" in t.lower() or "players" in t.lower()):
                 out.append(t)
-    # de-dup preserve order
     seen, uniq = set(), []
     for x in out:
         if x in seen: continue
         seen.add(x); uniq.append(x)
     return uniq
 
-def _try_nuxt_json(soup: BeautifulSoup):
-    # FUT.GG uses Nuxt; many pages include window.__NUXT__ with server state
+# -------------------- DEEP JSON EXTRACTION --------------------
+
+def _script_json_blobs(soup: BeautifulSoup) -> list[dict]:
+    """
+    Collect EVERY reasonable JSON object inside <script> tags.
+    We try:
+      - window.__NUXT__ = { ... }
+      - <script type="application/json"> { ... } </script>
+      - any {...} that parses as JSON (best-effort)
+    """
+    blobs = []
+
+    # Strategy A: window.__NUXT__
     for s in soup.find_all("script"):
         txt = s.string or s.get_text() or ""
         if "__NUXT__" in txt:
             m = re.search(r"__NUXT__\s*=\s*(\{.*\})\s*;?", txt, re.S)
-            if not m: continue
-            try:
-                return json.loads(m.group(1))
-            except Exception:
-                continue
-    return None
+            if m:
+                try:
+                    blobs.append(json.loads(m.group(1)))
+                except Exception:
+                    pass
 
-def _players_from_nuxt(data) -> list[dict]:
+    # Strategy B: application/json scripts
+    for s in soup.find_all("script", attrs={"type": re.compile("json", re.I)}):
+        txt = s.string or s.get_text() or ""
+        txt = txt.strip()
+        if not txt: continue
+        try:
+            blobs.append(json.loads(txt))
+        except Exception:
+            pass
+
+    # Strategy C: last ditch — any big {...} in a script
+    for s in soup.find_all("script"):
+        txt = s.string or s.get_text() or ""
+        # skip ones we already parsed
+        if "__NUXT__" in txt: 
+            continue
+        # find a top-level JSON object (rough, but helps)
+        m = re.search(r"(\{.*\})", txt, re.S)
+        if not m: 
+            continue
+        candidate = m.group(1)
+        # trim trailing semicolon
+        candidate = re.sub(r";\s*$", "", candidate)
+        try:
+            blobs.append(json.loads(candidate))
+        except Exception:
+            # try to locate first/last balanced braces quickly
+            open_idx = candidate.find("{")
+            close_idx = candidate.rfind("}")
+            if open_idx != -1 and close_idx != -1 and close_idx > open_idx:
+                try:
+                    blobs.append(json.loads(candidate[open_idx:close_idx+1]))
+                except Exception:
+                    pass
+    return blobs
+
+def _coerce_int(x):
+    try: return int(x)
+    except: return 0
+
+def _append_unique(players, name: str, rating: int, ps=0, xbox=0, pc=0):
+    if not name: return
+    key = name.strip().lower()
+    if any(p["name"].strip().lower() == key for p in players):
+        return
+    players.append({"name": name.strip(), "rating": rating, "ps": ps, "xbox": xbox, "pc": pc})
+
+def _walk_for_players(node, out):
+    """
+    Walk any JSON structure and collect players from common shapes:
+      - { "player": {...}, "price": {...} }
+      - { "players": [ ... ] }  (list entries with name + rating/overall/ovr)
+      - { "squad": [ ... ] } or { "squad": { "players": [...] } }
+    """
+    if isinstance(node, dict):
+        # pattern: explicit 'player' object with sibling 'price'
+        if "player" in node and isinstance(node["player"], dict):
+            pl = node["player"]
+            nm = pl.get("name") or pl.get("fullName") or pl.get("shortName")
+            rt = pl.get("rating") or pl.get("overall") or pl.get("ovr") or 0
+            prices = node.get("price") or node.get("prices") or {}
+            ps = prices.get("ps") or prices.get("ps5") or prices.get("ps4") or 0
+            xb = prices.get("xbox") or prices.get("xb") or 0
+            pc = prices.get("pc") or prices.get("computer") or 0
+            if nm:
+                _append_unique(out, nm, _coerce_int(rt), _coerce_int(ps), _coerce_int(xb), _coerce_int(pc))
+
+        # pattern: players list
+        if "players" in node and isinstance(node["players"], list):
+            for obj in node["players"]:
+                if isinstance(obj, dict):
+                    # either flat {name, rating} or nested {player: {...}}
+                    if "player" in obj and isinstance(obj["player"], dict):
+                        pl = obj["player"]
+                        nm = pl.get("name") or pl.get("fullName") or pl.get("shortName")
+                        rt = pl.get("rating") or pl.get("overall") or pl.get("ovr") or 0
+                        prices = obj.get("price") or obj.get("prices") or {}
+                        ps = prices.get("ps") or prices.get("ps5") or prices.get("ps4") or 0
+                        xb = prices.get("xbox") or prices.get("xb") or 0
+                        pc = prices.get("pc") or prices.get("computer") or 0
+                        if nm:
+                            _append_unique(out, nm, _coerce_int(rt), _coerce_int(ps), _coerce_int(xb), _coerce_int(pc))
+                    else:
+                        nm = obj.get("name") or obj.get("fullName") or obj.get("shortName")
+                        rt = obj.get("rating") or obj.get("overall") or obj.get("ovr") or 0
+                        if nm:
+                            _append_unique(out, nm, _coerce_int(rt))
+
+        # pattern: squad array / object with players under it
+        if "squad" in node:
+            sq = node["squad"]
+            if isinstance(sq, list):
+                for obj in sq:
+                    _walk_for_players(obj, out)
+            elif isinstance(sq, dict):
+                _walk_for_players(sq, out)
+
+        # keep walking
+        for v in node.values():
+            _walk_for_players(v, out)
+
+    elif isinstance(node, list):
+        for v in node:
+            _walk_for_players(v, out)
+
+def _players_from_json_blobs(blobs: list[dict]) -> list[dict]:
     players = []
-    def walk(n):
-        if isinstance(n, dict):
-            # common shape: ... { players: [ { name, rating/overall }, ... ] }
-            if "players" in n and isinstance(n["players"], list):
-                for o in n["players"]:
-                    if isinstance(o, dict) and ("name" in o or "fullName" in o):
-                        nm = o.get("name") or o.get("fullName")
-                        rt = o.get("rating") or o.get("overall") or o.get("ovr") or 0
-                        try: rt = int(rt)
-                        except: rt = 0
-                        if nm: players.append({"name": nm, "rating": rt})
-            for v in n.values(): walk(v)
-        elif isinstance(n, list):
-            for v in n: walk(v)
-    walk(data)
-    # unique by name; keep first 11
-    seen, out = set(), []
-    for p in players:
-        nm = (p.get("name") or "").strip()
-        if not nm: continue
-        key = nm.lower()
-        if key in seen: continue
-        seen.add(key); out.append(p)
-        if len(out) >= 11: break
-    return out
+    for b in blobs:
+        _walk_for_players(b, players)
+        if len(players) >= 11:
+            break
+    return players[:11]
 
 def _players_from_dom(soup: BeautifulSoup) -> list[dict]:
+    # very last resort if JSON failed
     players = []
-    # table rows
     for row in soup.select("table tbody tr"):
         tds = row.select("td")
         if len(tds) < 2: continue
         name = tds[1].get_text(" ", strip=True)
         rat  = _num(tds[0].get_text(" ", strip=True))
-        if name: players.append({"name": name, "rating": rat})
+        if name: _append_unique(players, name, rat)
         if len(players) >= 11: break
-    if len(players) >= 11: return players[:11]
-    # card-ish
+    if players:
+        return players[:11]
     for card in soup.select("[class*='card'], [class*='player']"):
         name = card.get("data-name") or card.get("data-player-name")
         rating = card.get("data-rating") or card.get("data-overall")
         if name:
-            try: r = int(rating)
-            except: r = 0
-            players.append({"name": name, "rating": r})
+            _append_unique(players, name, _coerce_int(rating))
             if len(players) >= 11: break
     return players[:11]
 
+# -------------------- PUBLIC: SBC PARTS + SOLUTION XI --------------------
+
 def _closest_part_container(a):
-    # Walk up a few levels to find a section/card that likely owns this "View Solution"
     cur = a
     for _ in range(6):
         cur = cur.parent
@@ -122,7 +215,6 @@ def _closest_part_container(a):
 async def futgg_fetch_sbc_parts(session: aiohttp.ClientSession, sbc_url: str):
     """
     Returns: [{"title","cost","requirements","solution_url"}]
-    Robust to Player Picks: if only 'View Solution' links are present, we still build parts around them.
     """
     html = await fetch_html(session, sbc_url)
     soup = BeautifulSoup(html, "html.parser")
@@ -142,7 +234,6 @@ async def futgg_fetch_sbc_parts(session: aiohttp.ClientSession, sbc_url: str):
         cost = 0
         price_node = c.find(string=re.compile(r"\d[\d,\.]+\s*(fut)?", re.I))
         if price_node: cost = _num(str(price_node))
-
         reqs = _extract_text_list(c)
 
         sol = None
@@ -171,7 +262,7 @@ async def futgg_fetch_sbc_parts(session: aiohttp.ClientSession, sbc_url: str):
         if p["title"] in seen: continue
         seen.add(p["title"]); uniq.append(p)
 
-    # C) last resort: one generic part with any bullets found
+    # last resort: generic part with bullets, so the bot still posts something
     if not uniq:
         raw = _extract_text_list(soup)
         if raw:
@@ -179,51 +270,19 @@ async def futgg_fetch_sbc_parts(session: aiohttp.ClientSession, sbc_url: str):
     return uniq
 
 async def futgg_fetch_solution_players(session: aiohttp.ClientSession, solution_url: str):
+    """
+    Returns a list of up to 11 dicts:
+      { "name": str, "rating": int, "ps": int, "xbox": int, "pc": int }
+    Prices may be zero if FUT.GG didn't include them in the JSON.
+    """
     html = await fetch_html(session, solution_url)
     soup = BeautifulSoup(html, "html.parser")
-    data = _try_nuxt_json(soup)
 
-    players = []
-    if data:
-        def walk(n):
-            if isinstance(n, dict):
-                # Typical FUT.GG squad-builder entry
-                if "player" in n and isinstance(n["player"], dict):
-                    nm = n["player"].get("name") or n["player"].get("fullName")
-                    rt = n["player"].get("rating") or n["player"].get("overall") or n["player"].get("ovr") or 0
-                    try: rt = int(rt)
-                    except: rt = 0
+    # 1) try ANY JSON blobs we can find
+    blobs = _script_json_blobs(soup)
+    players = _players_from_json_blobs(blobs)
+    if players:
+        return players[:11]
 
-                    prices = n.get("price") or {}
-                    ps = prices.get("ps") or prices.get("ps5") or prices.get("ps4")
-                    xb = prices.get("xbox")
-                    pc = prices.get("pc")
-
-                    players.append({
-                        "name": nm,
-                        "rating": rt,
-                        "ps": int(ps) if ps else 0,
-                        "xbox": int(xb) if xb else 0,
-                        "pc": int(pc) if pc else 0
-                    })
-
-                for v in n.values():
-                    walk(v)
-            elif isinstance(n, list):
-                for v in n: walk(v)
-        walk(data)
-
-    # Deduplicate, max 11
-    seen, out = set(), []
-    for p in players:
-        nm = (p.get("name") or "").strip()
-        if not nm: continue
-        if nm.lower() in seen: continue
-        seen.add(nm.lower()); out.append(p)
-        if len(out) >= 11: break
-
-    if out:
-        return out
-
-    # fallback: old DOM parse
+    # 2) DOM fallback
     return _players_from_dom(soup)[:11]
