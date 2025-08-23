@@ -32,6 +32,7 @@ COGS = [
     "cogs.trending",
     "cogs.postatrade",
     "cogs.portfolio"
+    "cogs.sbcsolve",
 ]
 
 async def load_cogs():
