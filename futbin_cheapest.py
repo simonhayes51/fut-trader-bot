@@ -2,7 +2,7 @@
 import re, aiohttp, asyncio
 from bs4 import BeautifulSoup
 
-HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; SBCSolver/1.2)"}
+HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; SBCSolver/1.4)"}
 SEM = asyncio.Semaphore(4)
 
 def _num(txt: str) -> int:
@@ -14,36 +14,38 @@ def _num(txt: str) -> int:
     m = re.search(r"\d[\d,]*", t)
     return int(m.group(0).replace(",", "")) if m else 0
 
-async def futbin_cheapest_by_rating(session: aiohttp.ClientSession, rating: int, platform: str, limit: int = 20):
-    """
-    Returns a list like [{"name": "...", "price": 12345}, ...] (filtered to >0 price),
-    sorted by FUTBIN's per-platform cheapest list.
-    """
-    plat = {"ps":"ps_price", "xbox":"xbox_price", "pc":"pc_price"}.get(platform.lower(), "ps_price")
-    url = f"https://www.futbin.com/players?player_rating={rating}-{rating}&sort={plat}&order=asc&eUnt=1"
+def _plat_col_idx(plat_key: str) -> int:
+    # Typical FUTBIN players table order: Name, Rating, .., PS, Xbox, PC
+    return {"ps_price": 3, "xbox_price": 4, "pc_price": 5}.get(plat_key, 3)
+
+async def _scrape_players_table(session, url: str, plat_key: str, limit: int):
     async with SEM, session.get(url, headers=HEADERS, timeout=25) as r:
         html = await r.text()
     soup = BeautifulSoup(html, "html.parser")
-    out = []
-    # table often has PS/Xbox/PC columns; we’ll try to locate the platform column by index/heading
+    out, col = [], _plat_col_idx(plat_key)
     for row in soup.select("tr"):
         tds = row.select("td")
-        if len(tds) < 4:
-            continue
+        if len(tds) <= col: continue
         name = tds[1].get_text(" ", strip=True)
-        cols = [td.get_text(" ", strip=True) for td in tds]
-        # heuristic: PS at idx 3, Xbox 4, PC 5 (typical layout). Try by label fallback.
-        price_txt = None
-        if plat == "ps_price" and len(cols) > 3: price_txt = cols[3]
-        elif plat == "xbox_price" and len(cols) > 4: price_txt = cols[4]
-        elif plat == "pc_price" and len(cols) > 5: price_txt = cols[5]
-        if not price_txt:
-            merged = row.get_text(" ", strip=True)
-            m = re.search(r"(\d[\d,\.kK]+)", merged)
-            price_txt = m.group(1) if m else ""
+        price_txt = tds[col].get_text(" ", strip=True)
         price_val = _num(price_txt)
         if name and price_val > 0:
             out.append({"name": name, "price": price_val})
-        if len(out) >= limit:
-            break
+        if len(out) >= limit: break
     return out
+
+async def futbin_cheapest_by_rating(session: aiohttp.ClientSession, rating: int, platform: str, limit: int = 20):
+    plat_key = {"ps":"ps_price", "xbox":"xbox_price", "pc":"pc_price"}.get((platform or "ps").lower(), "ps_price")
+    url = f"https://www.futbin.com/players?player_rating={rating}-{rating}&sort={plat_key}&order=asc&eUnt=1"
+    return await _scrape_players_table(session, url, plat_key, limit)
+
+async def futbin_cheapest_special(session: aiohttp.ClientSession, kind: str, min_rating: int, platform: str, limit: int = 12):
+    """
+    kind: "totw" or "tots"
+    Tries FUTBIN filter via 'version' query (works on most pages). Best-effort.
+    """
+    plat_key = {"ps":"ps_price", "xbox":"xbox_price", "pc":"pc_price"}.get((platform or "ps").lower(), "ps_price")
+    version = "totw" if kind.lower() == "totw" else "tots"
+    url = (f"https://www.futbin.com/players?version={version}"
+           f"&player_rating={min_rating}-99&sort={plat_key}&order=asc&eUnt=1")
+    return await _scrape_players_table(session, url, plat_key, limit)
