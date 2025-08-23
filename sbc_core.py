@@ -65,7 +65,7 @@ def passes_requirement(players: List[Dict[str, Any]], req: Dict[str, Any]) -> bo
         need = req["min_exact_positions"][:]
         for p in squad:
             placed = False
-            for i,pos in enumerate(need):
+            for i, pos in enumerate(need):
                 if pos in (p["positions"] or []):
                     need.pop(i); placed = True; break
         if need: return False
