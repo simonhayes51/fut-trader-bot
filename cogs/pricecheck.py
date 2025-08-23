@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import matplotlib.ticker as ticker
 import io
-from datetime import datetime
+from datetime import datetime 
 
 log = logging.getLogger("fut-pricecheck")
 log.setLevel(logging.INFO)
