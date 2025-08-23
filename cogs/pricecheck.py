@@ -48,7 +48,6 @@ class PriceCheck(commands.Cog):
                 log.warning("[SCRAPE] No graph container found.")
                 return []
 
-            # Log first 200 chars of raw data to verify
             data_ps_raw = graph_div.get("data-ps-data", "[]")
             log.info(f"[DEBUG] Raw data snippet: {data_ps_raw[:200]}")
 
@@ -72,27 +71,57 @@ class PriceCheck(commands.Cog):
                 log.warning("[GRAPH] Not enough data points to generate graph.")
                 return None
 
+            # Keep last 48 hours of data only
+            price_data = price_data[-48:]
             timestamps, prices = zip(*price_data)
 
-            fig, ax = plt.subplots(figsize=(6, 3))
-            ax.plot(timestamps, prices, marker='o', linestyle='-', color='blue')
-            ax.set_title(f"{player_name} Price Trend (Hourly)")
-            ax.set_xlabel("Time")
-            ax.set_ylabel("Coins")
-            ax.grid(True)
+            # Determine colour based on price trend
+            line_color = "#00FF7F" if prices[-1] >= prices[0] else "#FF4C4C"
+
+            # Create figure
+            fig, ax = plt.subplots(figsize=(6, 3), facecolor="#0D0D0D")
+            ax.plot(
+                timestamps, prices,
+                marker="o", linestyle="-", color=line_color,
+                markersize=3, linewidth=2
+            )
+
+            # Title & labels
+            ax.set_title(
+                f"{player_name} Price Trend (Hourly)",
+                color="white", fontsize=11, fontweight="bold"
+            )
+            ax.set_xlabel("Time", color="#BBBBBB", fontsize=9)
+            ax.set_ylabel("Coins", color="#BBBBBB", fontsize=9)
+
+            # Grid & spines
+            ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.3, color="#555555")
+            ax.set_facecolor("#0D0D0D")
+            for spine in ax.spines.values():
+                spine.set_color("#333333")
+
+            # Format X-axis for hours
             ax.xaxis.set_major_locator(mdates.AutoDateLocator())
             ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-            ax.yaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f"{int(x / 1000)}K"))
-            plt.xticks(rotation=45)
+            plt.xticks(rotation=45, color="#DDDDDD", fontsize=8)
+
+            # Format Y-axis to K-values
+            ax.yaxis.set_major_formatter(
+                ticker.FuncFormatter(lambda x, _: f"{int(x/1000)}K")
+            )
+            plt.yticks(color="#DDDDDD", fontsize=8)
+
             plt.tight_layout()
 
+            # Save buffer for Discord embed
             buf = io.BytesIO()
-            plt.savefig(buf, format='png')
+            plt.savefig(buf, format="png", dpi=220, facecolor=fig.get_facecolor())
             buf.seek(0)
             plt.close(fig)
 
-            log.info("[GRAPH] Successfully generated price graph.")
+            log.info("[GRAPH] Successfully generated styled price graph.")
             return buf
+
         except Exception as e:
             log.error(f"[ERROR] Failed to generate graph: {e}")
             return None
