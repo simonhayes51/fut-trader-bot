@@ -63,34 +63,40 @@ class PriceCheck(commands.Cog):
             return []
 
     def generate_price_graph(self, price_data, player_name):
-        try:
-            if len(price_data) < 2:
-                log.warning("[GRAPH] Not enough data points to generate graph.")
-                return None
-
-            timestamps, prices = zip(*price_data)
-
-            fig, ax = plt.subplots(figsize=(6, 3))
-            ax.plot(timestamps, prices, marker='o', linestyle='-', color='blue')
-            ax.set_title(f"{player_name} Price Trend (Hourly)")
-            ax.set_xlabel("Time")
-            ax.set_ylabel("Coins")
-            ax.grid(True)
-            ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-            ax.yaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f"{int(x / 1000)}K"))
-            plt.xticks(rotation=45)
-            plt.tight_layout()
-
-            buf = io.BytesIO()
-            plt.savefig(buf, format='png')
-            buf.seek(0)
-            plt.close(fig)
-
-            log.info("[GRAPH] Successfully generated price graph.")
-            return buf
-        except Exception as e:
-            log.error(f"[ERROR] Failed to generate graph: {e}")
+    try:
+        if len(price_data) < 2:
+            log.warning("[GRAPH] Not enough data points to generate graph.")
             return None
+
+        timestamps, prices = zip(*price_data)
+
+        fig, ax = plt.subplots(figsize=(6, 3))
+        ax.plot(timestamps, prices, marker='o', linestyle='-', color='blue')
+        ax.set_title(f"{player_name} Price Trend (Hourly)")
+        ax.set_xlabel("Time")
+        ax.set_ylabel("Coins")
+        ax.grid(True)
+
+        # Format X ticks correctly
+        ax.xaxis.set_major_locator(mdates.AutoDateLocator())
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+
+        ax.yaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f"{int(x / 1000)}K"))
+
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png')
+        buf.seek(0)
+        plt.close(fig)
+
+        log.info("[GRAPH] Successfully generated price graph.")
+        return buf
+    except Exception as e:
+        log.error(f"[ERROR] Failed to generate graph: {e}")
+        return None
+
 
     @app_commands.command(name="pricecheck", description="Check a player's FUTBIN price.")
     @app_commands.describe(player="Enter the name of the player", platform="Choose platform")
