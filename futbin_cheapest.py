@@ -5,6 +5,21 @@ from bs4 import BeautifulSoup
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; SBCSolver/1.5)"}
 SEM = asyncio.Semaphore(4)
 
+def normalize_platform_key(platform: str) -> str:
+    """
+    Normalises platform strings to one of: ps, xbox, pc
+    """
+    if not platform:
+        return "ps"
+    p = platform.lower()
+    if p in ("ps", "playstation", "ps5", "ps4"):
+        return "ps"
+    if p in ("xb", "xbox", "xsx", "xss", "xone"):
+        return "xbox"
+    if p in ("pc", "origin", "steam", "windows"):
+        return "pc"
+    return "ps"
+
 def _num(txt: str) -> int:
     if not txt: return 0
     t = txt.lower().replace(",", "").strip()
