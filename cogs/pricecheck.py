@@ -11,6 +11,7 @@ import matplotlib.dates as mdates
 import matplotlib.ticker as ticker
 import io
 from datetime import datetime
+from zoneinfo import ZoneInfo  # ✅ For UK local time conversion
 
 log = logging.getLogger("fut-pricecheck")
 log.setLevel(logging.INFO)
@@ -52,8 +53,16 @@ class PriceCheck(commands.Cog):
                 log.warning("[SCRAPE] Graph data is empty.")
                 return []
 
-            # Convert timestamps to datetime objects, filter out zeros
-            filtered = [(datetime.fromtimestamp(ts / 1000), price) for ts, price in price_data if price > 0]
+            # ✅ Convert timestamps to UK time, ensure sorted order
+            filtered = [
+                (datetime.fromtimestamp(ts / 1000, tz=ZoneInfo("Europe/London")), price)
+                for ts, price in price_data if price > 0
+            ]
+            filtered.sort(key=lambda x: x[0])  # Oldest → Newest
+
+            # ✅ Only take the latest 48 hourly data points
+            filtered = filtered[-48:]
+
             log.info(f"[SCRAPE] Parsed {len(filtered)} hourly price points.")
             return filtered
 
@@ -67,57 +76,48 @@ class PriceCheck(commands.Cog):
                 log.warning("[GRAPH] Not enough data points to generate graph.")
                 return None
 
-            # Keep the latest 48 hourly data points
-            price_data = price_data[-48:]
             timestamps, prices = zip(*price_data)
 
-            # Always use lime green line
-            line_color = "#00FF7F"
+            # ✅ Always use lime green for branding
+            line_color = "#39FF14"
 
-            # Create figure with a sleek dark theme
+            # ✅ Create dark-themed chart
             fig, ax = plt.subplots(figsize=(6, 3), facecolor="#0D0D0D")
 
-            # Plot prices
             ax.plot(
-                timestamps,
-                prices,
-                marker="o",
-                markersize=3,
-                linewidth=2,
-                color=line_color,
+                timestamps, prices,
+                marker="o", linestyle="-", color=line_color,
+                markersize=3, linewidth=2
             )
 
-            # Title and labels
+            # Title & labels
             ax.set_title(
                 f"{player_name} Price Trend (Hourly)",
-                color="white",
-                fontsize=11,
-                fontweight="bold"
+                color="white", fontsize=11, fontweight="bold"
             )
             ax.set_xlabel("Time", color="#BBBBBB", fontsize=9)
             ax.set_ylabel("Coins", color="#BBBBBB", fontsize=9)
 
-            # Dark background, subtle gridlines
-            ax.set_facecolor("#0D0D0D")
-            ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.3, color="#444444")
-            for spine in ax.spines.values():
-                spine.set_color("#333333")
-
-            # Format X-axis as HH:MM
+            # ✅ Format X-axis to show unique hourly labels
             ax.xaxis.set_major_locator(mdates.AutoDateLocator())
-            ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+            ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M', tz=ZoneInfo("Europe/London")))
             plt.xticks(rotation=45, color="#DDDDDD", fontsize=8)
 
             # Format Y-axis in K format
             ax.yaxis.set_major_formatter(
-                ticker.FuncFormatter(lambda x, _: f"{int(x / 1000)}K")
+                ticker.FuncFormatter(lambda x, _: f"{int(x/1000)}K")
             )
             plt.yticks(color="#DDDDDD", fontsize=8)
+
+            # Grid & spines
+            ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.3, color="#555555")
+            ax.set_facecolor("#0D0D0D")
+            for spine in ax.spines.values():
+                spine.set_color("#333333")
 
             # Tight layout for Discord
             plt.tight_layout()
 
-            # Save to memory buffer
             buf = io.BytesIO()
             plt.savefig(buf, format="png", dpi=220, facecolor=fig.get_facecolor())
             buf.seek(0)
