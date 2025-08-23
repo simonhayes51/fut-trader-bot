@@ -40,23 +40,19 @@ class PriceCheck(commands.Cog):
             res = requests.get(url, headers=headers)
             soup = BeautifulSoup(res.text, "html.parser")
 
-            # Locate the graph container
             graph_div = soup.find("div", class_="highcharts-graph-wrapper market-prices-only")
-            log.info(f"[DEBUG] Graph DIV found: {graph_div is not None}")
-
             if not graph_div:
                 log.warning("[SCRAPE] No graph container found.")
                 return []
 
             data_ps_raw = graph_div.get("data-ps-data", "[]")
-            log.info(f"[DEBUG] Raw data snippet: {data_ps_raw[:200]}")
-
             price_data = json.loads(data_ps_raw)
 
             if not price_data:
                 log.warning("[SCRAPE] Graph data is empty.")
                 return []
 
+            # Convert timestamps to datetime objects, filter out zeros
             filtered = [(datetime.fromtimestamp(ts / 1000), price) for ts, price in price_data if price > 0]
             log.info(f"[SCRAPE] Parsed {len(filtered)} hourly price points.")
             return filtered
@@ -71,49 +67,57 @@ class PriceCheck(commands.Cog):
                 log.warning("[GRAPH] Not enough data points to generate graph.")
                 return None
 
-            # Keep last 48 hours of data only
+            # Keep the latest 48 hourly data points
             price_data = price_data[-48:]
             timestamps, prices = zip(*price_data)
 
-            # Determine colour based on price trend
-            line_color = "#00FF7F" if prices[-1] >= prices[0] else "#FF4C4C"
+            # Always use lime green line
+            line_color = "#00FF7F"
 
-            # Create figure
+            # Create figure with a sleek dark theme
             fig, ax = plt.subplots(figsize=(6, 3), facecolor="#0D0D0D")
+
+            # Plot prices
             ax.plot(
-                timestamps, prices,
-                marker="o", linestyle="-", color=line_color,
-                markersize=3, linewidth=2
+                timestamps,
+                prices,
+                marker="o",
+                markersize=3,
+                linewidth=2,
+                color=line_color,
             )
 
-            # Title & labels
+            # Title and labels
             ax.set_title(
                 f"{player_name} Price Trend (Hourly)",
-                color="white", fontsize=11, fontweight="bold"
+                color="white",
+                fontsize=11,
+                fontweight="bold"
             )
             ax.set_xlabel("Time", color="#BBBBBB", fontsize=9)
             ax.set_ylabel("Coins", color="#BBBBBB", fontsize=9)
 
-            # Grid & spines
-            ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.3, color="#555555")
+            # Dark background, subtle gridlines
             ax.set_facecolor("#0D0D0D")
+            ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.3, color="#444444")
             for spine in ax.spines.values():
                 spine.set_color("#333333")
 
-            # Format X-axis for hours
+            # Format X-axis as HH:MM
             ax.xaxis.set_major_locator(mdates.AutoDateLocator())
             ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
             plt.xticks(rotation=45, color="#DDDDDD", fontsize=8)
 
-            # Format Y-axis to K-values
+            # Format Y-axis in K format
             ax.yaxis.set_major_formatter(
-                ticker.FuncFormatter(lambda x, _: f"{int(x/1000)}K")
+                ticker.FuncFormatter(lambda x, _: f"{int(x / 1000)}K")
             )
             plt.yticks(color="#DDDDDD", fontsize=8)
 
+            # Tight layout for Discord
             plt.tight_layout()
 
-            # Save buffer for Discord embed
+            # Save to memory buffer
             buf = io.BytesIO()
             plt.savefig(buf, format="png", dpi=220, facecolor=fig.get_facecolor())
             buf.seek(0)
