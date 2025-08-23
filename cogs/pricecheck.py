@@ -12,7 +12,7 @@ import matplotlib.ticker as ticker
 import io
 from datetime import datetime, timedelta
 
-# Apply dark mode style
+# Apply dark mode theme for graphs
 plt.style.use("dark_background")
 
 log = logging.getLogger("fut-pricecheck")
@@ -22,8 +22,7 @@ formatter = logging.Formatter("[%(asctime)s] %(levelname)s:%(name)s: %(message)s
 handler.setFormatter(formatter)
 log.addHandler(handler)
 
-BRAND_LIME = "#00FF7F"  # Main accent colour for graphs & embeds
-EMBED_DARK = 0x0A0A0A   # Deep black-grey embed background
+BRAND_LIME = "#00FF7F"  # Lime green branding colour
 
 class PriceCheck(commands.Cog):
     def __init__(self, bot):
@@ -58,7 +57,7 @@ class PriceCheck(commands.Cog):
                 log.warning("[SCRAPE] Graph data is empty.")
                 return []
 
-            # Last 24 hours only
+            # Only last 24 hours of hourly prices
             now = datetime.now()
             filtered = [
                 (datetime.fromtimestamp(ts / 1000), price)
@@ -66,7 +65,7 @@ class PriceCheck(commands.Cog):
                 and datetime.fromtimestamp(ts / 1000) >= now - timedelta(hours=24)
             ]
 
-            log.info(f"[SCRAPE] Parsed {len(filtered)} hourly price points.")
+            log.info(f"[SCRAPE] Parsed {len(filtered)} hourly price points (last 24h).")
             return filtered
 
         except Exception as e:
@@ -87,13 +86,13 @@ class PriceCheck(commands.Cog):
             fig.patch.set_facecolor("black")
             ax.set_facecolor("black")
 
-            # Main price line
+            # Main line in branded lime
             ax.plot(timestamps, prices, marker="o", linestyle="-", color=BRAND_LIME, markersize=4, label="Price")
 
-            # Highlight the latest point
-            ax.scatter(timestamps[-1], latest_price, color=BRAND_LIME, s=60, edgecolor="black", zorder=5, label="Latest")
+            # Highlight latest price
+            ax.scatter(timestamps[-1], latest_price, color="lime", s=60, edgecolor="black", zorder=5, label="Latest")
 
-            # Average price line
+            # Add average price line
             ax.axhline(avg_price, color="white", linestyle="--", linewidth=1, label=f"Avg: {int(avg_price):,}")
 
             ax.set_title(f"{player_name} Price Trend (Last 24h)", color="white", fontsize=11)
@@ -101,17 +100,18 @@ class PriceCheck(commands.Cog):
             ax.set_ylabel("Coins", color="white")
             ax.grid(True, linestyle="--", alpha=0.2)
 
-            # X-axis: evenly spaced hourly ticks
+            # Show 6 hourly labels, evenly spaced
             ax.xaxis.set_major_locator(mdates.HourLocator(interval=4))
             ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
 
-            # Y-axis: format values like 30K, 100K, etc.
+            # Y-axis formatting e.g. 30K, 100K, 1M
             ax.yaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f"{int(x / 1000)}K"))
 
-            # White ticks
+            # Set white ticks
             ax.tick_params(axis="x", colors="white")
             ax.tick_params(axis="y", colors="white")
 
+            # Legend
             ax.legend(facecolor="black", edgecolor=BRAND_LIME, labelcolor="white")
 
             plt.xticks(rotation=45)
@@ -176,20 +176,18 @@ class PriceCheck(commands.Cog):
             log.warning(f"[SCRAPE FAIL] {e}")
             price, trend_full, price_range, updated = "N/A", "-", "-", "-"
 
-        # ✅ Branded Lime + Black Embed
         embed = discord.Embed(
-            title=f"💹 {match['name']} ({match['rating']})",
-            description="**Live Price Check** · Updated from FUTBIN",
-            color=discord.Color.from_str(BRAND_LIME),
+            title=f"{match['name']} ({match['rating']})",
+            color=discord.Color.green(),
         )
-        embed.add_field(name="🎮 Platform", value="Console" if platform.value == "console" else "PC", inline=True)
-        embed.add_field(name="💰 Current Price", value=f"**{price}** 🪙", inline=True)
-        embed.add_field(name="📊 Range", value=f"`{price_range}`", inline=True)
-        embed.add_field(name="📈 Trend", value=trend_full, inline=True)
+        embed.add_field(name="🎮 Platform", value="Console" if platform.value == "console" else "PC", inline=False)
+        embed.add_field(name="💰 Price", value=f"{price} 🪙", inline=False)
+        embed.add_field(name="📊 Range", value=price_range, inline=False)
+        embed.add_field(name="📈 Trend", value=trend_full, inline=False)
         embed.add_field(name="🏟️ Club", value=match.get("club", "Unknown"), inline=True)
         embed.add_field(name="🌍 Nation", value=match.get("nation", "Unknown"), inline=True)
         embed.add_field(name="🧩 Position", value=match.get("position", "Unknown"), inline=True)
-        embed.set_footer(text=f"🔄 Updated: {updated} • Data from FUTBIN")
+        embed.set_footer(text=f"🔴 Updated: {updated} • Data from FUTBIN")
         embed.set_thumbnail(url=f"https://cdn.futbin.com/content/fifa25/img/players/{match['id']}.png")
 
         graph = None
