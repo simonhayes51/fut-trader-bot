@@ -16,24 +16,28 @@ def _num(txt: str) -> int:
 
 def _parse_platform_price(soup: BeautifulSoup, platform: str) -> int:
     plat = {"ps":"ps", "xbox":"xbox", "pc":"pc"}[platform]
+    # Tight scope to price boxes if present
     box = soup.find("div", class_=re.compile(r"price[- ]?box", re.I))
     if not box:
         box = soup.find("div", class_=re.compile(r"price-box-original-player", re.I)) or soup
+
+    # Look for platform label near a number
     for tag in box.find_all(string=re.compile(rf"\b{plat}\b", re.I)):
         txt = tag.parent.get_text(" ", strip=True)
         m = re.search(r"(\d[\d,\.kK]+)", txt)
         if m: return _num(m.group(1))
-    price_divs = box.find_all("div", class_=re.compile(r"lowest-price", re.I))
-    for d in price_divs:
+
+    # Fallback: historical lowest-price blocks
+    for d in box.find_all("div", class_=re.compile(r"lowest-price", re.I)):
         txt = d.get_text(" ", strip=True)
-        if txt: 
-            val = _num(txt)
-            if val: return val
+        val = _num(txt)
+        if val: return val
+
+    # Last resort: largest number in the box
     txt = box.get_text(" ", strip=True)
-    m = re.findall(r"\d[\d,\.kK]+", txt)
-    if m:
-        candidates = [_num(x) for x in m]
-        return max(candidates) if candidates else 0
+    nums = re.findall(r"\d[\d,\.kK]+", txt)
+    if nums:
+        return max(_num(x) for x in nums)
     return 0
 
 @lru_cache(maxsize=4096)
