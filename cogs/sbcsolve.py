@@ -7,13 +7,14 @@ from bs4 import BeautifulSoup
 
 from sbc_core import build_indexes
 from price_fetch_futbin import futbin_price_by_id
-from futbin_cheapest import futbin_cheapest_by_rating, futbin_cheapest_special
+from futbin_cheapest import futbin_cheapest_by_rating, futbin_cheapest_special, normalize_platform_key
+from futgg_scrape import futgg_fetch_sbc_parts, futgg_fetch_solution_players
 
 PLAYERS_JSON   = os.getenv("PLAYERS_JSON", "players_temp.json")
 FUTBIN_BASE    = "https://www.futbin.com"
 FUTGG_BASE     = "https://www.fut.gg"
 SBC_CACHE_TTL  = 600
-UA             = {"User-Agent": "Mozilla/5.0 (compatible; SBCSolver/1.5)"}
+UA             = {"User-Agent": "Mozilla/5.0 (compatible; SBCSolver/2.0)"}
 
 def _norm(s: str) -> str:
     s = (s or "").lower().replace("&", " and ")
@@ -43,7 +44,7 @@ class SBCSolver(commands.Cog):
             r.raise_for_status()
             return await r.text()
 
-    # ---------------- LIST (FUT.GG primary, FUTBIN fallback) ----------------
+    # ---------------- LIST SOURCES ----------------
     async def _fetch_futgg_sbc_list(self, session):
         html = await self.fetch_html(session, f"{FUTGG_BASE}/sbc/")
         soup = BeautifulSoup(html, "html.parser")
@@ -54,6 +55,7 @@ class SBCSolver(commands.Cog):
             if not title or href == "/sbc/": continue
             url = href if href.startswith("http") else f"{FUTGG_BASE}{href}"
             out.append((title, url))
+        # de-dup/sort
         seen, uniq = set(), []
         for t,u in out:
             if (t,u) in seen: continue
@@ -115,206 +117,106 @@ class SBCSolver(commands.Cog):
         suggestions = [norm_map[s][0] for s in sugg if s in norm_map][:5]
         return picked, suggestions
 
-    # ---------------- PARSE: XI (when available) ----------------
-    def _parse_solution_rows(self, soup):
+    # ---------------- PARSE: ready-made XI on page (fallback for non-FUT.GG) ----------------
+    def _parse_solution_from_url(self, html: str):
+        soup = BeautifulSoup(html, "html.parser")
+        # table first
         players = []
         for row in soup.select("table tbody tr"):
-            cols = [c.get_text(" ", strip=True) for c in row.select("td")]
-            if len(cols) >= 2:
-                name = cols[1]; rating = _first_int(cols[0])
-                if name: players.append({"name": name, "rating": rating})
+            tds = row.select("td")
+            if len(tds) < 2: continue
+            name = tds[1].get_text(" ", strip=True)
+            rating = _first_int(tds[0].get_text(" ", strip=True))
+            if name: players.append({"name": name, "rating": rating})
             if len(players) >= 11: break
-        return players
-
-    def _parse_solution_cards(self, soup):
-        players = []
+        if len(players) >= 11:
+            return players[:11]
+        # card-ish
         for card in soup.select("[class*='player'], [class*='card'], [class*='squad']"):
             name = card.get("data-player-name") or card.get("data-name")
             rating = card.get("data-rating") or card.get("data-overall")
             if name:
-                players.append({"name": name.strip(), "rating": int(rating) if str(rating).isdigit() else 0})
+                try: rating = int(rating)
+                except: rating = 0
+                players.append({"name": name.strip(), "rating": rating})
                 if len(players) >= 11: break
-                continue
-            img = card.find("img", alt=True)
-            if img and img.get("alt"):
-                alt = img["alt"]; name_m = re.search(r"([A-Za-z][A-Za-z .'-]{2,})", alt)
-                rating = _first_int(alt)
-                if name_m:
-                    players.append({"name": name_m.group(1).strip(), "rating": rating})
-                    if len(players) >= 11: break
-                    continue
-            txt = card.get_text(" ", strip=True)
-            name_m = re.search(r"([A-Za-z][A-Za-z .'-]{2,})", txt); rating = _first_int(txt)
-            if name_m:
-                players.append({"name": name_m.group(1).strip(), "rating": rating})
-                if len(players) >= 11: break
-        return players
-
-    def _parse_solution_from_url(self, html: str):
-        soup = BeautifulSoup(html, "html.parser")
-        players = self._parse_solution_rows(soup)
-        if len(players) < 11:
-            players = self._parse_solution_cards(soup)
         return players[:11]
 
-    # ---------------- PARSE: requirements (FUTBIN group/PP pages) ----------------
-    def _parse_futbin_requirements(self, html: str):
+    # ---------------- Build XI by basic requirement (rating + specials) ----------------
+    async def _build_xi_rating_specials(self, session, platform: str, reqs: list[str]):
         """
-        Return [{"title": "...", "requirements": [lines...]}] for sub-challenges.
-        Handles INFO bullets and Player Pick pages (plain <ul><li>).
+        Minimal fallback builder: uses FUTBIN cheapest list(s).
         """
-        soup = BeautifulSoup(html, "html.parser")
-        parts = []
-        containers = soup.select("section:has(h2), div.sbc_challenge, div.sbc_set, div.card") or soup.select("div")
-        seen = set()
-        for box in containers:
-            # title
-            title = None
-            for sel in ["h2","h3","header h2",".title",".sbc-title",".card-title"]:
-                h = box.select_one(sel)
-                if h:
-                    t = h.get_text(" ", strip=True)
-                    if t and len(t) > 2 and not t.lower().startswith("requirements"):
-                        title = t; break
-            if not title:
-                h = box.find(["strong","b"])
-                if h: title = h.get_text(" ", strip=True)
-            if not title: continue
-
-            # requirements
-            reqs = []
-            head = None
-            for tag in box.find_all(["h3","h4","strong","b","p","div"], string=True):
-                if re.search(r"requirements", tag.get_text(" ", strip=True), re.I):
-                    head = tag; break
-            if head:
-                cur = head.find_next()
-                steps = 0
-                while cur and steps < 8:
-                    steps += 1
-                    for li in cur.find_all("li"):
-                        line = li.get_text(" ", strip=True)
-                        if line: reqs.append(line)
-                    for p in cur.find_all(["p","div"]):
-                        line = p.get_text(" ", strip=True)
-                        if line and any(sym in line for sym in ["•","★","–","- "]) and len(line) > 3:
-                            reqs.append(line.lstrip("•★–- ").strip())
-                    cur = cur.find_next_sibling()
-            if not reqs:
-                # Player Pick style: plain list
-                for li in box.find_all("li"):
-                    line = li.get_text(" ", strip=True)
-                    if line and len(line) > 3: reqs.append(line)
-
-            if not reqs: continue
-            key = (title, tuple(reqs))
-            if key in seen: continue
-            seen.add(key)
-            parts.append({"title": title, "requirements": reqs})
-
-        # dedup by title
-        final, seen_titles = [], set()
-        for p in parts:
-            if p["title"] in seen_titles: continue
-            seen_titles.add(p["title"]); final.append(p)
-        return final
-
-    # ---------------- Build XI from requirements ----------------
-    async def _build_xi_from_requirements(self, session, platform: str, req_lines: list[str]):
-        """
-        Enforces:
-          - Squad Rating: Min R
-          - # of players in squad: N (default 11)
-          - Min TOTW / TOTS (best-effort via FUTBIN filters)
-        Strategy:
-          1) Take specials first (TOTW/TOTS) at rating ≥ R
-          2) Fill remaining with cheapest R-rated players
-          3) Always output N players
-        """
-        # --- parse requirements numbers (robust patterns) ---
+        # rating
         R = 0
         N = 11
         need_totw = 0
         need_tots = 0
-
-        for line in req_lines:
-            # rating (accepts: "Min. Team Rating: 85", "Team Rating: Min 85", "Squad Rating: 85", etc.)
+        for line in reqs:
             m = (
                 re.search(r"\b(min\.?|minimum)\s*(team\s*)?rating[: ]*\s*(\d{2,3})", line, re.I)
                 or re.search(r"\bteam\s*rating[: ]*\s*(min\.?|minimum)?\s*(\d{2,3})", line, re.I)
                 or re.search(r"\bsquad\s*rating[: ]*\s*(min\.?|minimum)?\s*(\d{2,3})", line, re.I)
                 or re.search(r"\brating[: ]*\s*(min\.?|minimum)?\s*(\d{2,3})", line, re.I)
             )
-            if m:
-                R = max(R, int(m.group(m.lastindex)))
-
-            # squad size
-            m = re.search(r"#\s*of\s*players\s*in\s*squad\s*:\s*(\d+)", line, re.I)
-            if m:
-                N = int(m.group(1))
-
-            # TOTW/TOTS
+            if m: R = max(R, int(m.group(m.lastindex)))
+            m = re.search(r"(?:number\s*of\s*players|#\s*of\s*players\s*in\s*squad)\s*:\s*(\d+)", line, re.I)
+            if m: N = int(m.group(1))
             if re.search(r"(totw|team\s*of\s*the\s*week)", line, re.I):
                 mm = re.search(r"\bmin(?:imum)?\s*(\d+)", line, re.I)
                 need_totw = max(need_totw, int(mm.group(1)) if mm else 1)
-            if re.search(r"(tots|team\s*of\s*the\s*season)", line, re.I):
+            if re.search(r"(tots|team\s*of\s*the\s*season|honourable\s*mentions|highlights)", line, re.I):
                 mm = re.search(r"\bmin(?:imum)?\s*(\d+)", line, re.I)
                 need_tots = max(need_tots, int(mm.group(1)) if mm else 1)
 
         if R == 0: R = 84
-        if N <= 0: N = 11
+        platform = normalize_platform_key(platform)
 
-        async def map_with_live(entry, default_rating):
-            nm = entry["name"]
-            cands = self.indexes["by_name"].get(nm.lower(), [])
+        async def _map_price(name, default_rating):
+            cands = self.indexes["by_name"].get(name.lower(), [])
             if not cands:
-                surname = nm.split()[-1].lower()
+                surname = name.split()[-1].lower()
                 keys = [k for k in self.indexes["by_name"].keys() if surname in k]
                 cands = sum((self.indexes["by_name"][k] for k in keys), [])
             if cands:
                 pid = cands[0]["pid"]
-                live = await futbin_price_by_id(session, str(pid), platform)
-                return {"name": nm, "pid": pid, "rating": entry.get("rating", default_rating), "price": live or entry.get("price", 0)}
-            return {"name": nm, "pid": None, "rating": entry.get("rating", default_rating), "price": entry.get("price", 0)}
+                price = await futbin_price_by_id(session, str(pid), platform)
+                return {"name": name, "pid": pid, "rating": default_rating, "price": price}
+            return {"name": name, "pid": None, "rating": default_rating, "price": 0}
 
         xi = []
-        # 1) specials first
+        # specials first
         if need_totw:
             pool = await futbin_cheapest_special(session, "totw", min_rating=R, platform=platform, limit=max(need_totw*4, 8))
-            for e in pool:
-                xi.append(await map_with_live(e, R))
-                if len(xi) >= need_totw: break
-
+            for e in pool[:need_totw]:
+                xi.append(await _map_price(e["name"], R))
         if need_tots:
             pool = await futbin_cheapest_special(session, "tots", min_rating=R, platform=platform, limit=max(need_tots*4, 8))
-            for e in pool:
-                xi.append(await map_with_live(e, max(R, e.get("rating", R))))
-                if len([p for p in xi if p]) >= need_totw + need_tots: break
+            for e in pool[:need_tots]:
+                xi.append(await _map_price(e["name"], max(R, e.get("rating", R))))
 
-        # 2) fill rest with cheapest at rating R
+        # fill
         remaining = max(0, N - len(xi))
         if remaining:
-            cheap = await futbin_cheapest_by_rating(session, R, platform, limit=max(remaining*4, 15))
+            cheap = await futbin_cheapest_by_rating(session, R, platform, limit=max(remaining*4, 20))
             seen = set(p["name"].lower() for p in xi)
             for e in cheap:
                 if e["name"].lower() in seen: continue
-                xi.append(await map_with_live(e, R))
-                seen.add(e["name"].lower())
+                xi.append(await _map_price(e["name"], R))
                 if len(xi) >= N: break
 
-        # 3) ensure N players exist (belt-and-braces)
         while len(xi) < N and xi:
             xi.append({**xi[-1], "pid": None})
 
-        total = sum(p.get("price", 0) or 0 for p in xi)
-        return xi[:N], total, {"min_rating": R, "players": N, "totw": need_totw, "tots": need_tots}
+        total = sum(p.get("price", 0) or 0 for p in xi[:N])
+        return xi[:N], total
 
     # ---------------- Command ----------------
-    @app_commands.command(name="sbcsolve", description="Find SBC, parse requirements, and post a cheapest valid XI")
+    @app_commands.command(name="sbcsolve", description="Find SBC on FUT.GG, pull solution or build cheapest XI automatically")
     @app_commands.describe(sbcname="Start typing to autocomplete SBC name", platform="ps/xbox/pc")
     async def sbcsolve(self, interaction: discord.Interaction, sbcname: str | None = None, platform: str = "ps"):
         await interaction.response.defer(thinking=True)
-        plat = (platform or "ps").lower().strip()
+        plat = normalize_platform_key(platform)
 
         async with aiohttp.ClientSession() as session:
             items = await self.get_sbc_list_cached(session)
@@ -333,9 +235,62 @@ class SBCSolver(commands.Cog):
                 await interaction.followup.send(msg); return
 
             title, link = pick
-            html = await self.fetch_html(session, link)
 
-            # 1) fast path: ready-made XI table on the page
+            # ---------------- FUT.GG primary path ----------------
+            if "fut.gg" in link:
+                parts = await futgg_fetch_sbc_parts(session, link)
+                if parts:
+                    embeds = []
+                    for part in parts[:3]:   # keep output tidy
+                        xi = []
+                        # Try their solution first
+                        if part.get("solution_url"):
+                            try:
+                                xi = await futgg_fetch_solution_players(session, part["solution_url"])
+                            except Exception:
+                                xi = []
+                        if xi:
+                            # optional: live price per player via futbin (can be heavy). We’ll show FUT.GG total instead.
+                            total_txt = f"{part['cost']:,} coins" if part.get("cost") else "–"
+                            e = discord.Embed(
+                                title=f"{title} — {part['title']}",
+                                description=f"Platform: {plat.upper()} • Source: FUT.GG solution",
+                                colour=discord.Colour.green()
+                            )
+                            req_text = "\n".join(f"• {r}" for r in (part.get("requirements") or []))[:1024]
+                            if req_text:
+                                e.add_field(name="Requirements", value=req_text, inline=False)
+                            e.add_field(name="Estimated Total", value=total_txt, inline=False)
+                            lines = [f"{p.get('rating',0):>2} — {p['name']}" for p in xi]
+                            e.add_field(name="XI", value="\n".join(lines)[:1024] or "—", inline=False)
+                            if part.get("solution_url"):
+                                e.set_footer(text="View Solution on FUT.GG")
+                                e.url = part["solution_url"]
+                            embeds.append(e)
+                        else:
+                            # Fallback: build basic XI from rating + specials
+                            built_xi, total = await self._build_xi_rating_specials(session, plat, part.get("requirements") or [])
+                            e = discord.Embed(
+                                title=f"{title} — {part['title']}",
+                                description=f"Platform: {plat.upper()} • Source: auto-build (rating & specials)",
+                                colour=discord.Colour.blurple()
+                            )
+                            req_text = "\n".join(f"• {r}" for r in (part.get("requirements") or []))[:1024]
+                            if req_text:
+                                e.add_field(name="Requirements", value=req_text, inline=False)
+                            e.add_field(name="Estimated Total", value=f"{(part.get('cost') or total):,} coins", inline=False)
+                            lines = [f"{p.get('rating',0):>2} — {p['name']} • {p.get('price',0):,}" for p in built_xi]
+                            e.add_field(name="Cheapest XI", value="\n".join(lines)[:1024] or "—", inline=False)
+                            if part.get("solution_url"):
+                                e.set_footer(text="No parsed XI; showed auto-build. View Solution on FUT.GG")
+                                e.url = part["solution_url"]
+                            embeds.append(e)
+
+                    await interaction.followup.send(embeds=embeds)
+                    return
+
+            # ---------------- FUTBIN fallback path ----------------
+            html = await self.fetch_html(session, link)
             players = self._parse_solution_from_url(html)
             if players:
                 price_map = {}
@@ -361,27 +316,8 @@ class SBCSolver(commands.Cog):
                 await interaction.followup.send(embed=embed)
                 return
 
-            # 2) otherwise: parse requirements (FUTBIN group/PP pages) and auto-build XI
-            parts = self._parse_futbin_requirements(html)
-            if not parts:
-                await interaction.followup.send(f"Couldn't parse a solution or requirements for **{title}**."); return
-
-            # Build up to 3 parts to keep output tidy
-            embeds = []
-            for part in parts[:3]:
-                xi, total, meta = await self._build_xi_from_requirements(session, plat, part["requirements"])
-                e = discord.Embed(
-                    title=f"{title} — {part['title']}",
-                    description=f"Platform: {plat.upper()} • Min Rating {meta['min_rating']} • Players {meta['players']} • TOTW {meta['totw']} • TOTS {meta['tots']}",
-                    colour=discord.Colour.green()
-                )
-                e.add_field(name="Requirements", value="\n".join(f"• {r}" for r in part["requirements"])[:1024] or "—", inline=False)
-                e.add_field(name="Estimated Total", value=f"{total:,} coins", inline=False)
-                lines = [f"{p['rating']:>2} — {p['name']} • {p.get('price',0):,}" for p in xi]
-                e.add_field(name="Cheapest XI", value="\n".join(lines)[:1024] or "—", inline=False)
-                embeds.append(e)
-
-            await interaction.followup.send(embeds=embeds)
+            await interaction.followup.send(f"Couldn't parse a solution or requirements for **{title}**.")
+            return
 
     # ---------- Autocomplete (10-min cache) ----------
     @sbcsolve.autocomplete("sbcname")
