@@ -7,6 +7,7 @@ def map_player(p: Dict[str, Any]) -> Dict[str, Any]:
         "pid": p.get("pid") or p.get("id") or p.get("defId"),
         "name": p.get("name") or p.get("Name"),
         "rating": int(p.get("rating") or p.get("ovr") or p.get("overall") or 0),
+        # Optional pretty names if your JSON includes them (used later if you expand constraints)
         "league_name": (p.get("leagueName") or p.get("league_name") or p.get("league") or ""),
         "nation_name": (p.get("nationName") or p.get("nation_name") or p.get("nation") or ""),
         "club_name":   (p.get("clubName")   or p.get("club_name")   or p.get("club")   or ""),
