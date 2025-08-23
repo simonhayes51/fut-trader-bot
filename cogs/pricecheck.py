@@ -11,7 +11,6 @@ import matplotlib.dates as mdates
 import matplotlib.ticker as ticker
 import io
 from datetime import datetime
-from zoneinfo import ZoneInfo  # ✅ For UK local time conversion
 
 log = logging.getLogger("fut-pricecheck")
 log.setLevel(logging.INFO)
@@ -36,41 +35,44 @@ class PriceCheck(commands.Cog):
             return []
 
     def fetch_price_data(self, url):
+        """Fetch hourly (today) price data from FUTBIN"""
         try:
             headers = {"User-Agent": "Mozilla/5.0"}
             res = requests.get(url, headers=headers)
             soup = BeautifulSoup(res.text, "html.parser")
 
-            graph_div = soup.find("div", class_="highcharts-graph-wrapper market-prices-only")
-            if not graph_div:
-                log.warning("[SCRAPE] No graph container found.")
+            # Grab ALL graph containers
+            graph_divs = soup.find_all("div", class_="highcharts-graph-wrapper")
+            log.info(f"[DEBUG] Found {len(graph_divs)} graph divs")
+
+            if len(graph_divs) < 2:
+                log.warning("[SCRAPE] Hourly graph not found.")
                 return []
 
-            data_ps_raw = graph_div.get("data-ps-data", "[]")
+            # SECOND graph is today's hourly data
+            hourly_graph = graph_divs[1]
+            data_ps_raw = hourly_graph.get("data-ps-data", "[]")
             price_data = json.loads(data_ps_raw)
 
             if not price_data:
-                log.warning("[SCRAPE] Graph data is empty.")
+                log.warning("[SCRAPE] No hourly price data found.")
                 return []
 
-            # ✅ Convert timestamps to UK time, ensure sorted order
-            filtered = [
-                (datetime.fromtimestamp(ts / 1000, tz=ZoneInfo("Europe/London")), price)
-                for ts, price in price_data if price > 0
-            ]
-            filtered.sort(key=lambda x: x[0])  # Oldest → Newest
+            # Convert timestamps → datetime, keep only positive prices
+            filtered = [(datetime.fromtimestamp(ts / 1000), price)
+                        for ts, price in price_data if price > 0]
 
-            # ✅ Only take the latest 48 hourly data points
-            filtered = filtered[-48:]
-
+            # FUTBIN sometimes gives >24h, so we cap it at the latest 24 points
+            filtered = filtered[-24:]
             log.info(f"[SCRAPE] Parsed {len(filtered)} hourly price points.")
             return filtered
 
         except Exception as e:
-            log.error(f"[ERROR] Failed to fetch graph data: {e}")
+            log.error(f"[ERROR] Failed to fetch hourly data: {e}")
             return []
 
     def generate_price_graph(self, price_data, player_name):
+        """Generate a lime-green hourly price trend graph"""
         try:
             if len(price_data) < 2:
                 log.warning("[GRAPH] Not enough data points to generate graph.")
@@ -78,52 +80,48 @@ class PriceCheck(commands.Cog):
 
             timestamps, prices = zip(*price_data)
 
-            # ✅ Always use lime green for branding
-            line_color = "#39FF14"
+            # Create figure — no hard background so it works on dark/light Discord
+            fig, ax = plt.subplots(figsize=(6, 3))
 
-            # ✅ Create dark-themed chart
-            fig, ax = plt.subplots(figsize=(6, 3), facecolor="#0D0D0D")
-
+            # FUT-styled lime-green line
             ax.plot(
                 timestamps, prices,
-                marker="o", linestyle="-", color=line_color,
+                marker="o", linestyle="-", color="#39FF14",
                 markersize=3, linewidth=2
             )
 
             # Title & labels
             ax.set_title(
-                f"{player_name} Price Trend (Hourly)",
-                color="white", fontsize=11, fontweight="bold"
+                f"{player_name} Price Trend (Today)",
+                fontsize=11, fontweight="bold"
             )
-            ax.set_xlabel("Time", color="#BBBBBB", fontsize=9)
-            ax.set_ylabel("Coins", color="#BBBBBB", fontsize=9)
+            ax.set_xlabel("Time", fontsize=9)
+            ax.set_ylabel("Coins", fontsize=9)
 
-            # ✅ Format X-axis to show unique hourly labels
+            # Grid + cleaner look
+            ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.3)
+
+            # Format X-axis as HH:MM
             ax.xaxis.set_major_locator(mdates.AutoDateLocator())
-            ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M', tz=ZoneInfo("Europe/London")))
-            plt.xticks(rotation=45, color="#DDDDDD", fontsize=8)
+            ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+            plt.xticks(rotation=45, fontsize=8)
 
-            # Format Y-axis in K format
+            # Format Y-axis in K format (e.g. 2,300,000 → 2300K)
             ax.yaxis.set_major_formatter(
                 ticker.FuncFormatter(lambda x, _: f"{int(x/1000)}K")
             )
-            plt.yticks(color="#DDDDDD", fontsize=8)
-
-            # Grid & spines
-            ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.3, color="#555555")
-            ax.set_facecolor("#0D0D0D")
-            for spine in ax.spines.values():
-                spine.set_color("#333333")
+            plt.yticks(fontsize=8)
 
             # Tight layout for Discord
             plt.tight_layout()
 
+            # Save graph to buffer
             buf = io.BytesIO()
-            plt.savefig(buf, format="png", dpi=220, facecolor=fig.get_facecolor())
+            plt.savefig(buf, format="png", dpi=220)
             buf.seek(0)
             plt.close(fig)
 
-            log.info("[GRAPH] Successfully generated styled price graph.")
+            log.info("[GRAPH] Successfully generated hourly price graph.")
             return buf
 
         except Exception as e:
