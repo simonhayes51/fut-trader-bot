@@ -156,7 +156,7 @@ class PortfolioSlash(commands.Cog):
         async with self.pool.acquire() as conn:
             trades = await conn.fetch("SELECT * FROM trades WHERE user_id=$1", user_id)
 
-        total_profit = sum((t["profit"] or 0) for t in trades)
+        total_profit = sum(t["profit"] or 0 for t in trades)
         win_count = len([t for t in trades if t["profit"] is not None and t["profit"] > 0])
         win_rate = (win_count / len(trades) * 100) if trades else 0
 
