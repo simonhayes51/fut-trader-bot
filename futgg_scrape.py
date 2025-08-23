@@ -182,7 +182,42 @@ async def futgg_fetch_solution_players(session: aiohttp.ClientSession, solution_
     html = await fetch_html(session, solution_url)
     soup = BeautifulSoup(html, "html.parser")
     data = _try_nuxt_json(soup)
+
+    # Look for "squad" or "squads" object in JSON
     if data:
-        pl = _players_from_nuxt(data)
-        if pl: return pl[:11]
+        players = []
+        def walk(n):
+            if isinstance(n, dict):
+                # common keys in squad-builder JSON
+                if "squad" in n and isinstance(n["squad"], list):
+                    for o in n["squad"]:
+                        nm = o.get("name") or o.get("fullName")
+                        rt = o.get("rating") or o.get("overall") or o.get("ovr")
+                        try: rt = int(rt)
+                        except: rt = 0
+                        if nm: players.append({"name": nm, "rating": rt})
+                if "players" in n and isinstance(n["players"], list):
+                    for o in n["players"]:
+                        nm = o.get("name") or o.get("fullName")
+                        rt = o.get("rating") or o.get("overall") or o.get("ovr")
+                        try: rt = int(rt)
+                        except: rt = 0
+                        if nm: players.append({"name": nm, "rating": rt})
+                for v in n.values(): walk(v)
+            elif isinstance(n, list):
+                for v in n: walk(v)
+        walk(data)
+
+        # unique, keep 11 (or fewer if challenge < 11)
+        seen, out = set(), []
+        for p in players:
+            nm = (p.get("name") or "").strip()
+            if not nm: continue
+            k = nm.lower()
+            if k in seen: continue
+            seen.add(k); out.append(p)
+            if len(out) >= 11: break
+        return out
+
+    # fallback: old DOM parser
     return _players_from_dom(soup)[:11]
