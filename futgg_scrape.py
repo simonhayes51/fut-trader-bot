@@ -183,41 +183,47 @@ async def futgg_fetch_solution_players(session: aiohttp.ClientSession, solution_
     soup = BeautifulSoup(html, "html.parser")
     data = _try_nuxt_json(soup)
 
-    # Look for "squad" or "squads" object in JSON
+    players = []
     if data:
-        players = []
         def walk(n):
             if isinstance(n, dict):
-                # common keys in squad-builder JSON
-                if "squad" in n and isinstance(n["squad"], list):
-                    for o in n["squad"]:
-                        nm = o.get("name") or o.get("fullName")
-                        rt = o.get("rating") or o.get("overall") or o.get("ovr")
-                        try: rt = int(rt)
-                        except: rt = 0
-                        if nm: players.append({"name": nm, "rating": rt})
-                if "players" in n and isinstance(n["players"], list):
-                    for o in n["players"]:
-                        nm = o.get("name") or o.get("fullName")
-                        rt = o.get("rating") or o.get("overall") or o.get("ovr")
-                        try: rt = int(rt)
-                        except: rt = 0
-                        if nm: players.append({"name": nm, "rating": rt})
-                for v in n.values(): walk(v)
+                # Typical FUT.GG squad-builder entry
+                if "player" in n and isinstance(n["player"], dict):
+                    nm = n["player"].get("name") or n["player"].get("fullName")
+                    rt = n["player"].get("rating") or n["player"].get("overall") or n["player"].get("ovr") or 0
+                    try: rt = int(rt)
+                    except: rt = 0
+
+                    prices = n.get("price") or {}
+                    ps = prices.get("ps") or prices.get("ps5") or prices.get("ps4")
+                    xb = prices.get("xbox")
+                    pc = prices.get("pc")
+
+                    players.append({
+                        "name": nm,
+                        "rating": rt,
+                        "ps": int(ps) if ps else 0,
+                        "xbox": int(xb) if xb else 0,
+                        "pc": int(pc) if pc else 0
+                    })
+
+                for v in n.values():
+                    walk(v)
             elif isinstance(n, list):
                 for v in n: walk(v)
         walk(data)
 
-        # unique, keep 11 (or fewer if challenge < 11)
-        seen, out = set(), []
-        for p in players:
-            nm = (p.get("name") or "").strip()
-            if not nm: continue
-            k = nm.lower()
-            if k in seen: continue
-            seen.add(k); out.append(p)
-            if len(out) >= 11: break
+    # Deduplicate, max 11
+    seen, out = set(), []
+    for p in players:
+        nm = (p.get("name") or "").strip()
+        if not nm: continue
+        if nm.lower() in seen: continue
+        seen.add(nm.lower()); out.append(p)
+        if len(out) >= 11: break
+
+    if out:
         return out
 
-    # fallback: old DOM parser
+    # fallback: old DOM parse
     return _players_from_dom(soup)[:11]
