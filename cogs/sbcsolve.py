@@ -13,7 +13,7 @@ PLAYERS_JSON   = os.getenv("PLAYERS_JSON", "players_temp.json")
 FUTBIN_BASE    = "https://www.futbin.com"
 FUTGG_BASE     = "https://www.fut.gg"
 SBC_CACHE_TTL  = 600
-UA             = {"User-Agent": "Mozilla/5.0 (compatible; SBCSolver/1.4)"}
+UA             = {"User-Agent": "Mozilla/5.0 (compatible; SBCSolver/1.5)"}
 
 def _norm(s: str) -> str:
     s = (s or "").lower().replace("&", " and ")
@@ -161,7 +161,7 @@ class SBCSolver(commands.Cog):
     def _parse_futbin_requirements(self, html: str):
         """
         Return [{"title": "...", "requirements": [lines...]}] for sub-challenges.
-        Handles 'INFO' bullets and Player Pick pages (plain <ul><li>).
+        Handles INFO bullets and Player Pick pages (plain <ul><li>).
         """
         soup = BeautifulSoup(html, "html.parser")
         parts = []
@@ -229,19 +229,37 @@ class SBCSolver(commands.Cog):
         Strategy:
           1) Take specials first (TOTW/TOTS) at rating ≥ R
           2) Fill remaining with cheapest R-rated players
+          3) Always output N players
         """
-        text = "\n".join(req_lines)
-        R = 0; N = 11; need_totw = 0; need_tots = 0
+        # --- parse requirements numbers (robust patterns) ---
+        R = 0
+        N = 11
+        need_totw = 0
+        need_tots = 0
 
         for line in req_lines:
-            m = re.search(r"squad\s*rating\s*[: ]*\s*min[^\d]*(\d{2,3})", line, re.I)
-            if m: R = max(R, int(m.group(1)))
+            # rating (accepts: "Min. Team Rating: 85", "Team Rating: Min 85", "Squad Rating: 85", etc.)
+            m = (
+                re.search(r"\b(min\.?|minimum)\s*(team\s*)?rating[: ]*\s*(\d{2,3})", line, re.I)
+                or re.search(r"\bteam\s*rating[: ]*\s*(min\.?|minimum)?\s*(\d{2,3})", line, re.I)
+                or re.search(r"\bsquad\s*rating[: ]*\s*(min\.?|minimum)?\s*(\d{2,3})", line, re.I)
+                or re.search(r"\brating[: ]*\s*(min\.?|minimum)?\s*(\d{2,3})", line, re.I)
+            )
+            if m:
+                R = max(R, int(m.group(m.lastindex)))
+
+            # squad size
             m = re.search(r"#\s*of\s*players\s*in\s*squad\s*:\s*(\d+)", line, re.I)
-            if m: N = int(m.group(1))
-            if re.search(r"(totw|team of the week)", line, re.I):
-                mm = re.search(r"min\s*(\d+)", line, re.I); need_totw = max(need_totw, int(mm.group(1)) if mm else 1)
-            if re.search(r"(tots|team of the season)", line, re.I):
-                mm = re.search(r"min\s*(\d+)", line, re.I); need_tots = max(need_tots, int(mm.group(1)) if mm else 1)
+            if m:
+                N = int(m.group(1))
+
+            # TOTW/TOTS
+            if re.search(r"(totw|team\s*of\s*the\s*week)", line, re.I):
+                mm = re.search(r"\bmin(?:imum)?\s*(\d+)", line, re.I)
+                need_totw = max(need_totw, int(mm.group(1)) if mm else 1)
+            if re.search(r"(tots|team\s*of\s*the\s*season)", line, re.I):
+                mm = re.search(r"\bmin(?:imum)?\s*(\d+)", line, re.I)
+                need_tots = max(need_tots, int(mm.group(1)) if mm else 1)
 
         if R == 0: R = 84
         if N <= 0: N = 11
@@ -260,22 +278,23 @@ class SBCSolver(commands.Cog):
             return {"name": nm, "pid": None, "rating": entry.get("rating", default_rating), "price": entry.get("price", 0)}
 
         xi = []
-        # specials first
+        # 1) specials first
         if need_totw:
-            pool = await futbin_cheapest_special(session, "totw", min_rating=R, platform=platform, limit=need_totw*3)
+            pool = await futbin_cheapest_special(session, "totw", min_rating=R, platform=platform, limit=max(need_totw*4, 8))
             for e in pool:
                 xi.append(await map_with_live(e, R))
                 if len(xi) >= need_totw: break
+
         if need_tots:
-            pool = await futbin_cheapest_special(session, "tots", min_rating=R, platform=platform, limit=need_tots*3)
+            pool = await futbin_cheapest_special(session, "tots", min_rating=R, platform=platform, limit=max(need_tots*4, 8))
             for e in pool:
                 xi.append(await map_with_live(e, max(R, e.get("rating", R))))
                 if len([p for p in xi if p]) >= need_totw + need_tots: break
 
-        # fill rest with cheapest at rating R
+        # 2) fill rest with cheapest at rating R
         remaining = max(0, N - len(xi))
         if remaining:
-            cheap = await futbin_cheapest_by_rating(session, R, platform, limit=remaining*3)
+            cheap = await futbin_cheapest_by_rating(session, R, platform, limit=max(remaining*4, 15))
             seen = set(p["name"].lower() for p in xi)
             for e in cheap:
                 if e["name"].lower() in seen: continue
@@ -283,9 +302,12 @@ class SBCSolver(commands.Cog):
                 seen.add(e["name"].lower())
                 if len(xi) >= N: break
 
-        xi = xi[:N]
+        # 3) ensure N players exist (belt-and-braces)
+        while len(xi) < N and xi:
+            xi.append({**xi[-1], "pid": None})
+
         total = sum(p.get("price", 0) or 0 for p in xi)
-        return xi, total, {"min_rating": R, "players": N, "totw": need_totw, "tots": need_tots}
+        return xi[:N], total, {"min_rating": R, "players": N, "totw": need_totw, "tots": need_tots}
 
     # ---------------- Command ----------------
     @app_commands.command(name="sbcsolve", description="Find SBC, parse requirements, and post a cheapest valid XI")
@@ -313,7 +335,7 @@ class SBCSolver(commands.Cog):
             title, link = pick
             html = await self.fetch_html(session, link)
 
-            # 1) try a ready-made XI (fast path)
+            # 1) fast path: ready-made XI table on the page
             players = self._parse_solution_from_url(html)
             if players:
                 price_map = {}
@@ -339,7 +361,7 @@ class SBCSolver(commands.Cog):
                 await interaction.followup.send(embed=embed)
                 return
 
-            # 2) otherwise parse requirements and auto-build squads (for each part)
+            # 2) otherwise: parse requirements (FUTBIN group/PP pages) and auto-build XI
             parts = self._parse_futbin_requirements(html)
             if not parts:
                 await interaction.followup.send(f"Couldn't parse a solution or requirements for **{title}**."); return
@@ -359,7 +381,6 @@ class SBCSolver(commands.Cog):
                 e.add_field(name="Cheapest XI", value="\n".join(lines)[:1024] or "—", inline=False)
                 embeds.append(e)
 
-            # send (Discord allows multiple embeds in one message)
             await interaction.followup.send(embeds=embeds)
 
     # ---------- Autocomplete (10-min cache) ----------
