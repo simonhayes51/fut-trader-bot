@@ -314,32 +314,43 @@ async def futgg_fetch_solution_players(session: aiohttp.ClientSession, solution_
             if pl:
                 return pl[:11]
 
-    # 3) API guesses by UUID
+        # 3) API guesses by UUID
     m_uuid = re.search(r'/squad-builder/([0-9a-fA-F-]{8,})', solution_url)
     if m_uuid:
         uuid = m_uuid.group(1).strip("/")
         api_candidates = [
             f"https://www.fut.gg/api/squad-builder/{uuid}",
             f"https://www.fut.gg/api/squad/{uuid}",
+            f"https://www.fut.gg/api/squad-builder/{uuid}/players",
         ]
         headers = {**UA, "Referer": solution_url, "Accept": "application/json"}
         for api in api_candidates:
             try:
                 async with SEM, session.get(api, headers=headers, timeout=20) as r:
-                    if r.status != 200: continue
+                    if r.status != 200:
+                        continue
                     txt = await r.text()
                 data = json.loads(txt)
             except Exception:
                 continue
-            pl = _players_from_json_blobs([data])
-            if not pl and isinstance(data, dict):
-                for v in data.values():
-                    if isinstance(v, (dict, list)):
-                        pl = _players_from_json_blobs([v])
-                        if pl:
-                            break
-            if pl:
-                return pl[:11]
+
+            # look for players directly
+            players = []
+            if isinstance(data, dict):
+                if "players" in data and isinstance(data["players"], list):
+                    for p in data["players"]:
+                        name = p.get("name") or p.get("fullName")
+                        rating = p.get("rating") or p.get("overall") or 0
+                        ps = p.get("ps") or p.get("ps5") or 0
+                        xbox = p.get("xbox") or 0
+                        pc = p.get("pc") or 0
+                        if name:
+                            players.append({"name": name, "rating": int(rating), "ps": ps, "xbox": xbox, "pc": pc})
+                elif "squad" in data:
+                    return _players_from_json_blobs([data])
+
+            if players:
+                return players[:11]
 
     # 4) raw regex over HTML
     players = _players_from_raw_regex(html)
