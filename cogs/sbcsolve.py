@@ -7,7 +7,6 @@ from bs4 import BeautifulSoup
 
 from futgg_scrape import futgg_fetch_sbc_parts, futgg_fetch_solution_players
 
-PLAYERS_JSON   = os.getenv("PLAYERS_JSON", "players_temp.json")  # kept in case you expand later
 FUTGG_BASE     = "https://www.fut.gg"
 SBC_CACHE_TTL  = 600
 UA             = {"User-Agent": "Mozilla/5.0 (compatible; SBCSolver/FUTGG-Only 1.0)"}
@@ -24,22 +23,13 @@ def _clean_title(t: str) -> str:
 class SBCSolver(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        # (players file not strictly needed now; leaving for future enhancements)
-        try:
-            with open(PLAYERS_JSON, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            self.players = data if isinstance(data, list) else list(data.values())
-        except Exception:
-            self.players = []
         self._sbc_cache = {"items": [], "ts": 0.0}
 
-    # ---------------- HTTP ----------------
     async def fetch_html(self, session: aiohttp.ClientSession, url: str) -> str:
         async with session.get(url, headers=UA, timeout=25) as r:
             r.raise_for_status()
             return await r.text()
 
-    # ---------------- LIST (FUT.GG) ----------------
     async def _fetch_futgg_sbc_list(self, session):
         html = await self.fetch_html(session, f"{FUTGG_BASE}/sbc/")
         soup = BeautifulSoup(html, "html.parser")
@@ -47,21 +37,20 @@ class SBCSolver(commands.Cog):
         for a in soup.select('a[href^="/sbc/"]'):
             title = _clean_title(a.get_text(" ", strip=True))
             href = a.get("href") or ""
-            if not title or href == "/sbc/":
-                continue
+            if not title or href == "/sbc/": continue
             url = href if href.startswith("http") else f"{FUTGG_BASE}{href}"
             out.append((title, url))
-        # de-dup/sort
+        # dedupe + sort
         seen, uniq = set(), []
-        for t, u in out:
-            if (t, u) in seen: continue
-            seen.add((t, u)); uniq.append((t, u))
+        for t,u in out:
+            if (t,u) in seen: continue
+            seen.add((t,u)); uniq.append((t,u))
         uniq.sort(key=lambda x: x[0].lower())
         return uniq
 
     async def get_sbc_list_cached(self, session, force: bool = False):
         now = time.time()
-        if (not force) and self._sbc_cache["items"] and (now - self._sbc_cache["ts"] < SBC_CACHE_TTL):
+        if not force and self._sbc_cache["items"] and (now - self._sbc_cache["ts"] < SBC_CACHE_TTL):
             return self._sbc_cache["items"]
         try:
             items = await self._fetch_futgg_sbc_list(session)
@@ -70,20 +59,18 @@ class SBCSolver(commands.Cog):
         self._sbc_cache = {"items": items, "ts": now}
         return items
 
-    # ---------------- MATCH ----------------
     def fuzzy_pick(self, items, query):
         if not items: return None, []
         qn = _norm(query)
-        for t, u in items:
-            if qn and qn in _norm(t): return (t, u), []
-        norm_map = { _norm(t): (t, u) for t, u in items }
+        for t,u in items:
+            if qn and qn in _norm(t): return (t,u), []
+        norm_map = { _norm(t): (t,u) for t,u in items }
         best = difflib.get_close_matches(qn, list(norm_map.keys()), n=1, cutoff=0.4)
         sugg = difflib.get_close_matches(qn, list(norm_map.keys()), n=6, cutoff=0.3)
         picked = norm_map[best[0]] if best else None
         suggestions = [norm_map[s][0] for s in sugg if s in norm_map][:5]
         return picked, suggestions
 
-    # ---------------- Command ----------------
     @app_commands.command(name="sbcsolve", description="Find SBC on FUT.GG and show requirements + XI from the View Solution")
     @app_commands.describe(sbcname="Start typing to autocomplete SBC name")
     async def sbcsolve(self, interaction: discord.Interaction, sbcname: str | None = None):
@@ -94,7 +81,7 @@ class SBCSolver(commands.Cog):
 
             if not sbcname:
                 embed = discord.Embed(title="Current SBCs (FUT.GG)", colour=discord.Colour.green())
-                for t, u in items[:15]:
+                for t,u in items[:15]:
                     embed.add_field(name=t, value=f"[Open]({u})", inline=False)
                 await interaction.followup.send(embed=embed)
                 return
@@ -112,7 +99,7 @@ class SBCSolver(commands.Cog):
                 return
 
             embeds = []
-            for part in parts[:3]:  # keep output tidy
+            for part in parts[:3]:
                 xi = []
                 if part.get("solution_url"):
                     try:
@@ -125,6 +112,7 @@ class SBCSolver(commands.Cog):
                     description="Source: FUT.GG",
                     colour=discord.Colour.green() if xi else discord.Colour.blurple()
                 )
+
                 req_text = "\n".join(f"• {r}" for r in (part.get("requirements") or []))[:1024]
                 if req_text:
                     e.add_field(name="Requirements", value=req_text, inline=False)
@@ -146,7 +134,7 @@ class SBCSolver(commands.Cog):
 
             await interaction.followup.send(embeds=embeds)
 
-    # ---------- Autocomplete (10-min cache) ----------
+    # ---- Autocomplete (10-min cache) ----
     @sbcsolve.autocomplete("sbcname")
     async def _sbcname_autocomplete(self, interaction: discord.Interaction, current: str):
         try:
@@ -155,7 +143,7 @@ class SBCSolver(commands.Cog):
         except Exception:
             return []
         cur = _norm(current); out = []
-        for t, _ in items:
+        for t,_ in items:
             if not cur or cur in _norm(t):
                 out.append(t)
             if len(out) >= 25: break
