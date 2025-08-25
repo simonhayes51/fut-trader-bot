@@ -57,7 +57,7 @@ class PriceCheck(commands.Cog):
                 except json.JSONDecodeError:
                     log.warning("[SCRAPE] Hourly data JSON decode failed.")
 
-            # ✅ Second try: extract hourly JSON directly from FUTBIN <script> tags
+            # ✅ Fallback: extract from FUTBIN <script> tags if graph parsing fails
             if not price_data:
                 script_tags = soup.find_all("script")
                 for script in script_tags:
@@ -70,18 +70,17 @@ class PriceCheck(commands.Cog):
                             except json.JSONDecodeError:
                                 continue
 
-            # If no hourly data found at all
             if not price_data:
                 log.warning("[SCRAPE] No hourly price data found for this player.")
                 return []
 
-            # Convert timestamps → datetime, filter invalid points
+            # Convert timestamps → datetime & keep positive prices only
             filtered = [
                 (datetime.fromtimestamp(ts / 1000), price)
                 for ts, price in price_data if price > 0
             ]
 
-            # ✅ Keep only today's 24 hourly points
+            # ✅ Keep only today's last 24 hourly points
             filtered = filtered[-24:]
             log.info(f"[SCRAPE] Parsed {len(filtered)} hourly price points.")
 
@@ -92,7 +91,7 @@ class PriceCheck(commands.Cog):
             return []
 
     def generate_price_graph(self, price_data, player_name):
-        """Generate a lime-green hourly price trend graph"""
+        """Generate a lime-green hourly price trend graph with black background + white text"""
         try:
             if len(price_data) < 2:
                 log.warning("[GRAPH] Not enough data points to generate graph.")
@@ -100,50 +99,54 @@ class PriceCheck(commands.Cog):
 
             timestamps, prices = zip(*price_data)
 
-            # Transparent background for light/dark Discord themes
+            # Set up figure with black background
             fig, ax = plt.subplots(figsize=(6, 3))
-            fig.patch.set_alpha(0)
-            ax.set_facecolor("none")
+            fig.patch.set_facecolor("#0D0D0D")
+            ax.set_facecolor("#0D0D0D")
 
-            # Lime-green FUT-style line
+            # Lime-green FUT-style price line
             ax.plot(
                 timestamps, prices,
                 marker="o", linestyle="-", color="#39FF14",
                 markersize=3, linewidth=2
             )
 
-            # Title & labels
+            # Titles & labels → white
             ax.set_title(
                 f"{player_name} Price Trend (Today)",
-                fontsize=11, fontweight="bold"
+                color="white", fontsize=11, fontweight="bold"
             )
-            ax.set_xlabel("Time", fontsize=9)
-            ax.set_ylabel("Coins", fontsize=9)
+            ax.set_xlabel("Time", color="white", fontsize=9)
+            ax.set_ylabel("Coins", color="white", fontsize=9)
 
-            # Grid + cleaner look
-            ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.3)
+            # Grid lines → subtle gray
+            ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.3, color="#555555")
 
-            # Format X-axis → HH:MM times
+            # Set all spines to gray
+            for spine in ax.spines.values():
+                spine.set_color("#555555")
+
+            # Format X-axis as HH:MM
             ax.xaxis.set_major_locator(mdates.AutoDateLocator())
             ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-            plt.xticks(rotation=45, fontsize=8)
+            plt.xticks(rotation=45, color="white", fontsize=8)
 
-            # Format Y-axis → 2,300,000 → 2300K
+            # Format Y-axis as 2,300,000 → 2300K
             ax.yaxis.set_major_formatter(
                 ticker.FuncFormatter(lambda x, _: f"{int(x/1000)}K")
             )
-            plt.yticks(fontsize=8)
+            plt.yticks(color="white", fontsize=8)
 
-            # Tight layout for Discord embeds
+            # Tight layout for Discord display
             plt.tight_layout()
 
-            # Save to buffer
+            # Save graph to buffer
             buf = io.BytesIO()
-            plt.savefig(buf, format="png", dpi=220, transparent=True)
+            plt.savefig(buf, format="png", dpi=220, facecolor=fig.get_facecolor())
             buf.seek(0)
             plt.close(fig)
 
-            log.info("[GRAPH] Successfully generated hourly price graph.")
+            log.info("[GRAPH] Successfully generated styled black-background price graph.")
             return buf
 
         except Exception as e:
