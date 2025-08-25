@@ -19,6 +19,7 @@ formatter = logging.Formatter("[%(asctime)s] %(levelname)s:%(name)s: %(message)s
 handler.setFormatter(formatter)
 log.addHandler(handler)
 
+
 class PriceCheck(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -35,36 +36,55 @@ class PriceCheck(commands.Cog):
             return []
 
     def fetch_price_data(self, url):
-        """Fetch hourly (today) price data from FUTBIN"""
+        """Fetch today's hourly price data from FUTBIN reliably"""
         try:
             headers = {"User-Agent": "Mozilla/5.0"}
             res = requests.get(url, headers=headers)
             soup = BeautifulSoup(res.text, "html.parser")
 
-            # Grab ALL graph containers
+            # Grab all graph containers on page
             graph_divs = soup.find_all("div", class_="highcharts-graph-wrapper")
             log.info(f"[DEBUG] Found {len(graph_divs)} graph divs")
 
-            if len(graph_divs) < 2:
-                log.warning("[SCRAPE] Hourly graph not found.")
-                return []
+            price_data = []
 
-            # SECOND graph is today's hourly data
-            hourly_graph = graph_divs[1]
-            data_ps_raw = hourly_graph.get("data-ps-data", "[]")
-            price_data = json.loads(data_ps_raw)
+            # ✅ First try: second graph div (usually hourly)
+            if len(graph_divs) >= 2:
+                hourly_graph = graph_divs[1]
+                data_ps_raw = hourly_graph.get("data-ps-data", "[]")
+                try:
+                    price_data = json.loads(data_ps_raw)
+                except json.JSONDecodeError:
+                    log.warning("[SCRAPE] Hourly data JSON decode failed.")
 
+            # ✅ Second try: extract hourly JSON directly from FUTBIN <script> tags
             if not price_data:
-                log.warning("[SCRAPE] No hourly price data found.")
+                script_tags = soup.find_all("script")
+                for script in script_tags:
+                    if script.string and "highcharts" in script.string.lower():
+                        match = re.search(r'data-ps-data="(\[.*?\])"', script.string)
+                        if match:
+                            try:
+                                price_data = json.loads(match.group(1))
+                                break
+                            except json.JSONDecodeError:
+                                continue
+
+            # If no hourly data found at all
+            if not price_data:
+                log.warning("[SCRAPE] No hourly price data found for this player.")
                 return []
 
-            # Convert timestamps → datetime, keep only positive prices
-            filtered = [(datetime.fromtimestamp(ts / 1000), price)
-                        for ts, price in price_data if price > 0]
+            # Convert timestamps → datetime, filter invalid points
+            filtered = [
+                (datetime.fromtimestamp(ts / 1000), price)
+                for ts, price in price_data if price > 0
+            ]
 
-            # FUTBIN sometimes gives >24h, so we cap it at the latest 24 points
+            # ✅ Keep only today's 24 hourly points
             filtered = filtered[-24:]
             log.info(f"[SCRAPE] Parsed {len(filtered)} hourly price points.")
+
             return filtered
 
         except Exception as e:
@@ -80,10 +100,12 @@ class PriceCheck(commands.Cog):
 
             timestamps, prices = zip(*price_data)
 
-            # Create figure — no hard background so it works on dark/light Discord
+            # Transparent background for light/dark Discord themes
             fig, ax = plt.subplots(figsize=(6, 3))
+            fig.patch.set_alpha(0)
+            ax.set_facecolor("none")
 
-            # FUT-styled lime-green line
+            # Lime-green FUT-style line
             ax.plot(
                 timestamps, prices,
                 marker="o", linestyle="-", color="#39FF14",
@@ -101,23 +123,23 @@ class PriceCheck(commands.Cog):
             # Grid + cleaner look
             ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.3)
 
-            # Format X-axis as HH:MM
+            # Format X-axis → HH:MM times
             ax.xaxis.set_major_locator(mdates.AutoDateLocator())
             ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
             plt.xticks(rotation=45, fontsize=8)
 
-            # Format Y-axis in K format (e.g. 2,300,000 → 2300K)
+            # Format Y-axis → 2,300,000 → 2300K
             ax.yaxis.set_major_formatter(
                 ticker.FuncFormatter(lambda x, _: f"{int(x/1000)}K")
             )
             plt.yticks(fontsize=8)
 
-            # Tight layout for Discord
+            # Tight layout for Discord embeds
             plt.tight_layout()
 
-            # Save graph to buffer
+            # Save to buffer
             buf = io.BytesIO()
-            plt.savefig(buf, format="png", dpi=220)
+            plt.savefig(buf, format="png", dpi=220, transparent=True)
             buf.seek(0)
             plt.close(fig)
 
@@ -189,6 +211,7 @@ class PriceCheck(commands.Cog):
         embed.set_footer(text=f"🔴 Updated: {updated} • Data from FUTBIN")
         embed.set_thumbnail(url=f"https://cdn.futbin.com/content/fifa25/img/players/{match['id']}.png")
 
+        # Fetch graph
         graph = None
         try:
             price_data = self.fetch_price_data(url)
@@ -197,6 +220,7 @@ class PriceCheck(commands.Cog):
         except Exception as e:
             log.warning(f"[GRAPH FAIL] {e}")
 
+        # Send embed with graph if available
         if graph:
             file = discord.File(graph, filename="graph.png")
             embed.set_image(url="attachment://graph.png")
@@ -216,6 +240,7 @@ class PriceCheck(commands.Cog):
         except Exception as e:
             log.error(f"[AUTOCOMPLETE ERROR] {e}")
             return []
+
 
 async def setup(bot):
     await bot.add_cog(PriceCheck(bot))
