@@ -1,264 +1,305 @@
-# cogs/trending.py
+# cogs/trending.py - Updated to use dashboard trending API
 
 import discord
 from discord.ext import commands, tasks
 from discord import app_commands
-from bs4 import BeautifulSoup
 import aiohttp
 import json
 import os
 import logging
 from datetime import datetime
+from typing import Dict, Any, List, Optional
 
-CONFIG_FILE = "autotrend_config.json"
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-def load_config():
-    if not os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, "w") as f:
-            json.dump({}, f)
-    with open(CONFIG_FILE, "r") as f:
-        return json.load(f)
-
-def save_config(data):
-    with open(CONFIG_FILE, "w") as f:
-        json.dump(data, f, indent=2)
 
 class Trending(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.session = None
-        self.config = load_config()
+        self.config = self.load_config()
         self.auto_post_trends.start()
 
+    def load_config(self):
+        """Load auto-trending configuration"""
+        config_file = "autotrend_config.json"
+        if not os.path.exists(config_file):
+            with open(config_file, "w") as f:
+                json.dump({}, f)
+        with open(config_file, "r") as f:
+            return json.load(f)
+
+    def save_config(self):
+        """Save auto-trending configuration"""
+        with open("autotrend_config.json", "w") as f:
+            json.dump(self.config, f, indent=2)
+
     async def cog_load(self):
+        """Initialize HTTP session"""
         self.session = aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=15),
             headers={"User-Agent": "Mozilla/5.0"}
         )
 
     async def cog_unload(self):
+        """Clean up resources"""
         if self.session:
             await self.session.close()
         self.auto_post_trends.cancel()
 
-    async def fetch_url(self, url: str) -> str:
-        if not self.session:
-            await self.cog_load()
+    async def fetch_trending_data(self, trend_type: str, timeframe: str = "24h") -> List[Dict[str, Any]]:
+        """Fetch trending data using dashboard API"""
         try:
+            api_base = os.getenv("API_BASE_URL", "http://localhost:8000")
+            # Convert timeframe format
+            tf = timeframe.replace("h", "")
+            
+            url = f"{api_base}/api/trending?type={trend_type}&tf={tf}&limit=10"
+            
             async with self.session.get(url) as response:
-                return await response.text() if response.status == 200 else None
+                if response.status == 200:
+                    data = await response.json()
+                    return data.get("items", [])
+                else:
+                    logger.error(f"API returned status {response.status}")
+                    return []
+                    
         except Exception as e:
-            logger.error(f"Fetch error: {e}")
-            return None
-
-    async def get_ps_price(self, url: str, expected_rating: str) -> str:
-        html = await self.fetch_url(url)
-        if not html:
-            return None
-        soup = BeautifulSoup(html, "html.parser")
-        blocks = soup.select("div.player-page-price-versions > div")
-        for b in blocks:
-            rating = b.select_one(".player-rating")
-            price = b.select_one("div.price.inline-with-icon.lowest-price-1")
-            if rating and price and rating.text.strip() == expected_rating:
-                return price.text.strip()
-        fallback = soup.select_one("div.price.inline-with-icon.lowest-price-1")
-        return fallback.text.strip() if fallback else None
-
-    async def fetch_trending_data(self, timeframe):
-        tf_map = {
-            "24h": "div.market-players-wrapper.market-24-hours.m-row.space-between",
-            "4h": "div.market-players-wrapper.market-4-hours.m-row.space-between"
-        }
-        url = "https://www.futbin.com/market"
-        html = await self.fetch_url(url)
-        if not html:
+            logger.error(f"Failed to fetch trending data: {e}")
             return []
-        soup = BeautifulSoup(html, "html.parser")
-        container = soup.select_one(tf_map[timeframe])
-        cards = container.select("a.market-player-card") if container else []
-        players = []
-        for card in cards:
-            trend_tag = card.select_one(".market-player-change")
-            if not trend_tag or "%" not in trend_tag.text:
-                continue
-            trend_text = trend_tag.text.strip().replace("%", "").replace("+", "").replace(",", "")
-            try:
-                trend = float(trend_text)
-                if "day-change-negative" in trend_tag.get("class", []):
-                    trend = -abs(trend)
-            except:
-                continue
-            name = card.select_one(".playercard-s-25-name")
-            rating = card.select_one(".playercard-s-25-rating")
-            link = card.get("href")
-            if not name or not rating or not link:
-                continue
-            players.append({
-                "name": name.text.strip(),
-                "rating": rating.text.strip(),
-                "trend": trend,
-                "url": f"https://www.futbin.com{link}?platform=ps"
-            })
-        return players
 
-    async def generate_trend_embed(self, direction, timeframe):
-        if direction == "smart":
-            short = await self.fetch_trending_data("4h")
-            long = await self.fetch_trending_data("24h")
-            map_4h = {(p["name"], p["rating"]): p["trend"] for p in short}
-            smart = []
-            for p in long:
-                key = (p["name"], p["rating"])
-                if key in map_4h and ((map_4h[key] > 0 > p["trend"]) or (map_4h[key] < 0 < p["trend"])):
-                    price = await self.get_ps_price(p["url"], p["rating"])
-                    p["trend_4h"] = map_4h[key]
-                    p["trend_24h"] = p["trend"]
-                    p["price"] = price or "N/A"
-                    smart.append(p)
-            players = smart[:10]
-            title = f"🧠 Smart Movers – Trend flipped from 4h to 24h"
-            embed = discord.Embed(title=title, color=discord.Color.red())
-            embed.set_footer(text="Data from FUTBIN | Prices are estimates")
-            number_emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
-            left = ""
-            right = ""
-            for i, p in enumerate(players):
-                try:
-                    line = (
-                        f"**{number_emojis[i]} {p['name']} ({p['rating']})**\n"
-                        f"💰 {p['price']}\n"
-                        f"🔁 4h: {p['trend_4h']:+.1f}%\n"
-                        f"🔁 24h: {p['trend_24h']:+.1f}%\n\n"
-                    )
-                except KeyError as e:
-                    logger.warning(f"Missing smart mover data: {p} | Error: {e}")
-                    continue
-
-                if i < 5:
-                    left += line
+    def format_trending_embed(self, players: List[Dict[str, Any]], trend_type: str, timeframe: str) -> discord.Embed:
+        """Format trending data into Discord embed"""
+        
+        title_map = {
+            "risers": f"📈 Top 10 Risers ({timeframe})",
+            "fallers": f"📉 Top 10 Fallers ({timeframe})", 
+            "smart": "🧠 Smart Movers (6h vs 24h)"
+        }
+        
+        color_map = {
+            "risers": discord.Color.green(),
+            "fallers": discord.Color.red(),
+            "smart": discord.Color.purple()
+        }
+        
+        embed = discord.Embed(
+            title=title_map.get(trend_type, "Trending Players"),
+            color=color_map.get(trend_type, discord.Color.blue()),
+            timestamp=datetime.utcnow()
+        )
+        
+        # Number emojis for ranking
+        number_emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+        
+        # Split into two columns
+        left_players = players[:5]
+        right_players = players[5:10]
+        
+        def format_player_list(player_list: List[Dict[str, Any]], start_index: int = 0) -> str:
+            lines = []
+            for i, player in enumerate(player_list):
+                emoji = number_emojis[start_index + i] if start_index + i < len(number_emojis) else f"{start_index + i + 1}."
+                
+                name = player.get("name", "Unknown")
+                rating = player.get("rating")
+                price = player.get("price_ps") or player.get("price_console")
+                
+                # Handle different percent formats based on trend type
+                if trend_type == "smart":
+                    percent_6h = player.get("percent_6h", 0)
+                    percent_24h = player.get("percent_24h", 0)
+                    percent_display = f"6h: {percent_6h:+.1f}% | 24h: {percent_24h:+.1f}%"
                 else:
-                    right += line
-            embed.add_field(name="\u200b", value=left.strip(), inline=True)
-            embed.add_field(name="\u200b", value=right.strip(), inline=True)
-            return embed
-
-        else:
-            raw = await self.fetch_trending_data(timeframe)
-            emoji = "📈" if direction == "riser" else "📉"
-            tf_emoji = "🗓️" if timeframe == "24h" else "🕓"
-            title = f"{emoji} Top 10 {'Risers' if direction == 'riser' else 'Fallers'} (🎮 Console) – {tf_emoji} {timeframe}"
-            trend_icon = "📈" if direction == "riser" else "📉"
-            embed = discord.Embed(title=title, color=discord.Color.green() if direction == "riser" else discord.Color.red())
-            embed.set_footer(text="Data from FUTBIN | Prices are estimates")
-
-            number_emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
-            left = ""
-            right = ""
-            players = []
-            for p in raw:
-                if (p["trend"] > 0 if direction == "riser" else p["trend"] < 0):
-                    price = await self.get_ps_price(p["url"], p["rating"])
-                    if not price:
-                        continue
-                    p["price"] = price
-                    players.append(p)
-                if len(players) == 10:
-                    break
-
-            for i, p in enumerate(players):
-                try:
-                    line = (
-                        f"**{number_emojis[i]} {p['name']} ({p['rating']})**\n"
-                        f"💰 {p['price']}\n"
-                        f"{trend_icon} {p['trend']:+.2f}%\n\n"
-                    )
-                except KeyError as e:
-                    logger.warning(f"Missing data for {p['name']} | Error: {e}")
-                    continue
-
-                if i < 5:
-                    left += line
-                else:
-                    right += line
-
-            embed.add_field(name="\u200b", value=left.strip(), inline=True)
-            embed.add_field(name="\u200b", value=right.strip(), inline=True)
-            return embed
+                    percent = player.get("percent", 0)
+                    percent_display = f"{percent:+.1f}%"
+                
+                price_display = f"{int(price):,}" if isinstance(price, (int, float)) else "N/A"
+                
+                line = f"{emoji} **{name}"
+                if rating:
+                    line += f" ({rating})"
+                line += "**\n"
+                line += f"💰 {price_display}\n"
+                line += f"📊 {percent_display}\n"
+                
+                lines.append(line)
+            
+            return "\n".join(lines)
+        
+        if left_players:
+            embed.add_field(
+                name="\u200b", 
+                value=format_player_list(left_players, 0), 
+                inline=True
+            )
+        
+        if right_players:
+            embed.add_field(
+                name="\u200b", 
+                value=format_player_list(right_players, 5), 
+                inline=True
+            )
+        
+        embed.set_footer(text="Data from FUT.GG | Console prices")
+        return embed
 
     @app_commands.command(name="trending", description="📊 Show trending players")
-    @app_commands.describe(direction="Risers, Fallers, or Smart Movers", timeframe="Timeframe to compare")
+    @app_commands.describe(
+        direction="Choose trending direction",
+        timeframe="Choose timeframe (not applicable for Smart Movers)"
+    )
     @app_commands.choices(
         direction=[
-            app_commands.Choice(name="📈 Risers", value="riser"),
-            app_commands.Choice(name="📉 Fallers", value="faller"),
+            app_commands.Choice(name="📈 Risers", value="risers"),
+            app_commands.Choice(name="📉 Fallers", value="fallers"),
             app_commands.Choice(name="🧠 Smart Movers", value="smart")
         ],
         timeframe=[
-            app_commands.Choice(name="🗓️ 24 Hours", value="24h"),
-            app_commands.Choice(name="🕓 4 Hours", value="4h")
+            app_commands.Choice(name="🕓 6 Hours", value="6h"),
+            app_commands.Choice(name="🕐 12 Hours", value="12h"),
+            app_commands.Choice(name="🗓️ 24 Hours", value="24h")
         ]
     )
-    async def trending(self, interaction: discord.Interaction, direction: app_commands.Choice[str], timeframe: app_commands.Choice[str]):
+    async def trending(self, interaction: discord.Interaction, 
+                      direction: app_commands.Choice[str], 
+                      timeframe: app_commands.Choice[str] = None):
+        
         await interaction.response.defer()
-        embed = await self.generate_trend_embed(direction.value, timeframe.value)
-        view = discord.ui.View(timeout=None)
-        view.add_item(discord.ui.Button(label="🔁 Refresh", style=discord.ButtonStyle.primary, custom_id=f"refresh_{direction.value}_{timeframe.value}"))
-        await interaction.followup.send(embed=embed, view=view)
-
-    @commands.Cog.listener()
-    async def on_interaction(self, interaction: discord.Interaction):
-        if interaction.type == discord.InteractionType.component:
-            cid = interaction.data.get("custom_id")
-            if cid and cid.startswith("refresh_"):
-                _, direction, timeframe = cid.split("_")
-                await interaction.response.defer()
-                embed = await self.generate_trend_embed(direction, timeframe)
-                if embed:
-                    await interaction.edit_original_response(embed=embed)
+        
+        trend_type = direction.value
+        tf = timeframe.value if timeframe else "24h"
+        
+        # Smart movers don't use timeframe parameter
+        if trend_type == "smart":
+            tf = "6h_vs_24h"  # Just for display
+        
+        logger.info(f"📊 /trending by {interaction.user.name} | Type: {trend_type} | Timeframe: {tf}")
+        
+        try:
+            players = await self.fetch_trending_data(trend_type, tf if trend_type != "smart" else "24h")
+            
+            if not players:
+                await interaction.followup.send("❌ No trending data available at the moment.")
+                return
+            
+            embed = self.format_trending_embed(players, trend_type, tf)
+            
+            # Add refresh button
+            view = discord.ui.View(timeout=300)
+            refresh_button = discord.ui.Button(
+                label="🔄 Refresh",
+                style=discord.ButtonStyle.secondary,
+                custom_id=f"refresh_{trend_type}_{tf}"
+            )
+            
+            async def refresh_callback(refresh_interaction):
+                await refresh_interaction.response.defer()
+                new_players = await self.fetch_trending_data(trend_type, tf if trend_type != "smart" else "24h")
+                if new_players:
+                    new_embed = self.format_trending_embed(new_players, trend_type, tf)
+                    await refresh_interaction.edit_original_response(embed=new_embed, view=view)
+                else:
+                    await refresh_interaction.followup.send("❌ Failed to refresh data.", ephemeral=True)
+            
+            refresh_button.callback = refresh_callback
+            view.add_item(refresh_button)
+            
+            await interaction.followup.send(embed=embed, view=view)
+            
+        except Exception as e:
+            logger.error(f"Trending command error: {e}")
+            await interaction.followup.send("❌ An error occurred while fetching trending data.")
 
     @tasks.loop(minutes=1)
     async def auto_post_trends(self):
+        """Auto-post trending data to configured channels"""
         now = datetime.utcnow().strftime("%H:%M")
-        for guild_id, conf in self.config.items():
-            if now != conf.get("start_time", "00:00"):
-                continue
-            if not conf.get("enabled", False):
-                continue
-            channel_id = conf.get("channel_id")
-            frequency = int(conf.get("frequency", 24))
-            last = conf.get("last_post")
-            if last and last == now:
-                continue
+        
+        for guild_id, config in self.config.items():
             try:
+                if now != config.get("start_time", "00:00"):
+                    continue
+                if not config.get("enabled", False):
+                    continue
+                    
+                # Check if already posted today
+                if config.get("last_post") == now:
+                    continue
+                
+                channel_id = config.get("channel_id")
                 channel = self.bot.get_channel(channel_id)
-                if channel:
-                    fallers = await self.generate_trend_embed("faller", "24h")
-                    risers = await self.generate_trend_embed("riser", "24h")
-                    ping = f"<@&{conf['ping_role']}>" if "ping_role" in conf else ""
-                    await channel.send(content=ping or None, embed=fallers)
-                    await channel.send(embed=risers)
-                    self.config[guild_id]["last_post"] = now
-                    save_config(self.config)
+                
+                if not channel:
+                    continue
+                
+                # Fetch both fallers and risers
+                fallers = await self.fetch_trending_data("fallers", "24h")
+                risers = await self.fetch_trending_data("risers", "24h")
+                
+                if fallers:
+                    fallers_embed = self.format_trending_embed(fallers, "fallers", "24h")
+                    await channel.send(embed=fallers_embed)
+                
+                if risers:
+                    risers_embed = self.format_trending_embed(risers, "risers", "24h")
+                    await channel.send(embed=risers_embed)
+                
+                # Optional ping
+                ping_role = config.get("ping_role")
+                if ping_role:
+                    await channel.send(f"<@&{ping_role}>")
+                
+                # Update last post time
+                self.config[guild_id]["last_post"] = now
+                self.save_config()
+                
+                logger.info(f"✅ Auto-posted trends to guild {guild_id}")
+                
             except Exception as e:
-                logger.error(f"[AutoPost] Error in guild {guild_id}: {e}")
+                logger.error(f"❌ Auto-post error in guild {guild_id}: {e}")
 
     @app_commands.command(name="setupautotrending", description="⚙️ Configure auto-posting of trends")
-    @app_commands.describe(channel="Where to post", frequency="How often (hours)", start_time="When to start (HH:MM UTC)", ping_role="Optional ping role")
-    async def setupautotrending(self, interaction: discord.Interaction, channel: discord.TextChannel, frequency: int, start_time: str, ping_role: discord.Role = None):
+    @app_commands.describe(
+        channel="Channel to post trending data",
+        frequency="How often to post (hours)",
+        start_time="What time to start posting (HH:MM UTC)",
+        ping_role="Optional role to ping"
+    )
+    async def setupautotrending(self, interaction: discord.Interaction, 
+                               channel: discord.TextChannel, 
+                               frequency: int, 
+                               start_time: str, 
+                               ping_role: discord.Role = None):
+        
         if not interaction.user.guild_permissions.administrator:
-            return await interaction.response.send_message("❌ You need admin permissions.", ephemeral=True)
-        self.config[str(interaction.guild.id)] = {
+            await interaction.response.send_message("❌ You need administrator permissions.", ephemeral=True)
+            return
+        
+        # Validate time format
+        try:
+            datetime.strptime(start_time, "%H:%M")
+        except ValueError:
+            await interaction.response.send_message("❌ Invalid time format. Use HH:MM (e.g., 18:00)", ephemeral=True)
+            return
+        
+        guild_id = str(interaction.guild.id)
+        self.config[guild_id] = {
             "channel_id": channel.id,
             "frequency": frequency,
             "start_time": start_time,
             "enabled": True,
             "ping_role": ping_role.id if ping_role else None
         }
-        save_config(self.config)
-        await interaction.response.send_message("✅ Auto trending setup complete.")
+        
+        self.save_config()
+        
+        await interaction.response.send_message(
+            f"✅ Auto-trending configured!\n"
+            f"📍 Channel: {channel.mention}\n"
+            f"⏰ Time: {start_time} UTC daily\n"
+            f"🔔 Ping: {ping_role.mention if ping_role else 'None'}"
+        )
+
 
 async def setup(bot):
     await bot.add_cog(Trending(bot))
