@@ -195,6 +195,39 @@ async def db_status(interaction: discord.Interaction):
         )
         await interaction.response.send_message(embed=embed)
 
+# Bot status command
+@bot.tree.command(name="botstatus", description="Check bot status and configuration")
+async def bot_status(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="🤖 Bot Status",
+        color=discord.Color.blue(),
+        timestamp=datetime.utcnow()
+    )
+    
+    # Basic info
+    embed.add_field(name="🏓 Latency", value=f"{round(bot.latency * 1000)}ms", inline=True)
+    embed.add_field(name="🌐 Guilds", value=f"{len(bot.guilds)}", inline=True)
+    embed.add_field(name="👥 Users", value=f"{len(bot.users):,}", inline=True)
+    
+    # Database status
+    db_status_text = "❌ Not Connected"
+    try:
+        if hasattr(bot, 'player_pool') and bot.player_pool:
+            async with bot.player_pool.acquire() as conn:
+                player_count = await conn.fetchval("SELECT COUNT(*) FROM fut_players")
+            db_status_text = f"✅ Connected ({player_count:,} players)"
+    except:
+        pass
+    
+    embed.add_field(name="🗄️ Database", value=db_status_text, inline=True)
+    
+    # Loaded cogs
+    cog_names = list(bot.cogs.keys())
+    embed.add_field(name="📦 Loaded Cogs", value=", ".join(cog_names) if cog_names else "None", inline=False)
+    
+    embed.set_footer(text=f"Bot ID: {bot.user.id}")
+    await interaction.response.send_message(embed=embed)
+
 # Graceful shutdown handlers
 @bot.event
 async def on_disconnect():
