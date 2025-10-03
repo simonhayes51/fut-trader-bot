@@ -37,7 +37,7 @@ FUTGG_PRICE_API = "https://www.fut.gg/api/fut/player-prices"       # /{card_id}
 FUTGG_DEF_API   = "https://www.fut.gg/api/fut/player-definition"   # /{card_id}
 FUTGG_ASSET_CDN = "https://game-assets.fut.gg/cdn-cgi/image"
 
-COLOR_MAIN = discord.Color.green()
+COLOR_MAIN = discord.Color.from_str("#39FF14") if hasattr(discord.Color, "from_str") else discord.Color.green()
 
 def _normalize(s: str) -> str:
     return unicodedata.normalize("NFD", s or "").encode("ascii", "ignore").decode("ascii").lower().strip()
@@ -52,6 +52,15 @@ def _cdn_url(path: Optional[str], width: int) -> Optional[str]:
     if not path:
         return None
     return f"{FUTGG_ASSET_CDN}/quality=100,format=auto,width={width}/{path.lstrip('/')}"
+
+def _pretty_iso(iso: Optional[str]) -> Optional[str]:
+    if not iso:
+        return None
+    try:
+        dt = datetime.fromisoformat(iso.replace("Z", "+00:00")).astimezone(timezone.utc)
+        return dt.strftime("%Y-%m-%d %H:%M UTC")
+    except Exception:
+        return iso
 
 
 # ------------- Cog -------------
@@ -140,27 +149,31 @@ class PriceCheck(commands.Cog):
         return hits[0]
 
     # -------- FUT.GG: console price --------
-    async def _futgg_console_price(self, card_id: Optional[str]) -> tuple[Optional[int], Optional[str]]:
+    async def _futgg_console_price(self, card_id: Optional[str]) -> tuple[Optional[int], Optional[str], bool]:
+        """
+        Returns (console_price, updated_at_iso, is_extinct) from fut.gg.
+        """
         if not card_id:
-            return (None, None)
+            return (None, None, False)
 
         url = f"{FUTGG_PRICE_API}/{card_id}"
         try:
             async with self.session.get(url) as resp:
                 if resp.status != 200:
                     log.warning(f"[FUTGG] HTTP {resp.status} for {card_id}")
-                    return (None, None)
+                    return (None, None, False)
                 payload = await resp.json(content_type=None)
         except Exception as e:
             log.error(f"[FUTGG] fetch error {card_id}: {e}")
-            return (None, None)
+            return (None, None, False)
 
         root = payload.get("data") or payload
         cur = root.get("currentPrice") or {}
         price = cur.get("price")
         updated_at = cur.get("priceUpdatedAt")
+        extinct = bool(cur.get("isExtinct", False))
 
-        # fallback: platform buckets
+        # fallback to platforms/prices if needed
         plat = root.get("platforms") or root.get("prices") or {}
 
         def to_int(v):
@@ -186,7 +199,7 @@ class PriceCheck(commands.Cog):
             xb = extract(plat.get("xbox"))
             price = min([p for p in (ps, xb) if p is not None], default=None)
 
-        return (to_int(price), updated_at)
+        return (to_int(price), updated_at, extinct)
 
     # -------- FUT.GG: hourly console series --------
     async def _futgg_console_series(self, card_id: Optional[str]) -> List[Tuple[datetime, int]]:
@@ -263,7 +276,7 @@ class PriceCheck(commands.Cog):
         plt.close(fig)
         return buf
 
-    # -------- FUT.GG player definition --------
+    # -------- FUT.GG player definition (logos + card) --------
     async def _futgg_definition(self, card_id: Optional[str]) -> Dict[str, Optional[str]]:
         out = {
             "club": None, "nation": None, "league": None,
@@ -310,23 +323,34 @@ class PriceCheck(commands.Cog):
             await interaction.followup.send("❌ Player not found in database.")
             return
 
-        console_price, updated_at = await self._futgg_console_price(p.get("card_id"))
+        # fut.gg data
+        console_price, updated_at, extinct = await self._futgg_console_price(p.get("card_id"))
         defs = await self._futgg_definition(p.get("card_id"))
         series = await self._futgg_console_series(p.get("card_id"))
 
-        # Embed
-        embed = discord.Embed(
-            title=f"{p['name']} ({p.get('rating','?')})",
-            color=COLOR_MAIN
-        )
+        # Primary embed
+        title = f"{p['name']} ({p.get('rating','?')})"
+        embed = discord.Embed(title=title, color=COLOR_MAIN)
+
+        # Card image (DB first, fut.gg fallback)
         thumb = p.get("image_url") or defs.get("card_image")
         if thumb:
             embed.set_thumbnail(url=thumb)
 
-        embed.add_field(name="🎮 Console Price", value=f"{_fmt_price(console_price)} 🪙", inline=True)
+        # Price (Extinct or coins)
+        if extinct:
+            price_val = "**EXTINCT**"
+        else:
+            price_val = f"{_fmt_price(console_price)} 🪙"
+        embed.add_field(name="🎮 Console Price", value=price_val, inline=True)
+
+        # Position
         if p.get("position"):
             embed.add_field(name="🧩 Position", value=p["position"], inline=True)
+        else:
+            embed.add_field(name="\u200b", value="\u200b", inline=True)
 
+        # Club / Nation / League (names)
         club = p.get("club") or defs.get("club") or "Unknown"
         nation = p.get("nation") or defs.get("nation") or "Unknown"
         league = p.get("league") or defs.get("league") or "Unknown"
@@ -334,21 +358,47 @@ class PriceCheck(commands.Cog):
         embed.add_field(name="🌍 Nation", value=nation, inline=True)
         embed.add_field(name="🏆 League", value=league, inline=True)
 
-        footer_text = "Data: FUT.GG"
-        if updated_at:
-            footer_text += f" • Updated: {updated_at}"
-        embed.set_footer(text=footer_text)
+        # Logos: author icon (club) + footer icon (nation)
+        if defs.get("club_logo"):
+            embed.set_author(name="FUT.GG • Price Check", icon_url=defs["club_logo"])
+        else:
+            embed.set_author(name="FUT.GG • Price Check")
+
+        footer_bits = ["Data: FUT.GG", "Created by www.futhub.co.uk"]
+        pretty = _pretty_iso(updated_at)
+        if pretty:
+            footer_bits.insert(1, f"Updated: {pretty}")
+        footer_text = " • ".join(footer_bits)
+
+        if defs.get("nation_logo"):
+            embed.set_footer(text=footer_text, icon_url=defs["nation_logo"])
+        else:
+            embed.set_footer(text=footer_text)
+
+        # Secondary embed to show the league logo thumbnail (so all three logos appear)
+        logos_embed = None
+        if defs.get("league_logo"):
+            logos_embed = discord.Embed(color=COLOR_MAIN)
+            logos_embed.set_thumbnail(url=defs["league_logo"])
+            logos_embed.add_field(name="🏆 League", value=league, inline=True)
 
         # Graph
+        file = None
         if series:
             buf = self._make_graph_png(series, p["name"])
             if buf:
                 file = discord.File(buf, filename="graph.png")
                 embed.set_image(url="attachment://graph.png")
-                await interaction.followup.send(embed=embed, file=file)
-                return
 
-        await interaction.followup.send(embed=embed)
+        # Send
+        if logos_embed and file:
+            await interaction.followup.send(embeds=[embed, logos_embed], file=file)
+        elif logos_embed:
+            await interaction.followup.send(embeds=[embed, logos_embed])
+        elif file:
+            await interaction.followup.send(embed=embed, file=file)
+        else:
+            await interaction.followup.send(embed=embed)
 
     # -------- Autocomplete --------
     @pricecheck.autocomplete("player")
