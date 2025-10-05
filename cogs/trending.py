@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import os
 import re
+import io
 import json
+import time
+import math
 import logging
-import unicodedata
 from typing import Dict, Optional, List, Tuple
-from datetime import datetime
 
 import discord
 from discord.ext import commands, tasks
@@ -16,6 +17,13 @@ from discord import app_commands
 import aiohttp
 import asyncpg
 from bs4 import BeautifulSoup
+
+# ---------- optional sprite support ----------
+try:
+    from PIL import Image
+    PIL_OK = True
+except Exception:
+    PIL_OK = False
 
 # ---------------- config ----------------
 CONFIG_FILE = "autotrend_config.json"
@@ -36,7 +44,10 @@ logger = logging.getLogger("fut.trending")
 
 # --------- caching (simple in-memory) ---------
 _PAGE_CACHE: Dict[Tuple[str,int], Tuple[float,str]] = {}
-CACHE_TTL = 120  # seconds
+PAGE_CACHE_TTL = 120  # seconds
+
+_PRICE_CACHE: Dict[int, Tuple[float, Optional[int], bool]] = {}  # card_id -> (ts, price, extinct)
+PRICE_CACHE_TTL = 120  # seconds
 
 # --------- regex helpers (ported from your API) ---------
 _26_SEGMENT_RE = re.compile(r"/players/[^?#]*/26-(\d+)(?:[/?#]|$)", re.IGNORECASE)
@@ -157,11 +168,10 @@ class Trending(commands.Cog):
             return None
 
     async def _momentum_page(self, tf_num: str, page: int) -> Optional[str]:
-        import time
         now = time.time()
         key = (tf_num, page)
         hit = _PAGE_CACHE.get(key)
-        if hit and (now - hit[0] < CACHE_TTL):
+        if hit and (now - hit[0] < PAGE_CACHE_TTL):
             return hit[1]
         url = f"{MOMENTUM_BASE}/{tf_num}/?page={page}"
         html = await self._fetch_html(url)
@@ -237,36 +247,52 @@ class Trending(commands.Cog):
         html = await self._momentum_page(tf_num, page)
         return self._extract_items(html) if html else []
 
-    async def _get_console_price(self, card_id: int) -> Optional[int]:
+    # ---------------- prices (with cache) ----------------
+    async def _get_console_price(self, card_id: int) -> Tuple[Optional[int], bool]:
+        """Return (price, extinct). Cached for PRICE_CACHE_TTL."""
+        now = time.time()
+        hit = _PRICE_CACHE.get(card_id)
+        if hit and now - hit[0] < PRICE_CACHE_TTL:
+            return hit[1], hit[2]
+
         url = FUTGG_PRICE_URL.format(card_id=card_id)
+        price: Optional[int] = None
+        extinct = False
         try:
             async with self.session.get(url) as r:
                 if r.status != 200:
-                    return None
+                    _PRICE_CACHE[card_id] = (now, None, False)
+                    return None, False
                 data = await r.json(content_type=None)
         except Exception:
-            return None
+            _PRICE_CACHE[card_id] = (now, None, False)
+            return None, False
 
-        # prefer currentPrice.price if present
-        cur = (data or {}).get("data", {}).get("currentPrice", {})
-        price = cur.get("price")
+        root = (data or {}).get("data") or data or {}
+        cur = root.get("currentPrice") or {}
+        extinct = bool(cur.get("isExtinct", False))
+
         def to_int(v):
             try: return int(str(v).replace(",", "").strip())
             except: return None
-        if price is not None:
-            return to_int(price)
 
-        # fallback to platform buckets
-        prices = (data or {}).get("prices", {}) or {}
-        ps = prices.get("ps") or prices.get("playstation") or {}
-        xb = prices.get("xbox") or {}
-        for bucket in (ps, xb):
-            for k in ("price","lowestBin","LCPrice","lowest","lowestPrice","current"):
-                if k in bucket:
-                    v = to_int(bucket[k])
-                    if v: return v
-        return None
+        price = to_int(cur.get("price"))
+        if price is None:
+            # fallback to platform buckets
+            prices = (data or {}).get("prices", {}) or root.get("prices", {}) or {}
+            ps = prices.get("ps") or prices.get("playstation") or {}
+            xb = prices.get("xbox") or {}
+            for bucket in (ps, xb):
+                for k in ("price","lowestBin","LCPrice","lowest","lowestPrice","current"):
+                    if k in bucket:
+                        price = to_int(bucket[k])
+                        if price: break
+                if price: break
 
+        _PRICE_CACHE[card_id] = (now, price, extinct)
+        return price, extinct
+
+    # ---------------- DB enrichment ----------------
     async def _enrich_meta(self, rows: List[dict]) -> List[dict]:
         if not rows:
             return []
@@ -303,38 +329,107 @@ class Trending(commands.Cog):
             })
         return out
 
+    # ---------------- combine & de-dupe ----------------
+    @staticmethod
+    def _unique_by_card(rows: List[dict]) -> List[dict]:
+        best: Dict[int, dict] = {}
+        for r in rows:
+            cid = int(r["card_id"])
+            cur = best.get(cid)
+            if not cur or abs(float(r["percent"])) > abs(float(cur["percent"])):
+                best[cid] = r
+        return list(best.values())
+
     async def _fetch_trending(self, kind: str, tf_num: str, limit: int) -> List[dict]:
         first_html = await self._momentum_page(tf_num, 1)
         if not first_html:
             return []
         last_page = self._parse_last_page_num(first_html)
 
+        head = await self._page_items(tf_num, 1)
+        tail = await self._page_items(tf_num, last_page) if last_page > 1 else []
+        pool = self._unique_by_card(head + tail)
+
         if kind == "fallers":
-            base = await self._page_items(tf_num, 1)
-            base.sort(key=lambda x: x["percent"])
-            out = base[:limit]
-            if len(out) < limit and last_page > 1:
-                tail = await self._page_items(tf_num, last_page)
-                tail.sort(key=lambda x: x["percent"])
-                out = (base + tail)[:limit]
+            pool.sort(key=lambda x: float(x["percent"]))  # most negative first
         else:
-            base = await self._page_items(tf_num, last_page)
-            base.sort(key=lambda x: x["percent"], reverse=True)
-            out = base[:limit]
-            if len(out) < limit and last_page > 1:
-                head = await self._page_items(tf_num, 1)
-                head.sort(key=lambda x: x["percent"], reverse=True)
-                out = (base + head)[:limit]
-        return out
+            pool.sort(key=lambda x: float(x["percent"]), reverse=True)  # most positive first
+
+        return pool[:limit]
+
+    # ---------------- thumbnail sprite ----------------
+    async def _build_sprite(self, items: List[dict]) -> Optional[discord.File]:
+        if not PIL_OK:
+            return None
+        # collect up to 10 images (fallback to fut.gg card URL if missing)
+        urls = []
+        for it in items[:10]:
+            if it.get("image"):
+                urls.append(it["image"])
+            else:
+                # fut.gg card image not guaranteed in DB; skip if missing
+                urls.append(None)
+
+        # fetch images
+        imgs: List[Optional[Image.Image]] = []
+        for u in urls:
+            if not u:
+                imgs.append(None)
+                continue
+            try:
+                async with self.session.get(u, headers=REQ_HEADERS) as r:
+                    if r.status != 200:
+                        imgs.append(None)
+                        continue
+                    b = await r.read()
+                img = Image.open(io.BytesIO(b)).convert("RGBA")
+                # fit to 88x112 (rough card ratio), keep aspect
+                w, h = img.size
+                scale = min(88 / max(1, w), 112 / max(1, h))
+                img = img.resize((max(1,int(w*scale)), max(1,int(h*scale))), Image.LANCZOS)
+                canvas = Image.new("RGBA", (88, 112), (0,0,0,0))
+                cx = (88 - img.size[0]) // 2
+                cy = (112 - img.size[1]) // 2
+                canvas.paste(img, (cx, cy), img)
+                imgs.append(canvas)
+            except Exception:
+                imgs.append(None)
+
+        if not any(imgs):
+            return None
+
+        # stack vertically with small gaps; two columns if >5
+        col = 2 if len(imgs) > 5 else 1
+        rows = math.ceil(len(imgs) / col)
+        gap = 6
+        W = col * 88 + (col - 1) * gap
+        H = rows * 112 + (rows - 1) * gap
+        strip = Image.new("RGBA", (W, H), (0,0,0,0))
+
+        for idx, im in enumerate(imgs):
+            if im is None:
+                continue
+            c = idx // rows if col == 2 else 0
+            r = idx % rows if col == 2 else idx
+            x = c * (88 + gap)
+            y = r * (112 + gap)
+            strip.paste(im, (x, y), im)
+
+        out = io.BytesIO()
+        strip.save(out, format="PNG")
+        out.seek(0)
+        return discord.File(out, filename="trending_sprite.png")
 
     # ---------------- embed generation ----------------
-    async def _embed_risers_fallers(self, kind: str, tf_num: str) -> discord.Embed:
+    async def _embed_risers_fallers(self, kind: str, tf_num: str) -> Tuple[discord.Embed, Optional[discord.File]]:
         data = await self._fetch_trending(kind, tf_num, limit=10)
         enriched = await self._enrich_meta(data)
 
         # attach prices (Console)
         for e in enriched:
-            e["console_price"] = await self._get_console_price(int(e["card_id"]))
+            price, extinct = await self._get_console_price(int(e["card_id"]))
+            e["console_price"] = price
+            e["extinct"] = bool(extinct)
 
         emoji = "📈" if kind == "risers" else "📉"
         tf_label = f"{tf_num}h"
@@ -347,10 +442,10 @@ class Trending(commands.Cog):
         nums = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"]
         left = right = ""
         for i, it in enumerate(enriched[:10]):
-            price_txt = f"{it['console_price']:,} 🪙" if it.get("console_price") else "N/A"
+            price_txt = "Extinct" if it.get("extinct") else (f"{it['console_price']:,} 🪙" if it.get("console_price") else "N/A")
             rating = f" ({it['rating']})" if it.get("rating") else ""
             line = (
-                f"**{nums[i]} {it['name']}{rating}**\n"
+                f"**{nums[i]} [{it['name']}{rating}](https://www.fut.gg/players/26-{it['card_id']}/)**\n"
                 f"💰 {price_txt}\n"
                 f"{emoji} {it['percent']:+.2f}%\n\n"
             )
@@ -359,9 +454,13 @@ class Trending(commands.Cog):
 
         embed.add_field(name="\u200b", value=left.strip() or "—", inline=True)
         embed.add_field(name="\u200b", value=right.strip() or "—", inline=True)
-        return embed
 
-    async def _embed_smart(self) -> discord.Embed:
+        sprite_file = await self._build_sprite(enriched)
+        if sprite_file:
+            embed.set_image(url="attachment://trending_sprite.png")
+        return embed, sprite_file
+
+    async def _embed_smart(self) -> Tuple[discord.Embed, Optional[discord.File]]:
         # flip between 6h and 24h
         f6  = await self._fetch_trending("fallers", "6", 50)
         r6  = await self._fetch_trending("risers",  "6", 50)
@@ -389,7 +488,9 @@ class Trending(commands.Cog):
 
         # attach prices
         for e in enriched:
-            e["console_price"] = await self._get_console_price(int(e["card_id"]))
+            price, extinct = await self._get_console_price(int(e["card_id"]))
+            e["console_price"] = price
+            e["extinct"] = bool(extinct)
             cid = int(e["card_id"])
             e["trend"] = {"chg6hPct": smart_map[cid]["chg6hPct"], "chg24hPct": smart_map[cid]["chg24hPct"]}
 
@@ -406,10 +507,10 @@ class Trending(commands.Cog):
         nums = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"]
         left = right = ""
         for i, it in enumerate(enriched):
-            price_txt = f"{it['console_price']:,} 🪙" if it.get("console_price") else "N/A"
+            price_txt = "Extinct" if it.get("extinct") else (f"{it['console_price']:,} 🪙" if it.get("console_price") else "N/A")
             rating = f" ({it['rating']})" if it.get("rating") else ""
             line = (
-                f"**{nums[i]} {it['name']}{rating}**\n"
+                f"**{nums[i]} [{it['name']}{rating}](https://www.fut.gg/players/26-{it['card_id']}/)**\n"
                 f"💰 {price_txt}\n"
                 f"🕕 6h: {it['trend']['chg6hPct']:+.1f}%\n"
                 f"🗓️ 24h: {it['trend']['chg24hPct']:+.1f}%\n\n"
@@ -419,12 +520,16 @@ class Trending(commands.Cog):
 
         embed.add_field(name="\u200b", value=left.strip() or "—", inline=True)
         embed.add_field(name="\u200b", value=right.strip() or "—", inline=True)
-        return embed
+
+        sprite_file = await self._build_sprite(enriched)
+        if sprite_file:
+            embed.set_image(url="attachment://trending_sprite.png")
+        return embed, sprite_file
 
     # ---------------- command surface ----------------
     @app_commands.command(
         name="trending",
-        description="📊 Trending players from FUT.GG Momentum (Console prices)"
+        description="📊 Trending players from FUT.GG Momentum (Console prices; de-duped)"
     )
     @app_commands.describe(
         kind="Risers, Fallers, or Smart (6h↔24h flip)",
@@ -449,9 +554,9 @@ class Trending(commands.Cog):
         tf_num = _norm_tf(timeframe.value if timeframe else "24h")
 
         if kind.value == "smart":
-            embed = await self._embed_smart()
+            embed, sprite = await self._embed_smart()
         else:
-            embed = await self._embed_risers_fallers(kind.value, tf_num)
+            embed, sprite = await self._embed_risers_fallers(kind.value, tf_num)
 
         view = discord.ui.View(timeout=None)
         tf_show = timeframe.value if timeframe else "24h"
@@ -460,7 +565,10 @@ class Trending(commands.Cog):
                               style=discord.ButtonStyle.primary,
                               custom_id=f"refresh_{kind.value}_{tf_show}")
         )
-        await interaction.followup.send(embed=embed, view=view)
+        if sprite:
+            await interaction.followup.send(embed=embed, file=sprite, view=view)
+        else:
+            await interaction.followup.send(embed=embed, view=view)
 
     @commands.Cog.listener()
     async def on_interaction(self, interaction: discord.Interaction):
@@ -470,16 +578,18 @@ class Trending(commands.Cog):
                 _, kind, tf = cid.split("_", 2)
                 await interaction.response.defer()
                 if kind == "smart":
-                    embed = await self._embed_smart()
+                    embed, sprite = await self._embed_smart()
                 else:
-                    embed = await self._embed_risers_fallers(kind, _norm_tf(tf))
-                if embed:
+                    embed, sprite = await self._embed_risers_fallers(kind, _norm_tf(tf))
+                if sprite:
+                    await interaction.edit_original_response(embed=embed, attachments=[sprite])
+                else:
                     await interaction.edit_original_response(embed=embed)
 
     # ---------------- auto post ----------------
     @tasks.loop(minutes=1)
     async def auto_post_trends(self):
-        now = datetime.utcnow().strftime("%H:%M")
+        now = time.strftime("%H:%M", time.gmtime())
         for guild_id, conf in load_config().items():
             if now != conf.get("start_time", "00:00"):
                 continue
@@ -492,14 +602,24 @@ class Trending(commands.Cog):
             try:
                 channel = self.bot.get_channel(channel_id)
                 if channel:
-                    fallers = await self._embed_risers_fallers("fallers", "24")
-                    risers  = await self._embed_risers_fallers("risers",  "24")
+                    fallers_embed, fallers_sprite = await self._embed_risers_fallers("fallers", "24")
+                    risers_embed,  risers_sprite  = await self._embed_risers_fallers("risers",  "24")
                     ping = f"<@&{conf['ping_role']}>" if conf.get("ping_role") else ""
                     if ping:
-                        await channel.send(content=ping, embed=fallers)
+                        if fallers_sprite:
+                            await channel.send(content=ping, embed=fallers_embed, file=fallers_sprite)
+                        else:
+                            await channel.send(content=ping, embed=fallers_embed)
                     else:
-                        await channel.send(embed=fallers)
-                    await channel.send(embed=risers)
+                        if fallers_sprite:
+                            await channel.send(embed=fallers_embed, file=fallers_sprite)
+                        else:
+                            await channel.send(embed=fallers_embed)
+                    if risers_sprite:
+                        await channel.send(embed=risers_embed, file=risers_sprite)
+                    else:
+                        await channel.send(embed=risers_embed)
+
                     self.config[guild_id]["last_post"] = now
                     save_config(self.config)
             except Exception as e:
