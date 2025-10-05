@@ -278,7 +278,6 @@ class Trending(commands.Cog):
 
         price = to_int(cur.get("price"))
         if price is None:
-            # fallback to platform buckets
             prices = (data or {}).get("prices", {}) or root.get("prices", {}) or {}
             ps = prices.get("ps") or prices.get("playstation") or {}
             xb = prices.get("xbox") or {}
@@ -340,6 +339,49 @@ class Trending(commands.Cog):
                 best[cid] = r
         return list(best.values())
 
+    def _unique_by_identity(self, rows: List[dict]) -> List[dict]:
+        """
+        De-dupe BEFORE DB enrichment using both card_id and a normalized name-hint.
+        Keep the item with the largest absolute percent change.
+        """
+        # by card_id
+        by_cid: Dict[int, dict] = {}
+        for r in rows:
+            cid = int(r["card_id"])
+            cur = by_cid.get(cid)
+            if not cur or abs(float(r["percent"])) > abs(float(cur["percent"])):
+                by_cid[cid] = r
+
+        # by normalized name hint as extra guard
+        def _n(s: Optional[str]) -> str:
+            if not s:
+                return ""
+            return re.sub(r"\s{2,}", " ", s.strip().lower())
+
+        by_name: Dict[str, dict] = {}
+        for r in by_cid.values():
+            nk = _n(r.get("name_hint"))
+            cur = by_name.get(nk)
+            if not cur or abs(float(r["percent"])) > abs(float(cur["percent"])):
+                by_name[nk] = r
+
+        return list(by_name.values())
+
+    def _dedupe_enriched_for_display(self, items: List[dict]) -> List[dict]:
+        """
+        De-dupe AFTER DB enrichment by (name, rating) so the same
+        displayed card doesn't appear multiple times in the list.
+        """
+        seen: set[tuple] = set()
+        out: List[dict] = []
+        for e in items:
+            key = ((e.get("name") or "").strip().lower(), e.get("rating"))
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(e)
+        return out
+
     async def _fetch_trending(self, kind: str, tf_num: str, limit: int) -> List[dict]:
         first_html = await self._momentum_page(tf_num, 1)
         if not first_html:
@@ -348,29 +390,25 @@ class Trending(commands.Cog):
 
         head = await self._page_items(tf_num, 1)
         tail = await self._page_items(tf_num, last_page) if last_page > 1 else []
-        pool = self._unique_by_card(head + tail)
+
+        # combine and de-dupe robustly BEFORE sorting
+        pool = self._unique_by_identity(head + tail)
 
         if kind == "fallers":
             pool.sort(key=lambda x: float(x["percent"]))  # most negative first
         else:
             pool.sort(key=lambda x: float(x["percent"]), reverse=True)  # most positive first
 
-        return pool[:limit]
+        return pool[: max(10, limit)]
 
     # ---------------- thumbnail sprite ----------------
     async def _build_sprite(self, items: List[dict]) -> Optional[discord.File]:
         if not PIL_OK:
             return None
-        # collect up to 10 images (fallback to fut.gg card URL if missing)
         urls = []
         for it in items[:10]:
-            if it.get("image"):
-                urls.append(it["image"])
-            else:
-                # fut.gg card image not guaranteed in DB; skip if missing
-                urls.append(None)
+            urls.append(it.get("image") or None)
 
-        # fetch images
         imgs: List[Optional[Image.Image]] = []
         for u in urls:
             if not u:
@@ -383,7 +421,6 @@ class Trending(commands.Cog):
                         continue
                     b = await r.read()
                 img = Image.open(io.BytesIO(b)).convert("RGBA")
-                # fit to 88x112 (rough card ratio), keep aspect
                 w, h = img.size
                 scale = min(88 / max(1, w), 112 / max(1, h))
                 img = img.resize((max(1,int(w*scale)), max(1,int(h*scale))), Image.LANCZOS)
@@ -398,7 +435,6 @@ class Trending(commands.Cog):
         if not any(imgs):
             return None
 
-        # stack vertically with small gaps; two columns if >5
         col = 2 if len(imgs) > 5 else 1
         rows = math.ceil(len(imgs) / col)
         gap = 6
@@ -431,6 +467,9 @@ class Trending(commands.Cog):
             e["console_price"] = price
             e["extinct"] = bool(extinct)
 
+        # final de-dupe by (name, rating) and then keep top 10
+        enriched = self._dedupe_enriched_for_display(enriched)[:10]
+
         emoji = "📈" if kind == "risers" else "📉"
         tf_label = f"{tf_num}h"
         embed = discord.Embed(
@@ -461,7 +500,6 @@ class Trending(commands.Cog):
         return embed, sprite_file
 
     async def _embed_smart(self) -> Tuple[discord.Embed, Optional[discord.File]]:
-        # flip between 6h and 24h
         f6  = await self._fetch_trending("fallers", "6", 50)
         r6  = await self._fetch_trending("risers",  "6", 50)
         f24 = await self._fetch_trending("fallers", "24", 50)
@@ -486,7 +524,6 @@ class Trending(commands.Cog):
         rows = [{"card_id": cid, "percent": smart_map[cid]["chg6hPct"], "name_hint": None} for cid in smart_ids]
         enriched = await self._enrich_meta(rows)
 
-        # attach prices
         for e in enriched:
             price, extinct = await self._get_console_price(int(e["card_id"]))
             e["console_price"] = price
@@ -494,9 +531,8 @@ class Trending(commands.Cog):
             cid = int(e["card_id"])
             e["trend"] = {"chg6hPct": smart_map[cid]["chg6hPct"], "chg24hPct": smart_map[cid]["chg24hPct"]}
 
-        # order by magnitude of 6h move
         enriched.sort(key=lambda x: abs(x["trend"]["chg6hPct"]), reverse=True)
-        enriched = enriched[:10]
+        enriched = self._dedupe_enriched_for_display(enriched)[:10]
 
         embed = discord.Embed(
             title="🧠 Smart Movers – flip between 6h and 24h",
