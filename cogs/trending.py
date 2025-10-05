@@ -3,12 +3,11 @@ from __future__ import annotations
 
 import os
 import re
-import io
 import json
 import asyncio
 import logging
 from datetime import datetime
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 
 import aiohttp
 import asyncpg
@@ -17,11 +16,11 @@ from discord import app_commands
 from discord.ext import commands, tasks
 from bs4 import BeautifulSoup
 
-# --------------- Config ---------------
+# ---------------- Config ----------------
 CONFIG_FILE = "autotrend_config.json"
 PLAYER_DB_URL = os.getenv("PLAYER_DATABASE_URL") or os.getenv("DATABASE_URL")
 
-MOMENTUM_BASE = "https://www.fut.gg/players/momentum"      # /{tf}/?page=1
+MOMENTUM_BASE = "https://www.fut.gg/players/momentum"       # /{tf}/?page=1 where tf in {6,12,24}
 FUTGG_PRICE_URL = "https://www.fut.gg/api/fut/player-prices/26/{card_id}"
 
 REQ_HEADERS = {
@@ -35,7 +34,7 @@ REQ_HEADERS = {
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("trending")
 
-# --------------- helpers ---------------
+# ---------------- utils ----------------
 def load_config():
     if not os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, "w") as f:
@@ -52,7 +51,7 @@ _26_SEGMENT_RE = re.compile(r"/26-(\d+)(?:[/?#]|$)", re.IGNORECASE)
 _LAST_NUM_AFTER_PLAYERS_RE = re.compile(r"/players/[^?#]*?(\d+)(?:[/?#]|$)", re.IGNORECASE)
 PCT_RE = re.compile(r"([+\-]?\d+(?:\.\d+)?)\s*%")
 
-def _cid_from_href(href: str) -> int | None:
+def _cid_from_href(href: str) -> Optional[int]:
     if "/players/" not in href:
         return None
     m = _26_SEGMENT_RE.search(href)
@@ -69,7 +68,7 @@ def _cid_from_href(href: str) -> int | None:
             pass
     return None
 
-def _name_hint_from_href(href: str) -> str | None:
+def _name_hint_from_href(href: str) -> Optional[str]:
     """
     /players/256853-malik-tillman/26-50588501/ -> 'Malik Tillman'
     """
@@ -84,7 +83,7 @@ def _name_hint_from_href(href: str) -> str | None:
     except Exception:
         return None
 
-def _pct_from_node(node) -> float | None:
+def _pct_from_node(node) -> Optional[float]:
     # search node and a couple ancestors/siblings for a percent like "-12.3%"
     try:
         cur = node
@@ -110,7 +109,7 @@ def _pct_from_node(node) -> float | None:
         pass
     return None
 
-# --------------- Cog ---------------
+# ---------------- Cog ----------------
 class Trending(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -132,7 +131,7 @@ class Trending(commands.Cog):
             await self.db.close()
         self.auto_post_trends.cancel()
 
-    # ------------ network ------------
+    # ------------ HTTP helpers ------------
     async def _html(self, url: str) -> str:
         try:
             async with self.session.get(url) as r:
@@ -144,7 +143,7 @@ class Trending(commands.Cog):
             logger.debug(f"[fetch] {url} failed: {e}")
             return ""
 
-    async def _console_price(self, card_id: int) -> tuple[int | None, bool | None, str | None]:
+    async def _console_price(self, card_id: int) -> tuple[Optional[int], Optional[bool], Optional[str]]:
         """
         Returns (price, is_extinct, updated_at_iso).
         Supports both FUT.GG JSON shapes and retries on 429/5xx.
@@ -233,7 +232,7 @@ class Trending(commands.Cog):
             if pct is None:
                 continue
             items.append({"card_id": int(cid), "percent": float(pct), "name_hint": _name_hint_from_href(href)})
-        # de-dupe by card_id (keep first occurrence)
+        # de-dupe by card_id (first occurrence)
         seen = set()
         out = []
         for it in items:
@@ -251,7 +250,6 @@ class Trending(commands.Cog):
             base = await self._page_items(tf, last)
             base.sort(key=lambda x: x["percent"], reverse=True)  # most positive first
 
-        # extra guard in case not enough items on that page
         result = base[:limit]
         if len(result) < limit:
             other_page = last if kind == "fallers" else 1
@@ -295,7 +293,7 @@ class Trending(commands.Cog):
                 "card_id": cid,
                 "name": name,
                 "rating": m.get("rating"),
-                "percent": r["percent"],
+                "percent": float(r["percent"]),
                 "price": price,
                 "extinct": extinct,
                 "price_updated_at": updated,
@@ -306,8 +304,46 @@ class Trending(commands.Cog):
             })
         return out
 
-    # ------------ embed ------------
-    def _build_embed(self, kind: str, tf: str, items: List[dict]) -> discord.Embed:
+    # ------------ smart movers ------------
+    async def _smart_items(self, limit: int = 10) -> List[dict]:
+        # Build sets/maps for 6h & 24h
+        f6  = await self._fetch_trending("fallers", "6",  limit=50)
+        r6  = await self._fetch_trending("risers",  "6",  limit=50)
+        f24 = await self._fetch_trending("fallers", "24", limit=50)
+        r24 = await self._fetch_trending("risers",  "24", limit=50)
+
+        f6m  = {int(x["card_id"]): float(x["percent"]) for x in f6}
+        r6m  = {int(x["card_id"]): float(x["percent"]) for x in r6}
+        f24m = {int(x["card_id"]): float(x["percent"]) for x in f24}
+        r24m = {int(x["card_id"]): float(x["percent"]) for x in r24}
+
+        smart_ids: set[int] = set()
+        smart_map: Dict[int, Dict[str, float]] = {}
+
+        # Up on 6h, down on 24h
+        for cid, p6 in r6m.items():
+            if cid in f24m:
+                smart_ids.add(cid)
+                smart_map[cid] = {"chg6hPct": p6, "chg24hPct": f24m[cid]}
+        # Down on 6h, up on 24h
+        for cid, p6 in f6m.items():
+            if cid in r24m:
+                smart_ids.add(cid)
+                smart_map[cid] = {"chg6hPct": p6, "chg24hPct": r24m[cid]}
+
+        raw = [{"card_id": cid, "percent": smart_map[cid]["chg6hPct"], "name_hint": None} for cid in smart_ids]
+        enriched = await self._enrich(raw)
+        # attach both trends
+        for e in enriched:
+            cid = int(e["card_id"])
+            pair = smart_map.get(cid, {})
+            e["trend"] = {"chg6hPct": pair.get("chg6hPct"), "chg24hPct": pair.get("chg24hPct")}
+        # sort by magnitude of 6h flip
+        enriched.sort(key=lambda x: abs(x.get("trend", {}).get("chg6hPct") or 0), reverse=True)
+        return enriched[:limit]
+
+    # ------------ embeds ------------
+    def _embed_risers_fallers(self, kind: str, tf: str, items: List[dict]) -> discord.Embed:
         emoji = "📈" if kind == "risers" else "📉"
         tf_emoji = {"6": "🕕", "12": "🕛", "24": "📅"}.get(tf, "📅")
         title = f"{emoji} Top 10 {'Risers' if kind=='risers' else 'Fallers'} – {tf_emoji} {tf}h"
@@ -328,7 +364,36 @@ class Trending(commands.Cog):
         embed.add_field(name="\u200b", value=left or "–", inline=True)
         embed.add_field(name="\u200b", value=right or "–", inline=True)
 
-        # footer
+        ts = next((x.get("price_updated_at") for x in items if x.get("price_updated_at")), None)
+        footer = "Data & Prices: FUT.GG • Created by www.futhub.co.uk"
+        if ts:
+            footer += f" • Updated: {ts}"
+        embed.set_footer(text=footer)
+        return embed
+
+    def _embed_smart(self, items: List[dict]) -> discord.Embed:
+        title = "🧠 Smart Movers – Trend flipped (6h ↔ 24h)"
+        embed = discord.Embed(title=title, color=discord.Color.orange())
+
+        left = right = ""
+        nums = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"]
+        for i, p in enumerate(items[:10]):
+            name = p.get("name") or f"Card {p['card_id']}"
+            rating = f" ({p['rating']})" if p.get("rating") else ""
+            price_txt = "Extinct" if p.get("extinct") else (f"{p['price']:,} 🪙" if p.get("price") else "N/A")
+            t6 = p.get("trend", {}).get("chg6hPct")
+            t24 = p.get("trend", {}).get("chg24hPct")
+            l = (
+                f"**{nums[i]} {name}{rating}**\n"
+                f"💰 {price_txt}\n"
+                f"🕕 6h: {t6:+.2f}%\n"
+                f"📅 24h: {t24:+.2f}%\n\n"
+            )
+            (left := left + l) if i < 5 else (right := right + l)
+
+        embed.add_field(name="\u200b", value=left or "–", inline=True)
+        embed.add_field(name="\u200b", value=right or "–", inline=True)
+
         ts = next((x.get("price_updated_at") for x in items if x.get("price_updated_at")), None)
         footer = "Data & Prices: FUT.GG • Created by www.futhub.co.uk"
         if ts:
@@ -337,23 +402,32 @@ class Trending(commands.Cog):
         return embed
 
     async def generate_trend_embed(self, kind: str, tf: str) -> discord.Embed:
-        # tf is '6'|'12'|'24'
+        if kind == "smart":
+            items = await self._smart_items(limit=10)
+            # extra dedupe by card_id preserving order
+            seen = set(); uniq = []
+            for it in items:
+                cid = int(it["card_id"])
+                if cid not in seen:
+                    uniq.append(it); seen.add(cid)
+            return self._embed_smart(uniq[:10])
+
         raw = await self._fetch_trending(kind, tf, limit=10)
         enriched = await self._enrich(raw)
-        # just to be safe: keep unique by card_id, preserve order
         seen = set(); uniq = []
         for it in enriched:
             cid = int(it["card_id"])
             if cid not in seen:
                 uniq.append(it); seen.add(cid)
-        return self._build_embed(kind, tf, uniq[:10])
+        return self._embed_risers_fallers(kind, tf, uniq[:10])
 
     # ------------ commands ------------
-    @app_commands.command(name="trending", description="📊 Show top risers/fallers (FUT.GG)")
+    @app_commands.command(name="trending", description="📊 Show trending players (FUT.GG)")
     @app_commands.choices(
         direction=[
             app_commands.Choice(name="📈 Risers", value="risers"),
             app_commands.Choice(name="📉 Fallers", value="fallers"),
+            app_commands.Choice(name="🧠 Smart Movers", value="smart"),
         ],
         timeframe=[
             app_commands.Choice(name="🕕 6h", value="6"),
@@ -413,7 +487,7 @@ class Trending(commands.Cog):
     @app_commands.command(name="setupautotrending", description="⚙️ Configure auto-posting of trends")
     @app_commands.describe(
         channel="Where to post",
-        frequency="How often (hours) — stored but not yet used",
+        frequency="How often (hours) — stored for future use",
         start_time="When to start (HH:MM UTC)",
         ping_role="Optional ping role",
     )
