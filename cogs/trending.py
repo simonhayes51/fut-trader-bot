@@ -36,6 +36,9 @@ REQ_HEADERS = {
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("trending")
 
+# Real FUT.GG card ids are large (millions). Use a floor so we never grab timeframe "6/12/24".
+MIN_CARD_ID = 100_000  # anything below this is NOT a card id
+
 # =========================
 # Utilities
 # =========================
@@ -52,24 +55,34 @@ def save_config(data):
 
 # FUT.GG id & percent helpers
 _26_SEGMENT_RE = re.compile(r"/26-(\d+)(?:[/?#]|$)", re.IGNORECASE)
+# NOTE: this one is dangerous on /players/momentum/6/ — we'll guard with MIN_CARD_ID
 _LAST_NUM_AFTER_PLAYERS_RE = re.compile(r"/players/[^?#]*?(\d+)(?:[/?#]|$)", re.IGNORECASE)
 PCT_RE = re.compile(r"([+\-]?\d+(?:\.\d+)?)\s*%")
+MOMENTUM_PATH_RE = re.compile(r"/players/momentum(?:/|$)", re.IGNORECASE)
 
 def _cid_from_href(href: str) -> Optional[int]:
+    """Extract safe FUT.GG card_id from an href. Reject momentum/timeframe numbers."""
     if "/players/" not in href:
         return None
+    # Prefer explicit 26-<id>
     m = _26_SEGMENT_RE.search(href)
     if m:
         try:
-            return int(m.group(1))
+            cid = int(m.group(1))
+            return cid if cid >= MIN_CARD_ID else None
         except Exception:
-            pass
+            return None
+    # Reject any URL under /players/momentum/... entirely
+    if MOMENTUM_PATH_RE.search(href):
+        return None
+    # Fallback: last number after /players/, but only if it looks like a real id
     m = _LAST_NUM_AFTER_PLAYERS_RE.search(href)
     if m:
         try:
-            return int(m.group(1))
+            cid = int(m.group(1))
+            return cid if cid >= MIN_CARD_ID else None
         except Exception:
-            pass
+            return None
     return None
 
 def _name_hint_from_href(href: str) -> Optional[str]:
@@ -77,20 +90,24 @@ def _name_hint_from_href(href: str) -> Optional[str]:
     /players/256853-malik-tillman/26-50588501/ -> 'Malik Tillman'
     """
     try:
-        if "/players/" not in href:
+        if "/players/" not in href or MOMENTUM_PATH_RE.search(href):
             return None
         path = href.split("/players/", 1)[1].strip("/")
         first_seg = path.split("/", 1)[0]
         slug = first_seg.split("-", 1)[1] if "-" in first_seg and first_seg.split("-", 1)[0].isdigit() else first_seg
         words = [w for w in slug.replace("-", " ").split() if w]
-        return " ".join(w.capitalize() for w in words) if words else None
+        name = " ".join(w.capitalize() for w in words) if words else None
+        if name and name.strip().lower() == "momentum":
+            return None
+        return name
     except Exception:
         return None
 
 def _pct_from_node(node) -> Optional[float]:
     try:
+        # Search in a tight scope (node -> up to 3 ancestors) to avoid picking header percentages
         cur = node
-        for _ in range(5):
+        for _ in range(3):
             if not cur:
                 break
             txt = cur.get_text(" ", strip=True) if hasattr(cur, "get_text") else ""
@@ -98,6 +115,7 @@ def _pct_from_node(node) -> Optional[float]:
             if m:
                 return float(m.group(1))
             cur = getattr(cur, "parent", None)
+        # small sibling sweep only if needed
         par = getattr(node, "parent", None)
         if par:
             for sib in getattr(par, "children", []):
@@ -226,22 +244,25 @@ class Trending(commands.Cog):
             return []
         soup = BeautifulSoup(html, "html.parser")
         items: List[dict] = []
+
+        # Only consider anchors that really point to a player, not momentum pages or nav.
         for a in soup.find_all("a", href=True):
-            href = a["href"]
+            href = a["href"] or ""
+            if MOMENTUM_PATH_RE.search(href):
+                continue
             cid = _cid_from_href(href)
             if not cid:
                 continue
             pct = _pct_from_node(a)
             if pct is None:
                 continue
-
             name_hint = _name_hint_from_href(href)
             if name_hint and name_hint.strip().lower() == "momentum":
                 name_hint = None
 
             items.append({"card_id": int(cid), "percent": float(pct), "name_hint": name_hint})
 
-        # de-dupe by card_id (first occurrence)
+        # de-dupe by card_id (first occurrence only)
         seen = set(); out = []
         for it in items:
             if it["card_id"] not in seen:
@@ -263,7 +284,7 @@ class Trending(commands.Cog):
             more = await self._page_items(tf, other_page)
             result = (base + more)[:limit]
 
-        # absolute de-dupe once again
+        # absolute de-dupe
         seen = set(); uniq = []
         for it in result:
             if it["card_id"] not in seen:
@@ -296,6 +317,7 @@ class Trending(commands.Cog):
             m = meta.get(cid, {})
             price, extinct, updated = await self._console_price(cid)
 
+            # robust fallback name
             name = m.get("name") or r.get("name_hint") or f"Card {cid}"
             if isinstance(name, str) and name.strip().lower() == "momentum":
                 name = f"Card {cid}"
@@ -348,7 +370,13 @@ class Trending(commands.Cog):
             pair = smart_map.get(cid, {})
             e["trend"] = {"chg6hPct": pair.get("chg6hPct"), "chg24hPct": pair.get("chg24hPct")}
         enriched.sort(key=lambda x: abs(x.get("trend", {}).get("chg6hPct") or 0), reverse=True)
-        return enriched[:limit]
+        # de-dupe by card id to be extra safe
+        seen = set(); uniq = []
+        for it in enriched:
+            cid = int(it["card_id"])
+            if cid not in seen:
+                uniq.append(it); seen.add(cid)
+        return uniq[:limit]
 
     # ------------ embeds ------------
     def _embed_risers_fallers(self, kind: str, tf: str, items: List[dict]) -> discord.Embed:
