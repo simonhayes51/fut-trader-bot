@@ -1,47 +1,19 @@
 # cogs/trending.py
-from __future__ import annotations
-
-import os
-import re
-import json
-import asyncio
-import logging
-from datetime import datetime
-from typing import List, Dict, Optional
-
-import aiohttp
-import asyncpg
 import discord
-from discord import app_commands
 from discord.ext import commands, tasks
+from discord import app_commands
+import aiohttp
 from bs4 import BeautifulSoup
+import asyncio
+import json
+import os
+from datetime import datetime
 
-# =========================
-# Config
-# =========================
 CONFIG_FILE = "autotrend_config.json"
-PLAYER_DB_URL = os.getenv("PLAYER_DATABASE_URL") or os.getenv("DATABASE_URL")
 
-MOMENTUM_BASE = "https://www.fut.gg/players/momentum"  # /{tf}/?page=1   (tf: 6,12,24)
-FUTGG_PRICE_URL = "https://www.fut.gg/api/fut/player-prices/26/{card_id}"
+MOMENTUM_URL = "https://www.fut.gg/players/momentum"
+HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
 
-REQ_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-    "Accept": "application/json, text/plain, */*",
-    "Accept-Language": "en-GB,en;q=0.9",
-    "Referer": "https://www.fut.gg/",
-    "X-Requested-With": "XMLHttpRequest",
-}
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("trending")
-
-# Real FUT.GG card ids are large (millions). Use a floor so we never grab timeframe "6/12/24".
-MIN_CARD_ID = 100_000  # anything below this is NOT a card id
-
-# =========================
-# Utilities
-# =========================
 def load_config():
     if not os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, "w") as f:
@@ -53,499 +25,92 @@ def save_config(data):
     with open(CONFIG_FILE, "w") as f:
         json.dump(data, f, indent=2)
 
-# FUT.GG id & percent helpers
-_26_SEGMENT_RE = re.compile(r"/26-(\d+)(?:[/?#]|$)", re.IGNORECASE)
-# NOTE: this one is dangerous on /players/momentum/6/ — we'll guard with MIN_CARD_ID
-_LAST_NUM_AFTER_PLAYERS_RE = re.compile(r"/players/[^?#]*?(\d+)(?:[/?#]|$)", re.IGNORECASE)
-PCT_RE = re.compile(r"([+\-]?\d+(?:\.\d+)?)\s*%")
-MOMENTUM_PATH_RE = re.compile(r"/players/momentum(?:/|$)", re.IGNORECASE)
-
-def _cid_from_href(href: str) -> Optional[int]:
-    """Extract safe FUT.GG card_id from an href. Reject momentum/timeframe numbers."""
-    if "/players/" not in href:
-        return None
-    # Prefer explicit 26-<id>
-    m = _26_SEGMENT_RE.search(href)
-    if m:
-        try:
-            cid = int(m.group(1))
-            return cid if cid >= MIN_CARD_ID else None
-        except Exception:
-            return None
-    # Reject any URL under /players/momentum/... entirely
-    if MOMENTUM_PATH_RE.search(href):
-        return None
-    # Fallback: last number after /players/, but only if it looks like a real id
-    m = _LAST_NUM_AFTER_PLAYERS_RE.search(href)
-    if m:
-        try:
-            cid = int(m.group(1))
-            return cid if cid >= MIN_CARD_ID else None
-        except Exception:
-            return None
-    return None
-
-def _name_hint_from_href(href: str) -> Optional[str]:
-    """
-    /players/256853-malik-tillman/26-50588501/ -> 'Malik Tillman'
-    """
-    try:
-        if "/players/" not in href or MOMENTUM_PATH_RE.search(href):
-            return None
-        path = href.split("/players/", 1)[1].strip("/")
-        first_seg = path.split("/", 1)[0]
-        slug = first_seg.split("-", 1)[1] if "-" in first_seg and first_seg.split("-", 1)[0].isdigit() else first_seg
-        words = [w for w in slug.replace("-", " ").split() if w]
-        name = " ".join(w.capitalize() for w in words) if words else None
-        if name and name.strip().lower() == "momentum":
-            return None
-        return name
-    except Exception:
-        return None
-
-def _pct_from_node(node) -> Optional[float]:
-    try:
-        # Search in a tight scope (node -> up to 3 ancestors) to avoid picking header percentages
-        cur = node
-        for _ in range(3):
-            if not cur:
-                break
-            txt = cur.get_text(" ", strip=True) if hasattr(cur, "get_text") else ""
-            m = PCT_RE.search(txt or "")
-            if m:
-                return float(m.group(1))
-            cur = getattr(cur, "parent", None)
-        # small sibling sweep only if needed
-        par = getattr(node, "parent", None)
-        if par:
-            for sib in getattr(par, "children", []):
-                try:
-                    txt = sib.get_text(" ", strip=True) if hasattr(sib, "get_text") else ""
-                    m = PCT_RE.search(txt or "")
-                    if m:
-                        return float(m.group(1))
-                except Exception:
-                    continue
-    except Exception:
-        pass
-    return None
-
-# =========================
-# Cog
-# =========================
 class Trending(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.session: aiohttp.ClientSession | None = None
-        self.db: asyncpg.pool.Pool | None = None
         self.config = load_config()
-        self.auto_post_trends.start()
-
-    async def cog_load(self):
-        timeout = aiohttp.ClientTimeout(total=12)
-        self.session = aiohttp.ClientSession(headers=REQ_HEADERS, timeout=timeout)
-        if PLAYER_DB_URL:
-            self.db = await asyncpg.create_pool(PLAYER_DB_URL, min_size=1, max_size=3, command_timeout=10)
+        self.session = aiohttp.ClientSession()
 
     async def cog_unload(self):
-        if self.session:
-            await self.session.close()
-        if self.db:
-            await self.db.close()
-        self.auto_post_trends.cancel()
+        await self.session.close()
 
-    # ------------ HTTP ------------
-    async def _html(self, url: str) -> str:
-        try:
-            async with self.session.get(url) as r:
-                if r.status != 200:
-                    logger.debug(f"[fetch] {r.status} {url}")
-                    return ""
-                return await r.text()
-        except Exception as e:
-            logger.debug(f"[fetch] {url} failed: {e}")
-            return ""
+    async def fetch_html(self, url):
+        async with self.session.get(url, headers=HEADERS) as resp:
+            return await resp.text()
 
-    async def _console_price(self, card_id: int) -> tuple[Optional[int], Optional[bool], Optional[str]]:
-        """
-        Returns (price, is_extinct, updated_at_iso).
-        Handles different FUT.GG JSON shapes + retries/429.
-        """
-        url = FUTGG_PRICE_URL.format(card_id=card_id)
-        for attempt in range(3):
-            try:
-                async with self.session.get(url) as r:
-                    s = r.status
-                    if s == 429 or 500 <= s < 600:
-                        await asyncio.sleep(0.8 * (attempt + 1))
-                        continue
-                    if s != 200:
-                        return (None, None, None)
-                    try:
-                        data = await r.json(content_type=None)
-                    except Exception:
-                        txt = await r.text()
-                        try:
-                            data = json.loads(txt)
-                        except Exception:
-                            return (None, None, None)
-
-                    # shape A
-                    ps = (data or {}).get("prices", {}).get("ps") or (data or {}).get("prices", {}).get("playstation")
-                    if isinstance(ps, dict):
-                        raw = ps.get("price") or ps.get("lowestBin") or ps.get("LCPrice")
-                        if isinstance(raw, str):
-                            raw = int("".join(ch for ch in raw if ch.isdigit()))
-                        price = int(raw) if isinstance(raw, (int, float)) and raw > 0 else None
-                        extinct = bool(ps.get("isExtinct")) if "isExtinct" in ps else None
-                        updated = ps.get("updatedAt") or ps.get("priceUpdatedAt")
-                        return (price, extinct, updated)
-
-                    # shape B
-                    cur = (data or {}).get("data", {}).get("currentPrice", {})
-                    if isinstance(cur, dict) and cur:
-                        raw = cur.get("price")
-                        if isinstance(raw, str):
-                            raw = int("".join(ch for ch in raw if ch.isdigit()))
-                        price = int(raw) if isinstance(raw, (int, float)) and raw > 0 else None
-                        extinct = bool(cur.get("isExtinct")) if "isExtinct" in cur else None
-                        updated = cur.get("priceUpdatedAt") or cur.get("updatedAt")
-                        return (price, extinct, updated)
-
-                    return (None, None, None)
-            except Exception:
-                await asyncio.sleep(0.6 * (attempt + 1))
-        return (None, None, None)
-
-    # ------------ scraping ------------
-    async def _parse_last_page(self, tf: str) -> int:
-        html = await self._html(f"{MOMENTUM_BASE}/{tf}/?page=1")
-        if not html:
-            return 1
+    async def get_trending(self, trend_type="fallers", timeframe="24h"):
+        html = await self.fetch_html(MOMENTUM_URL)
         soup = BeautifulSoup(html, "html.parser")
-        last = 1
-        for a in soup.find_all("a", href=True):
-            href = a.get("href", "")
-            if "page=" in href:
-                try:
-                    n = int(href.split("page=", 1)[1].split("&", 1)[0])
-                    last = max(last, n)
-                except Exception:
-                    pass
-            else:
-                t = (a.text or "").strip()
-                if t.isdigit():
-                    last = max(last, int(t))
-        return last
 
-    async def _page_items(self, tf: str, page: int) -> List[dict]:
-        html = await self._html(f"{MOMENTUM_BASE}/{tf}/?page={page}")
-        if not html:
+        selector = "market-players-wrapper.market-24-hours" if timeframe == "24h" else "market-players-wrapper.market-6-hours"
+        section = soup.find("div", class_=selector)
+        if not section:
             return []
-        soup = BeautifulSoup(html, "html.parser")
-        items: List[dict] = []
 
-        # Only consider anchors that really point to a player, not momentum pages or nav.
-        for a in soup.find_all("a", href=True):
-            href = a["href"] or ""
-            if MOMENTUM_PATH_RE.search(href):
+        players = []
+        cards = section.find_all("a", class_="player-item")
+        for card in cards:
+            name = card.find("div", class_="name")
+            if not name or "Momentum" in name.text:
                 continue
-            cid = _cid_from_href(href)
-            if not cid:
+
+            player_name = name.text.strip()
+            rating_tag = card.find("div", class_="rating")
+            rating = rating_tag.text.strip() if rating_tag else ""
+            trend_tag = card.find("div", class_="trend")
+            trend = trend_tag.text.strip().replace(" ", "").replace("↑", "+").replace("↓", "-") if trend_tag else "N/A"
+
+            price_tag = card.find("div", class_="price-value")
+            price = price_tag.text.strip() if price_tag else "N/A"
+
+            if not player_name:
                 continue
-            pct = _pct_from_node(a)
-            if pct is None:
-                continue
-            name_hint = _name_hint_from_href(href)
-            if name_hint and name_hint.strip().lower() == "momentum":
-                name_hint = None
 
-            items.append({"card_id": int(cid), "percent": float(pct), "name_hint": name_hint})
-
-        # de-dupe by card_id (first occurrence only)
-        seen = set(); out = []
-        for it in items:
-            if it["card_id"] not in seen:
-                out.append(it); seen.add(it["card_id"])
-        return out
-
-    async def _fetch_trending(self, kind: str, tf: str, limit: int = 10) -> List[dict]:
-        last = await self._parse_last_page(tf)
-        if kind == "fallers":
-            base = await self._page_items(tf, 1)
-            base.sort(key=lambda x: x["percent"])                   # most negative first
-        else:
-            base = await self._page_items(tf, last)
-            base.sort(key=lambda x: x["percent"], reverse=True)     # most positive first
-
-        result = base[:limit]
-        if len(result) < limit:
-            other_page = last if kind == "fallers" else 1
-            more = await self._page_items(tf, other_page)
-            result = (base + more)[:limit]
-
-        # absolute de-dupe
-        seen = set(); uniq = []
-        for it in result:
-            if it["card_id"] not in seen:
-                uniq.append(it); seen.add(it["card_id"])
-        return uniq[:limit]
-
-    # ------------ enrichment ------------
-    async def _enrich(self, rows: List[dict]) -> List[dict]:
-        if not rows:
-            return []
-        ids = [int(r["card_id"]) for r in rows]
-        meta: Dict[int, dict] = {}
-        if self.db:
-            try:
-                dbrows = await self.db.fetch(
-                    """
-                    SELECT card_id, name, rating, position, club, nation, league
-                    FROM fut_players
-                    WHERE card_id = ANY($1::bigint[])
-                    """,
-                    ids,
-                )
-                meta = {int(r["card_id"]): dict(r) for r in dbrows}
-            except Exception as e:
-                logger.warning(f"[db] enrich failed: {e}")
-
-        out = []
-        for r in rows:
-            cid = int(r["card_id"])
-            m = meta.get(cid, {})
-            price, extinct, updated = await self._console_price(cid)
-
-            # robust fallback name
-            name = m.get("name") or r.get("name_hint") or f"Card {cid}"
-            if isinstance(name, str) and name.strip().lower() == "momentum":
-                name = f"Card {cid}"
-
-            out.append({
-                "card_id": cid,
-                "name": name,
-                "rating": m.get("rating"),
-                "percent": float(r["percent"]),
+            players.append({
+                "name": f"{player_name} ({rating})" if rating else player_name,
                 "price": price,
-                "extinct": extinct,
-                "price_updated_at": updated,
-                "club": m.get("club"),
-                "nation": m.get("nation"),
-                "league": m.get("league"),
-                "position": m.get("position"),
+                "trend": trend,
             })
-        return out
 
-    # ------------ smart movers ------------
-    async def _smart_items(self, limit: int = 10) -> List[dict]:
-        f6  = await self._fetch_trending("fallers", "6",  limit=50)
-        r6  = await self._fetch_trending("risers",  "6",  limit=50)
-        f24 = await self._fetch_trending("fallers", "24", limit=50)
-        r24 = await self._fetch_trending("risers",  "24", limit=50)
+        players = [p for p in players if p["name"] and p["price"] != "N/A"]
+        return players[:10]
 
-        f6m  = {int(x["card_id"]): float(x["percent"]) for x in f6}
-        r6m  = {int(x["card_id"]): float(x["percent"]) for x in r6}
-        f24m = {int(x["card_id"]): float(x["percent"]) for x in f24}
-        r24m = {int(x["card_id"]): float(x["percent"]) for x in r24}
-
-        smart_ids: set[int] = set()
-        smart_map: Dict[int, Dict[str, float]] = {}
-
-        # Up on 6h, down on 24h
-        for cid, p6 in r6m.items():
-            if cid in f24m:
-                smart_ids.add(cid)
-                smart_map[cid] = {"chg6hPct": p6, "chg24hPct": f24m[cid]}
-        # Down on 6h, up on 24h
-        for cid, p6 in f6m.items():
-            if cid in r24m:
-                smart_ids.add(cid)
-                smart_map[cid] = {"chg6hPct": p6, "chg24hPct": r24m[cid]}
-
-        raw = [{"card_id": cid, "percent": smart_map[cid]["chg6hPct"], "name_hint": None} for cid in smart_ids]
-        enriched = await self._enrich(raw)
-        for e in enriched:
-            cid = int(e["card_id"])
-            pair = smart_map.get(cid, {})
-            e["trend"] = {"chg6hPct": pair.get("chg6hPct"), "chg24hPct": pair.get("chg24hPct")}
-        enriched.sort(key=lambda x: abs(x.get("trend", {}).get("chg6hPct") or 0), reverse=True)
-        # de-dupe by card id to be extra safe
-        seen = set(); uniq = []
-        for it in enriched:
-            cid = int(it["card_id"])
-            if cid not in seen:
-                uniq.append(it); seen.add(cid)
-        return uniq[:limit]
-
-    # ------------ embeds ------------
-    def _embed_risers_fallers(self, kind: str, tf: str, items: List[dict]) -> discord.Embed:
-        emoji = "📈" if kind == "risers" else "📉"
-        tf_emoji = {"6": "🕕", "12": "🕛", "24": "📅"}.get(tf, "📅")
-        title = f"{emoji} Top 10 {'Risers' if kind=='risers' else 'Fallers'} – {tf_emoji} {tf}h"
-        color = discord.Color.green() if kind == "risers" else discord.Color.red()
-        embed = discord.Embed(title=title, color=color)
-
-        left = right = ""
-        nums = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"]
-        for i, p in enumerate(items[:10]):
-            name = p.get("name") or f"Card {p['card_id']}"
-            rating = f" ({p['rating']})" if p.get("rating") else ""
-            price_txt = "Extinct" if p.get("extinct") else (f"{p['price']:,} 🪙" if p.get("price") else "N/A")
-            sign = "📈" if (p.get("percent") or 0) >= 0 else "📉"
-            pct = f"{float(p['percent']):+.2f}%"
-            line = f"**{nums[i]} {name}{rating}**\n💰 {price_txt}\n{sign} {pct}\n\n"
-            (left := left + line) if i < 5 else (right := right + line)
-
-        embed.add_field(name="\u200b", value=left or "–", inline=True)
-        embed.add_field(name="\u200b", value=right or "–", inline=True)
-
-        ts = next((x.get("price_updated_at") for x in items if x.get("price_updated_at")), None)
-        footer = "Data & Prices: FUT.GG • Created by www.futhub.co.uk"
-        if ts:
-            footer += f" • Updated: {ts}"
-        embed.set_footer(text=footer)
-        return embed
-
-    def _embed_smart(self, items: List[dict]) -> discord.Embed:
-        title = "🧠 Smart Movers – Trend flipped (6h ↔ 24h)"
-        embed = discord.Embed(title=title, color=discord.Color.orange())
-
-        left = right = ""
-        nums = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"]
-        for i, p in enumerate(items[:10]):
-            name = p.get("name") or f"Card {p['card_id']}"
-            rating = f" ({p['rating']})" if p.get("rating") else ""
-            price_txt = "Extinct" if p.get("extinct") else (f"{p['price']:,} 🪙" if p.get("price") else "N/A")
-            t6 = p.get("trend", {}).get("chg6hPct")
-            t24 = p.get("trend", {}).get("chg24hPct")
-            l = (
-                f"**{nums[i]} {name}{rating}**\n"
-                f"💰 {price_txt}\n"
-                f"🕕 6h: {t6:+.2f}%\n"
-                f"📅 24h: {t24:+.2f}%\n\n"
-            )
-            (left := left + l) if i < 5 else (right := right + l)
-
-        embed.add_field(name="\u200b", value=left or "–", inline=True)
-        embed.add_field(name="\u200b", value=right or "–", inline=True)
-
-        ts = next((x.get("price_updated_at") for x in items if x.get("price_updated_at")), None)
-        footer = "Data & Prices: FUT.GG • Created by www.futhub.co.uk"
-        if ts:
-            footer += f" • Updated: {ts}"
-        embed.set_footer(text=footer)
-        return embed
-
-    async def generate_trend_embed(self, kind: str, tf: str) -> discord.Embed:
-        if kind == "smart":
-            items = await self._smart_items(limit=10)
-            # extra de-dupe by card_id preserving order
-            seen = set(); uniq = []
-            for it in items:
-                cid = int(it["card_id"])
-                if cid not in seen:
-                    uniq.append(it); seen.add(cid)
-            return self._embed_smart(uniq[:10])
-
-        raw = await self._fetch_trending(kind, tf, limit=10)
-        enriched = await self._enrich(raw)
-        seen = set(); uniq = []
-        for it in enriched:
-            cid = int(it["card_id"])
-            if cid not in seen:
-                uniq.append(it); seen.add(cid)
-        return self._embed_risers_fallers(kind, tf, uniq[:10])
-
-    # ------------ commands ------------
-    @app_commands.command(name="trending", description="📊 Show trending players (FUT.GG)")
-    @app_commands.choices(
-        direction=[
-            app_commands.Choice(name="📈 Risers", value="risers"),
-            app_commands.Choice(name="📉 Fallers", value="fallers"),
-            app_commands.Choice(name="🧠 Smart Movers", value="smart"),
-        ],
-        timeframe=[
-            app_commands.Choice(name="🕕 6h", value="6"),
-            app_commands.Choice(name="🕛 12h", value="12"),
-            app_commands.Choice(name="📅 24h", value="24"),
-        ],
+    @app_commands.command(name="trending", description="Show top risers or fallers")
+    @app_commands.describe(
+        trend_type="Choose between risers or fallers",
+        timeframe="Select timeframe: 6h or 24h"
     )
     async def trending(
-        self,
-        interaction: discord.Interaction,
-        direction: app_commands.Choice[str],
-        timeframe: app_commands.Choice[str],
+        self, interaction: discord.Interaction,
+        trend_type: str = "fallers",
+        timeframe: str = "24h"
     ):
-        await interaction.response.defer()
-        embed = await self.generate_trend_embed(direction.value, timeframe.value)
-        view = discord.ui.View(timeout=None)
-        view.add_item(discord.ui.Button(
-            label="🔁 Refresh",
-            style=discord.ButtonStyle.primary,
-            custom_id=f"refresh_{direction.value}_{timeframe.value}"
-        ))
-        await interaction.followup.send(embed=embed, view=view)
+        await interaction.response.defer(thinking=True)
+        data = await self.get_trending(trend_type, timeframe)
 
-    @commands.Cog.listener()
-    async def on_interaction(self, interaction: discord.Interaction):
-        if interaction.type == discord.InteractionType.component:
-            cid = interaction.data.get("custom_id")
-            if cid and cid.startswith("refresh_"):
-                _, direction, timeframe = cid.split("_")
-                await interaction.response.defer()
-                embed = await self.generate_trend_embed(direction, timeframe)
-                await interaction.edit_original_response(embed=embed)
+        emoji = "📉" if trend_type == "fallers" else "📈"
+        clock = "🕕" if timeframe == "6h" else "📅"
 
-    # ------------ autopost ------------
-    @tasks.loop(minutes=1)
-    async def auto_post_trends(self):
-        now = datetime.utcnow().strftime("%H:%M")
-        for guild_id, conf in self.config.items():
-            if not conf.get("enabled", False):
-                continue
-            if now != conf.get("start_time", "00:00"):
-                continue
-            channel = self.bot.get_channel(conf.get("channel_id"))
-            if not channel:
-                continue
-            try:
-                fallers = await self.generate_trend_embed("fallers", "24")
-                risers  = await self.generate_trend_embed("risers",  "24")
-                ping = f"<@&{conf['ping_role']}>" if conf.get("ping_role") else None
-                await channel.send(content=ping or None, embed=fallers)
-                await channel.send(embed=risers)
-                self.config[guild_id]["last_post"] = now
-                save_config(self.config)
-            except Exception as e:
-                logger.error(f"[AutoPost] guild {guild_id}: {e}")
+        embed = discord.Embed(
+            title=f"{emoji} Top 10 {trend_type.capitalize()} – {clock} {timeframe}",
+            colour=discord.Colour.red() if trend_type == "fallers" else discord.Colour.green(),
+        )
 
-    @app_commands.command(name="setupautotrending", description="⚙️ Configure auto-posting of trends")
-    @app_commands.describe(
-        channel="Where to post",
-        frequency="How often (hours) — stored for future use",
-        start_time="When to start (HH:MM UTC)",
-        ping_role="Optional ping role",
-    )
-    async def setupautotrending(
-        self,
-        interaction: discord.Interaction,
-        channel: discord.TextChannel,
-        frequency: int,
-        start_time: str,
-        ping_role: discord.Role | None = None,
-    ):
-        if not interaction.user.guild_permissions.administrator:
-            return await interaction.response.send_message("❌ You need admin permissions.", ephemeral=True)
-        self.config[str(interaction.guild.id)] = {
-            "channel_id": channel.id,
-            "frequency": frequency,
-            "start_time": start_time,
-            "enabled": True,
-            "ping_role": ping_role.id if ping_role else None,
-        }
-        save_config(self.config)
-        await interaction.response.send_message("✅ Auto trending setup complete.")
+        if not data:
+            embed.description = "No data found."
+        else:
+            lines = []
+            for i, player in enumerate(data, start=1):
+                lines.append(
+                    f"{i}. **{player['name']}**\n💰 {player['price']} 🪙\n{emoji} {player['trend']}"
+                )
+            embed.description = "\n\n".join(lines)
+
+        embed.set_footer(
+            text=f"Data & Prices: FUT.GG • Created by www.futhub.co.uk • Updated: {datetime.utcnow().isoformat()}Z"
+        )
+
+        await interaction.followup.send(embed=embed)
 
 async def setup(bot):
     await bot.add_cog(Trending(bot))
