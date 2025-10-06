@@ -7,7 +7,7 @@ import json
 import asyncio
 import logging
 from datetime import datetime
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Optional
 
 import aiohttp
 import asyncpg
@@ -16,11 +16,13 @@ from discord import app_commands
 from discord.ext import commands, tasks
 from bs4 import BeautifulSoup
 
-# ---------------- Config ----------------
+# =========================
+# Config
+# =========================
 CONFIG_FILE = "autotrend_config.json"
 PLAYER_DB_URL = os.getenv("PLAYER_DATABASE_URL") or os.getenv("DATABASE_URL")
 
-MOMENTUM_BASE = "https://www.fut.gg/players/momentum"       # /{tf}/?page=1 where tf in {6,12,24}
+MOMENTUM_BASE = "https://www.fut.gg/players/momentum"  # /{tf}/?page=1   (tf: 6,12,24)
 FUTGG_PRICE_URL = "https://www.fut.gg/api/fut/player-prices/26/{card_id}"
 
 REQ_HEADERS = {
@@ -34,7 +36,9 @@ REQ_HEADERS = {
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("trending")
 
-# ---------------- utils ----------------
+# =========================
+# Utilities
+# =========================
 def load_config():
     if not os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, "w") as f:
@@ -46,7 +50,7 @@ def save_config(data):
     with open(CONFIG_FILE, "w") as f:
         json.dump(data, f, indent=2)
 
-# FUT.GG id & % extractors
+# FUT.GG id & percent helpers
 _26_SEGMENT_RE = re.compile(r"/26-(\d+)(?:[/?#]|$)", re.IGNORECASE)
 _LAST_NUM_AFTER_PLAYERS_RE = re.compile(r"/players/[^?#]*?(\d+)(?:[/?#]|$)", re.IGNORECASE)
 PCT_RE = re.compile(r"([+\-]?\d+(?:\.\d+)?)\s*%")
@@ -84,7 +88,6 @@ def _name_hint_from_href(href: str) -> Optional[str]:
         return None
 
 def _pct_from_node(node) -> Optional[float]:
-    # search node and a couple ancestors/siblings for a percent like "-12.3%"
     try:
         cur = node
         for _ in range(5):
@@ -109,7 +112,9 @@ def _pct_from_node(node) -> Optional[float]:
         pass
     return None
 
-# ---------------- Cog ----------------
+# =========================
+# Cog
+# =========================
 class Trending(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -131,7 +136,7 @@ class Trending(commands.Cog):
             await self.db.close()
         self.auto_post_trends.cancel()
 
-    # ------------ HTTP helpers ------------
+    # ------------ HTTP ------------
     async def _html(self, url: str) -> str:
         try:
             async with self.session.get(url) as r:
@@ -146,7 +151,7 @@ class Trending(commands.Cog):
     async def _console_price(self, card_id: int) -> tuple[Optional[int], Optional[bool], Optional[str]]:
         """
         Returns (price, is_extinct, updated_at_iso).
-        Supports both FUT.GG JSON shapes and retries on 429/5xx.
+        Handles different FUT.GG JSON shapes + retries/429.
         """
         url = FUTGG_PRICE_URL.format(card_id=card_id)
         for attempt in range(3):
@@ -165,7 +170,6 @@ class Trending(commands.Cog):
                         try:
                             data = json.loads(txt)
                         except Exception:
-                            logger.debug(f"[price] non-json {card_id}: {txt[:200]}")
                             return (None, None, None)
 
                     # shape A
@@ -190,7 +194,6 @@ class Trending(commands.Cog):
                         updated = cur.get("priceUpdatedAt") or cur.get("updatedAt")
                         return (price, extinct, updated)
 
-                    logger.debug(f"[price] unknown json {card_id}: {str(data)[:300]}")
                     return (None, None, None)
             except Exception:
                 await asyncio.sleep(0.6 * (attempt + 1))
@@ -231,24 +234,28 @@ class Trending(commands.Cog):
             pct = _pct_from_node(a)
             if pct is None:
                 continue
-            items.append({"card_id": int(cid), "percent": float(pct), "name_hint": _name_hint_from_href(href)})
+
+            name_hint = _name_hint_from_href(href)
+            if name_hint and name_hint.strip().lower() == "momentum":
+                name_hint = None
+
+            items.append({"card_id": int(cid), "percent": float(pct), "name_hint": name_hint})
+
         # de-dupe by card_id (first occurrence)
-        seen = set()
-        out = []
+        seen = set(); out = []
         for it in items:
             if it["card_id"] not in seen:
                 out.append(it); seen.add(it["card_id"])
         return out
 
     async def _fetch_trending(self, kind: str, tf: str, limit: int = 10) -> List[dict]:
-        # Fallers -> page 1 (most negative first). Risers -> last page (most positive first).
         last = await self._parse_last_page(tf)
         if kind == "fallers":
             base = await self._page_items(tf, 1)
-            base.sort(key=lambda x: x["percent"])  # most negative first
+            base.sort(key=lambda x: x["percent"])                   # most negative first
         else:
             base = await self._page_items(tf, last)
-            base.sort(key=lambda x: x["percent"], reverse=True)  # most positive first
+            base.sort(key=lambda x: x["percent"], reverse=True)     # most positive first
 
         result = base[:limit]
         if len(result) < limit:
@@ -288,7 +295,11 @@ class Trending(commands.Cog):
             cid = int(r["card_id"])
             m = meta.get(cid, {})
             price, extinct, updated = await self._console_price(cid)
+
             name = m.get("name") or r.get("name_hint") or f"Card {cid}"
+            if isinstance(name, str) and name.strip().lower() == "momentum":
+                name = f"Card {cid}"
+
             out.append({
                 "card_id": cid,
                 "name": name,
@@ -306,7 +317,6 @@ class Trending(commands.Cog):
 
     # ------------ smart movers ------------
     async def _smart_items(self, limit: int = 10) -> List[dict]:
-        # Build sets/maps for 6h & 24h
         f6  = await self._fetch_trending("fallers", "6",  limit=50)
         r6  = await self._fetch_trending("risers",  "6",  limit=50)
         f24 = await self._fetch_trending("fallers", "24", limit=50)
@@ -333,12 +343,10 @@ class Trending(commands.Cog):
 
         raw = [{"card_id": cid, "percent": smart_map[cid]["chg6hPct"], "name_hint": None} for cid in smart_ids]
         enriched = await self._enrich(raw)
-        # attach both trends
         for e in enriched:
             cid = int(e["card_id"])
             pair = smart_map.get(cid, {})
             e["trend"] = {"chg6hPct": pair.get("chg6hPct"), "chg24hPct": pair.get("chg24hPct")}
-        # sort by magnitude of 6h flip
         enriched.sort(key=lambda x: abs(x.get("trend", {}).get("chg6hPct") or 0), reverse=True)
         return enriched[:limit]
 
@@ -404,7 +412,7 @@ class Trending(commands.Cog):
     async def generate_trend_embed(self, kind: str, tf: str) -> discord.Embed:
         if kind == "smart":
             items = await self._smart_items(limit=10)
-            # extra dedupe by card_id preserving order
+            # extra de-dupe by card_id preserving order
             seen = set(); uniq = []
             for it in items:
                 cid = int(it["card_id"])
