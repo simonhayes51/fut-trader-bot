@@ -5,8 +5,7 @@ from discord import app_commands
 import aiohttp
 from bs4 import BeautifulSoup
 from datetime import datetime
-import json
-import os
+import asyncio
 import re
 
 HEADERS = {
@@ -15,29 +14,35 @@ HEADERS = {
     "Referer": "https://www.fut.gg/",
 }
 MOMENTUM_BASE = "https://www.fut.gg/players/momentum"
-FUTGG_PRICE_URL = "https://www.fut.gg/api/fut/player-prices/26/{card_id}"
 
-# robust id + percent extraction
+# ====== robust id + percent parsing ======
 RE_SEG = re.compile(r"/players/[^?#]*/26-(\d+)(?:[/?#]|$)", re.I)
 RE_LAST = re.compile(r"/players/[^?#]*?(\d+)(?:[/?#]|$)", re.I)
 RE_PCT = re.compile(r"([+\-]?\s?\d+(?:\.\d+)?)\s*%")
 
 def _card_id(href: str):
-    if "/players/" not in href: return None
+    if "/players/" not in href:
+        return None
     m = RE_SEG.search(href) or RE_LAST.search(href)
-    if not m: return None
-    try: return int(m.group(1))
-    except: return None
+    if not m:
+        return None
+    try:
+        return int(m.group(1))
+    except:
+        return None
 
 def _nearest_pct(node):
     cur = node
     for _ in range(5):
-        if cur is None: break
+        if cur is None:
+            break
         txt = cur.get_text(" ", strip=True) if hasattr(cur, "get_text") else ""
         m = RE_PCT.search(txt or "")
         if m:
-            try: return float(m.group(1).replace(" ", ""))
-            except: pass
+            try:
+                return float(m.group(1).replace(" ", ""))
+            except:
+                pass
         cur = getattr(cur, "parent", None)
     p = getattr(node, "parent", None)
     if p:
@@ -45,8 +50,10 @@ def _nearest_pct(node):
             try:
                 txt = sib.get_text(" ", strip=True)
                 m = RE_PCT.search(txt or "")
-                if m: return float(m.group(1).replace(" ", ""))
-            except: pass
+                if m:
+                    return float(m.group(1).replace(" ", ""))
+            except:
+                pass
     return None
 
 async def _fetch_html(session: aiohttp.ClientSession, url: str) -> str:
@@ -68,7 +75,8 @@ def _parse_last_page_num(html: str) -> int:
             try:
                 n = int(href.split("page=", 1)[1].split("&", 1)[0])
                 last = max(last, n)
-            except: pass
+            except:
+                pass
         else:
             t = (a.text or "").strip()
             if t.isdigit():
@@ -86,38 +94,59 @@ def _extract_items(html: str):
         pct = _nearest_pct(a)
         if pct is None:
             continue
-        # skip obvious non-player placeholders
-        alt = (a.find("img", alt=True) or {}).get("alt") if a.find("img", alt=True) else None
+        # try to get a readable name
+        alt_tag = a.find("img", alt=True)
         name = None
-        if isinstance(alt, str):
-            name = alt.split(" - ", 1)[0].strip()
-        if not name or name.lower() == "momentum":
-            # fall back to slug last segment before /(26-..)
+        if alt_tag and isinstance(alt_tag.get("alt"), str):
+            name = alt_tag["alt"].split(" - ", 1)[0].strip()
+        # fallback from slug
+        if not name or name.lower() in {"momentum", "none", "null", "n/a"}:
             try:
                 seg = href.split("/players/", 1)[1].split("/", 1)[0]
                 if "-" in seg:
                     name = " ".join(s.capitalize() for s in seg.split("-", 1)[1].split("-"))
             except:
-                name = f"Card {cid}"
+                name = None
+        if not name or name.lower() in {"momentum", "none"}:
+            continue  # drop nameless/placeholder rows
         items.append({"card_id": cid, "name": name, "percent": pct})
         seen.add(cid)
     return items
 
+# ====== robust Console price fetcher (multi-schema) ======
 async def _get_console_price(session: aiohttp.ClientSession, card_id: int):
-    url = FUTGG_PRICE_URL.format(card_id=card_id)
-    try:
-        async with session.get(url, headers=HEADERS, timeout=aiohttp.ClientTimeout(total=10)) as r:
-            if r.status != 200:
-                return None
-            data = await r.json()
-    except Exception:
-        return None
-    try:
-        ps = (data or {}).get("prices", {}).get("ps", {}) or {}
-        val = ps.get("price") or ps.get("lowestBin") or ps.get("LCPrice")
-        return int(val) if isinstance(val, (int, float)) and val > 0 else None
-    except Exception:
-        return None
+    endpoints = [
+        f"https://www.fut.gg/api/fut/player-prices/26/{card_id}",
+        # some cards resolve here without the season segment:
+        f"https://www.fut.gg/api/fut/player-prices/{card_id}",
+    ]
+    for url in endpoints:
+        try:
+            async with session.get(url, headers=HEADERS, timeout=aiohttp.ClientTimeout(total=10)) as r:
+                if r.status != 200:
+                    continue
+                data = await r.json()
+        except Exception:
+            continue
+
+        # Try schema A: { prices: { ps: { price|lowestBin|LCPrice } } }
+        try:
+            ps = (data or {}).get("prices", {}).get("ps", {}) or {}
+            val = ps.get("price") or ps.get("lowestBin") or ps.get("LCPrice")
+            if isinstance(val, (int, float)) and val > 0:
+                return int(val)
+        except Exception:
+            pass
+
+        # Try schema B: { data: { currentPrice: { price } } } (seen on some responses)
+        try:
+            val = (data or {}).get("data", {}).get("currentPrice", {}).get("price")
+            if isinstance(val, (int, float)) and val > 0:
+                return int(val)
+        except Exception:
+            pass
+
+    return None
 
 class Trending(commands.Cog):
     def __init__(self, bot):
@@ -148,13 +177,15 @@ class Trending(commands.Cog):
                 head = _extract_items(first_html)
                 head.sort(key=lambda x: x["percent"], reverse=True)
                 out = (last + head)[:limit]
-        # attach prices (console only)
-        priced = []
-        for itm in out:
-            p = await _get_console_price(self.session, int(itm["card_id"]))
-            itm["price"] = p
-            priced.append(itm)
-        return priced[:limit]
+
+        # fetch prices concurrently
+        async def attach(it):
+            it["price"] = await _get_console_price(self.session, int(it["card_id"]))
+            return it
+
+        out = out[:limit]
+        out = await asyncio.gather(*(attach(i) for i in out))
+        return out
 
     @app_commands.command(name="trending", description="Show top risers/fallers from FUT.GG Momentum")
     @app_commands.choices(
@@ -188,8 +219,8 @@ class Trending(commands.Cog):
         if not data:
             embed.description = "No data found."
         else:
-            lines = []
             num = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"]
+            lines = []
             for i, it in enumerate(data[:10]):
                 price_txt = f"{it['price']:,} 🪙" if it.get("price") else "N/A"
                 lines.append(
