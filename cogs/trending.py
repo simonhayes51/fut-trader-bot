@@ -1,115 +1,203 @@
 # cogs/trending.py
 import discord
-from discord.ext import commands, tasks
+from discord.ext import commands
 from discord import app_commands
 import aiohttp
 from bs4 import BeautifulSoup
-import asyncio
+from datetime import datetime
 import json
 import os
-from datetime import datetime
+import re
 
-CONFIG_FILE = "autotrend_config.json"
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    "Accept-Language": "en-GB,en;q=0.9",
+    "Referer": "https://www.fut.gg/",
+}
+MOMENTUM_BASE = "https://www.fut.gg/players/momentum"
+FUTGG_PRICE_URL = "https://www.fut.gg/api/fut/player-prices/26/{card_id}"
 
-MOMENTUM_URL = "https://www.fut.gg/players/momentum"
-HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+# robust id + percent extraction
+RE_SEG = re.compile(r"/players/[^?#]*/26-(\d+)(?:[/?#]|$)", re.I)
+RE_LAST = re.compile(r"/players/[^?#]*?(\d+)(?:[/?#]|$)", re.I)
+RE_PCT = re.compile(r"([+\-]?\s?\d+(?:\.\d+)?)\s*%")
 
-def load_config():
-    if not os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, "w") as f:
-            json.dump({}, f)
-    with open(CONFIG_FILE, "r") as f:
-        return json.load(f)
+def _card_id(href: str):
+    if "/players/" not in href: return None
+    m = RE_SEG.search(href) or RE_LAST.search(href)
+    if not m: return None
+    try: return int(m.group(1))
+    except: return None
 
-def save_config(data):
-    with open(CONFIG_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+def _nearest_pct(node):
+    cur = node
+    for _ in range(5):
+        if cur is None: break
+        txt = cur.get_text(" ", strip=True) if hasattr(cur, "get_text") else ""
+        m = RE_PCT.search(txt or "")
+        if m:
+            try: return float(m.group(1).replace(" ", ""))
+            except: pass
+        cur = getattr(cur, "parent", None)
+    p = getattr(node, "parent", None)
+    if p:
+        for sib in getattr(p, "children", []):
+            try:
+                txt = sib.get_text(" ", strip=True)
+                m = RE_PCT.search(txt or "")
+                if m: return float(m.group(1).replace(" ", ""))
+            except: pass
+    return None
+
+async def _fetch_html(session: aiohttp.ClientSession, url: str) -> str:
+    async with session.get(url, headers=HEADERS, timeout=aiohttp.ClientTimeout(total=12)) as r:
+        r.raise_for_status()
+        return await r.text()
+
+async def _momentum_page(session: aiohttp.ClientSession, tf: str, page: int) -> str:
+    # tf is "6" or "24"
+    url = f"{MOMENTUM_BASE}/{tf}/?page={page}"
+    return await _fetch_html(session, url)
+
+def _parse_last_page_num(html: str) -> int:
+    soup = BeautifulSoup(html, "html.parser")
+    last = 1
+    for a in soup.find_all("a", href=True):
+        href = a.get("href") or ""
+        if "page=" in href:
+            try:
+                n = int(href.split("page=", 1)[1].split("&", 1)[0])
+                last = max(last, n)
+            except: pass
+        else:
+            t = (a.text or "").strip()
+            if t.isdigit():
+                last = max(last, int(t))
+    return last
+
+def _extract_items(html: str):
+    soup = BeautifulSoup(html, "html.parser")
+    items, seen = [], set()
+    for a in soup.find_all("a", href=True):
+        href = a["href"]
+        cid = _card_id(href)
+        if not cid or cid in seen:
+            continue
+        pct = _nearest_pct(a)
+        if pct is None:
+            continue
+        # skip obvious non-player placeholders
+        alt = (a.find("img", alt=True) or {}).get("alt") if a.find("img", alt=True) else None
+        name = None
+        if isinstance(alt, str):
+            name = alt.split(" - ", 1)[0].strip()
+        if not name or name.lower() == "momentum":
+            # fall back to slug last segment before /(26-..)
+            try:
+                seg = href.split("/players/", 1)[1].split("/", 1)[0]
+                if "-" in seg:
+                    name = " ".join(s.capitalize() for s in seg.split("-", 1)[1].split("-"))
+            except:
+                name = f"Card {cid}"
+        items.append({"card_id": cid, "name": name, "percent": pct})
+        seen.add(cid)
+    return items
+
+async def _get_console_price(session: aiohttp.ClientSession, card_id: int):
+    url = FUTGG_PRICE_URL.format(card_id=card_id)
+    try:
+        async with session.get(url, headers=HEADERS, timeout=aiohttp.ClientTimeout(total=10)) as r:
+            if r.status != 200:
+                return None
+            data = await r.json()
+    except Exception:
+        return None
+    try:
+        ps = (data or {}).get("prices", {}).get("ps", {}) or {}
+        val = ps.get("price") or ps.get("lowestBin") or ps.get("LCPrice")
+        return int(val) if isinstance(val, (int, float)) and val > 0 else None
+    except Exception:
+        return None
 
 class Trending(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.config = load_config()
         self.session = aiohttp.ClientSession()
 
     async def cog_unload(self):
         await self.session.close()
 
-    async def fetch_html(self, url):
-        async with self.session.get(url, headers=HEADERS) as resp:
-            return await resp.text()
+    async def _fetch_trending(self, kind: str, tf: str, limit: int = 10):
+        # tf: "6" or "24", kind: "risers"|"fallers"
+        first_html = await _momentum_page(self.session, tf, 1)
+        last_page = _parse_last_page_num(first_html)
 
-    async def get_trending(self, trend_type="fallers", timeframe="24h"):
-        html = await self.fetch_html(MOMENTUM_URL)
-        soup = BeautifulSoup(html, "html.parser")
+        if kind == "fallers":
+            base = _extract_items(first_html)
+            base.sort(key=lambda x: x["percent"])
+            out = base[:limit]
+            if len(out) < limit and last_page > 1:
+                tail = _extract_items(await _momentum_page(self.session, tf, last_page))
+                tail.sort(key=lambda x: x["percent"])
+                out = (base + tail)[:limit]
+        else:  # risers
+            last = _extract_items(await _momentum_page(self.session, tf, last_page))
+            last.sort(key=lambda x: x["percent"], reverse=True)
+            out = last[:limit]
+            if len(out) < limit and last_page > 1:
+                head = _extract_items(first_html)
+                head.sort(key=lambda x: x["percent"], reverse=True)
+                out = (last + head)[:limit]
+        # attach prices (console only)
+        priced = []
+        for itm in out:
+            p = await _get_console_price(self.session, int(itm["card_id"]))
+            itm["price"] = p
+            priced.append(itm)
+        return priced[:limit]
 
-        selector = "market-players-wrapper.market-24-hours" if timeframe == "24h" else "market-players-wrapper.market-6-hours"
-        section = soup.find("div", class_=selector)
-        if not section:
-            return []
-
-        players = []
-        cards = section.find_all("a", class_="player-item")
-        for card in cards:
-            name = card.find("div", class_="name")
-            if not name or "Momentum" in name.text:
-                continue
-
-            player_name = name.text.strip()
-            rating_tag = card.find("div", class_="rating")
-            rating = rating_tag.text.strip() if rating_tag else ""
-            trend_tag = card.find("div", class_="trend")
-            trend = trend_tag.text.strip().replace(" ", "").replace("↑", "+").replace("↓", "-") if trend_tag else "N/A"
-
-            price_tag = card.find("div", class_="price-value")
-            price = price_tag.text.strip() if price_tag else "N/A"
-
-            if not player_name:
-                continue
-
-            players.append({
-                "name": f"{player_name} ({rating})" if rating else player_name,
-                "price": price,
-                "trend": trend,
-            })
-
-        players = [p for p in players if p["name"] and p["price"] != "N/A"]
-        return players[:10]
-
-    @app_commands.command(name="trending", description="Show top risers or fallers")
-    @app_commands.describe(
-        trend_type="Choose between risers or fallers",
-        timeframe="Select timeframe: 6h or 24h"
+    @app_commands.command(name="trending", description="Show top risers/fallers from FUT.GG Momentum")
+    @app_commands.choices(
+        trend_type=[
+            app_commands.Choice(name="📈 Risers", value="risers"),
+            app_commands.Choice(name="📉 Fallers", value="fallers"),
+        ],
+        timeframe=[
+            app_commands.Choice(name="🕕 6h", value="6h"),
+            app_commands.Choice(name="📅 24h", value="24h"),
+        ],
     )
     async def trending(
-        self, interaction: discord.Interaction,
-        trend_type: str = "fallers",
-        timeframe: str = "24h"
+        self,
+        interaction: discord.Interaction,
+        trend_type: app_commands.Choice[str],
+        timeframe: app_commands.Choice[str],
     ):
         await interaction.response.defer(thinking=True)
-        data = await self.get_trending(trend_type, timeframe)
 
-        emoji = "📉" if trend_type == "fallers" else "📈"
-        clock = "🕕" if timeframe == "6h" else "📅"
+        tf_num = "6" if timeframe.value.startswith("6") else "24"
+        data = await self._fetch_trending(kind=trend_type.value, tf=tf_num, limit=10)
 
+        emoji = "📉" if trend_type.value == "fallers" else "📈"
+        clock = "🕕" if tf_num == "6" else "📅"
         embed = discord.Embed(
-            title=f"{emoji} Top 10 {trend_type.capitalize()} – {clock} {timeframe}",
-            colour=discord.Colour.red() if trend_type == "fallers" else discord.Colour.green(),
+            title=f"{emoji} Top 10 {trend_type.name.split()[-1]} – {clock} {timeframe.value}",
+            colour=discord.Colour.red() if trend_type.value == "fallers" else discord.Colour.green(),
         )
 
         if not data:
             embed.description = "No data found."
         else:
             lines = []
-            for i, player in enumerate(data, start=1):
+            num = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"]
+            for i, it in enumerate(data[:10]):
+                price_txt = f"{it['price']:,} 🪙" if it.get("price") else "N/A"
                 lines.append(
-                    f"{i}. **{player['name']}**\n💰 {player['price']} 🪙\n{emoji} {player['trend']}"
+                    f"{num[i]} **{it['name']}**\n💰 {price_txt}\n{emoji} {it['percent']:+.2f}%"
                 )
             embed.description = "\n\n".join(lines)
 
-        embed.set_footer(
-            text=f"Data & Prices: FUT.GG • Created by www.futhub.co.uk • Updated: {datetime.utcnow().isoformat()}Z"
-        )
-
+        embed.set_footer(text=f"Data & Prices: FUT.GG • Created by www.futhub.co.uk • Updated: {datetime.utcnow().isoformat()}Z")
         await interaction.followup.send(embed=embed)
 
 async def setup(bot):
