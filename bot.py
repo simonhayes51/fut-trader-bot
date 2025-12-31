@@ -18,7 +18,8 @@ logging.basicConfig(
 
 # Configure intents
 intents = discord.Intents.default()
-intents.message_content = True
+# Note: We don't need message_content since we use slash commands only
+# intents.message_content = True  # Removed - privileged intent not needed
 
 # Set up the bot
 bot = commands.Bot(command_prefix="!", intents=intents)
