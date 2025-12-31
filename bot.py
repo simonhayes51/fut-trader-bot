@@ -25,26 +25,23 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 # List of cogs to load
 COGS = [
-    # Core features
-    "cogs.pricecheck",
-    "cogs.taxcalc",
-    "cogs.trending",
-    "cogs.portfolio",
+    # CORE FEATURES (Essential utilities)
+    "cogs.pricecheck",      # Fast price checks
+    "cogs.taxcalc",         # Tax calculator with scenarios
+    "cogs.playercompare",   # Player comparison
+    "cogs.trending",        # Market movers
 
-    # Trading features
-    "cogs.snipingfeed",
-    "cogs.marketanalysis",
-    "cogs.playercompare",
+    # KILLER FEATURES (Leak-focused)
+    "cogs.leakmonitor",     # 🔥 Real-time leak monitoring (THE killer feature)
+    "cogs.flipfinder",      # 💰 Flip opportunities
+    "cogs.smartalerts",     # 🔔 Personal price alerts
 
-    # FC26 specific features
-    "cogs.evolutions",
-    "cogs.squadrating",
+    # MARKET INTELLIGENCE
+    "cogs.marketintel",     # Fodder tracker, market overview, calendar
 
-    # Additional features
-    "cogs.setupsniping",
-    "cogs.submitfilter",
-    "cogs.postatrade",
-    "cogs.sbcsolve",
+    # Keep useful existing features
+    "cogs.postatrade",      # Trade sharing
+    "cogs.sbcsolve",        # SBC solver
 ]
 
 async def load_cogs():
@@ -60,7 +57,7 @@ async def load_cogs():
 async def on_ready():
     logging.info(f"✅ Logged in as {bot.user.name} (ID: {bot.user.id})")
     logging.info(f"🌐 Connected to {len(bot.guilds)} guilds")
-    logging.info(f"🎮 FC26 Ultimate Trading Bot - Enhanced Edition")
+    logging.info(f"🔥 FC26 LEAK-FOCUSED TRADING BOT - The #1 Trading Utility")
 
     # Load all cogs
     await load_cogs()
@@ -69,7 +66,8 @@ async def on_ready():
     try:
         synced = await bot.tree.sync()
         logging.info(f"🔁 Globally synced {len(synced)} slash command(s).")
-        logging.info(f"⚽ FC26 features loaded: Evolutions, Market Analysis, Player Compare, Squad Rating")
+        logging.info(f"⚡ CORE FEATURES: Leak Monitor, Flip Finder, Smart Alerts, Price Checks")
+        logging.info(f"💰 THE BOT THAT GIVES YOU FIRST-MOVER ADVANTAGE")
     except Exception as e:
         logging.error(f"❌ Failed to sync slash commands: {e}")
 
