@@ -120,18 +120,42 @@ class SmartAlerts(commands.Cog):
 
     async def _check_single_alert(self, user_id: int, alert: Dict):
         """Check a single alert and notify if triggered"""
-        # In production: fetch real price from API
-        # For now, simulate price checking
+        # Fetch REAL price from Futbin if we have a card_id
+        current_price = None
 
-        # Placeholder: would fetch from Futbin/FUT.GG
-        # current_price = await self._fetch_current_price(alert["card_id"])
+        if alert["card_id"]:
+            try:
+                from utils.futbin_api import _futbin_api
+                prices = await _futbin_api.get_player_price_async(self.session, int(alert["card_id"]))
 
-        # For demo, use random price changes
-        import random
-        if alert["current_price"]:
-            current_price = alert["current_price"] + random.randint(-5000, 5000)
-        else:
-            current_price = alert["target_price"] + random.randint(-10000, 10000)
+                if prices:
+                    ps_data = prices.get("ps", {})
+                    xbox_data = prices.get("xbox", {})
+
+                    # Parse prices
+                    def parse_price(price_str):
+                        try:
+                            return int(str(price_str).replace(',', ''))
+                        except:
+                            return None
+
+                    ps_price = parse_price(ps_data.get("LCPrice"))
+                    xbox_price = parse_price(xbox_data.get("LCPrice"))
+
+                    # Use average of both platforms
+                    if ps_price and xbox_price:
+                        current_price = (ps_price + xbox_price) // 2
+                    elif ps_price:
+                        current_price = ps_price
+                    elif xbox_price:
+                        current_price = xbox_price
+
+            except Exception as e:
+                log.error(f"[SmartAlerts] Error fetching price for alert {alert['id']}: {e}")
+
+        # If we couldn't get a real price, skip this check
+        if not current_price:
+            return
 
         # Update current price in memory
         alert["current_price"] = current_price
@@ -228,7 +252,7 @@ class SmartAlerts(commands.Cog):
 
     @app_commands.command(name="alert", description="🔔 Set a price alert for a player")
     @app_commands.describe(
-        player="Player name",
+        player="Player name (e.g. 'Mbappe' or 'Mbappe 95')",
         condition="Condition (< or >)",
         price="Target price in coins"
     )
@@ -262,14 +286,33 @@ class SmartAlerts(commands.Cog):
             await interaction.followup.send(embed=embed, ephemeral=True)
             return
 
+        # Try to resolve player name to card_id from player database
+        card_id = None
+        if self.db:
+            try:
+                async with self.db.acquire() as conn:
+                    # Try to find player in fut_players table
+                    player_row = await conn.fetchrow("""
+                        SELECT card_id FROM public.fut_players
+                        WHERE LOWER(name) LIKE LOWER($1)
+                        ORDER BY rating DESC
+                        LIMIT 1
+                    """, f"%{player}%")
+
+                    if player_row and player_row["card_id"]:
+                        card_id = str(player_row["card_id"])
+                        log.info(f"[SmartAlerts] Resolved '{player}' to card_id: {card_id}")
+            except Exception as e:
+                log.warning(f"[SmartAlerts] Could not resolve player name: {e}")
+
         # Create alert in database
         if self.db:
             async with self.db.acquire() as conn:
                 row = await conn.fetchrow("""
-                    INSERT INTO price_alerts (user_id, player_name, condition, target_price, premium)
-                    VALUES ($1, $2, $3, $4, $5)
+                    INSERT INTO price_alerts (user_id, player_name, card_id, condition, target_price, premium)
+                    VALUES ($1, $2, $3, $4, $5, $6)
                     RETURNING id
-                """, user_id, player, condition.value, price, is_premium)
+                """, user_id, player, card_id, condition.value, price, is_premium)
 
                 alert_id = row["id"]
         else:
@@ -282,7 +325,7 @@ class SmartAlerts(commands.Cog):
         self.alerts[user_id].append({
             "id": alert_id,
             "player_name": player,
-            "card_id": None,
+            "card_id": card_id,  # Use resolved card_id
             "condition": condition.value,
             "target_price": price,
             "current_price": None,
