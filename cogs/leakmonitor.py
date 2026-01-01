@@ -106,14 +106,35 @@ class LeakMonitor(commands.Cog):
 
                         for post in posts:
                             post_data = post.get("data", {})
-                            title = post_data.get("title", "").lower()
+                            title = post_data.get("title", "")
+                            content = post_data.get("selftext", "")
+                            text = (title + " " + content).lower()
 
-                            # Check for leak keywords
-                            if any(keyword in title for keyword in ["leak", "sbc", "requirements", "promo"]):
+                            # STRICT leak detection - must have actual leak indicators
+                            leak_indicators = [
+                                "leak", "leaked", "datamine", "datamined",
+                                "upcoming", "confirmed", "announced",
+                                "fut insider", "futinsider", "official",
+                                "ea sports fc", "ea_fc", "ea confirmed"
+                            ]
+
+                            # Filter out false positives
+                            false_positive_patterns = [
+                                "help", "should i", "what do you think",
+                                "question", "advice", "not a single",
+                                "never got", "terrible", "complaint",
+                                "why is", "am i", "my team", "rate my"
+                            ]
+
+                            # Must have leak indicator AND not be a false positive
+                            has_leak_indicator = any(indicator in text for indicator in leak_indicators)
+                            is_false_positive = any(pattern in text for pattern in false_positive_patterns)
+
+                            if has_leak_indicator and not is_false_positive:
                                 await self._process_potential_leak({
                                     "source": f"r/{subreddit}",
-                                    "title": post_data.get("title"),
-                                    "content": post_data.get("selftext", ""),
+                                    "title": title,
+                                    "content": content,
                                     "url": f"https://reddit.com{post_data.get('permalink')}",
                                     "created": datetime.fromtimestamp(post_data.get("created_utc", 0)),
                                 })
@@ -185,26 +206,37 @@ class LeakMonitor(commands.Cog):
         """
         text = (leak_data.get("title", "") + " " + leak_data.get("content", "")).lower()
 
-        # SBC leak
-        if any(word in text for word in ["sbc", "squad building challenge", "requirements"]):
-            if any(word in text for word in ["rated", "chem", "squad"]):
+        # Require actual leak context
+        leak_context = any(word in text for word in [
+            "leak", "leaked", "datamine", "upcoming", "confirmed", "announced"
+        ])
+
+        if not leak_context:
+            return None  # Not a real leak, just mentions the topic
+
+        # SBC leak - must have requirements mentioned
+        if "sbc" in text or "squad building" in text:
+            if any(word in text for word in ["requirement", "rated", "chem", "nation", "league"]):
                 return "sbc"
 
-        # Promo leak
-        if any(word in text for word in ["promo", "team of the", "totw", "toty", "tots"]):
-            return "promo"
+        # Promo leak - must be about upcoming/new content
+        if any(word in text for word in ["promo", "team of the", "totw", "toty", "tots", "toty", "fut birthday"]):
+            if any(word in text for word in ["upcoming", "new", "next", "confirmed", "leaked"]):
+                return "promo"
 
-        # Evolution leak
+        # Evolution leak - must be about new evos
         if "evolution" in text or "evo" in text:
-            return "evolution"
+            if any(word in text for word in ["new", "upcoming", "next", "confirmed", "leaked"]):
+                return "evolution"
 
         # Player leak
-        if any(word in text for word in ["leaked card", "leaked player", "special card"]):
+        if any(word in text for word in ["leaked card", "leaked player", "new card", "datamine"]):
             return "player"
 
         # Content leak
-        if any(word in text for word in ["content", "schedule", "calendar"]):
-            return "content"
+        if any(word in text for word in ["content drop", "schedule", "calendar", "roadmap"]):
+            if any(word in text for word in ["upcoming", "new", "next", "confirmed"]):
+                return "content"
 
         return None
 
