@@ -26,12 +26,21 @@ class LeakMonitor(commands.Cog):
 
         # Source reliability scores (0-100)
         self.source_reliability = {
-            "@FutSheriff": 95,
-            "@FutWatch": 90,
-            "@Fut_Scoreboard": 85,
-            "@EASPORTSFIFA": 100,
+            # Twitter/X Leakers (High reliability)
+            "@FutSheriff": 95,         # Most reliable FUT leaker
+            "@FutWatch": 90,           # EA content tracking
+            "@Fut_Scoreboard": 88,     # Database leaks
+            "@FUTZone": 85,            # Content leaks
+            "@FutChief": 82,           # SBC & promo leaks
+            "@donk_trading": 80,       # Market leaks
+            "@FutAnalyst": 85,         # Data leaks
+            "@EASPORTSFIFA": 100,      # Official EA (100% reliable)
+
+            # Reddit (Medium reliability)
             "r/FIFA": 70,
             "r/fut": 75,
+
+            # Websites (High reliability)
             "FutBin": 85,
             "FUT.GG": 85,
         }
@@ -73,20 +82,86 @@ class LeakMonitor(commands.Cog):
 
     async def _check_twitter_leaks(self):
         """
-        Monitor Twitter for leaks
-        NOTE: In production, use Twitter API v2 or scraping service
-        For now, this is a placeholder that shows the structure
+        Monitor Twitter/X accounts for leaks using Nitter RSS feeds
+        Tracks known FUT leaker accounts
         """
-        # Placeholder for Twitter monitoring
-        # In production: Use Twitter API v2 with bearer token
-        # Or use a scraping service like Apify/ScraperAPI
+        try:
+            # Top FUT leaker accounts to monitor
+            leaker_accounts = [
+                "FutSheriff",       # Most reliable FUT leaker
+                "FutWatch",         # EA content tracking
+                "Fut_Scoreboard",   # Database leaks
+                "FUTZone",          # Content leaks
+                "FutChief",         # SBC & promo leaks
+                "EASPORTSFIFA",     # Official EA account
+                "donk_trading",     # Market leaks
+                "FutAnalyst",       # Data leaks
+            ]
 
-        keywords = ["leak", "sbc", "leaked", "requirements", "promo", "totw"]
-        accounts = ["FutSheriff", "FutWatch", "Fut_Scoreboard"]
+            # Nitter instances (public Twitter frontends with RSS)
+            nitter_instances = [
+                "nitter.net",
+                "nitter.poast.org",
+                "nitter.privacydev.net",
+            ]
 
-        # Example leak detection (in production, parse actual tweets)
-        # This is where you'd make API calls to Twitter
-        pass
+            for account in leaker_accounts:
+                # Try multiple nitter instances in case one is down
+                for instance in nitter_instances:
+                    try:
+                        # Fetch RSS feed from Nitter
+                        url = f"https://{instance}/{account}/rss"
+                        headers = {"User-Agent": "FUTTradingBot/1.0"}
+
+                        async with self.session.get(url, headers=headers, timeout=10) as resp:
+                            if resp.status == 200:
+                                rss_text = await resp.text()
+                                await self._parse_twitter_rss(account, rss_text)
+                                break  # Success, move to next account
+                    except Exception as e:
+                        # Try next instance
+                        continue
+
+        except Exception as e:
+            log.error(f"[Twitter Monitor] Error: {e}")
+
+    async def _parse_twitter_rss(self, account: str, rss_text: str):
+        """Parse Nitter RSS feed for tweets"""
+        try:
+            import xml.etree.ElementTree as ET
+
+            root = ET.fromstring(rss_text)
+
+            # Parse RSS items (tweets)
+            for item in root.findall('.//item')[:5]:  # Check last 5 tweets
+                title = item.find('title')
+                description = item.find('description')
+                link = item.find('link')
+                pub_date = item.find('pubDate')
+
+                if title is not None and description is not None:
+                    tweet_text = title.text or ""
+                    tweet_desc = description.text or ""
+                    full_text = (tweet_text + " " + tweet_desc).lower()
+
+                    # Check for leak indicators
+                    leak_indicators = [
+                        "leak", "leaked", "datamine", "upcoming",
+                        "confirmed", "new sbc", "new promo", "requirements",
+                        "totw", "toty", "evolution"
+                    ]
+
+                    if any(indicator in full_text for indicator in leak_indicators):
+                        await self._process_potential_leak({
+                            "source": f"@{account}",
+                            "title": tweet_text[:200],  # Limit length
+                            "content": tweet_desc[:500] if tweet_desc else "",
+                            "url": link.text if link is not None else f"https://twitter.com/{account}",
+                            "created": datetime.utcnow(),  # Use current time as approximation
+                        })
+
+        except Exception as e:
+            log.error(f"[Twitter Parser] Error parsing RSS for @{account}: {e}")
 
     async def _check_reddit_leaks(self):
         """
@@ -590,6 +665,65 @@ class LeakMonitor(commands.Cog):
         embed.set_footer(text="FC26 • Historical leak performance")
 
         await interaction.followup.send(embed=embed)
+
+    @app_commands.command(name="leakaccounts", description="🐦 View monitored Twitter/X accounts")
+    async def leakaccounts(self, interaction: discord.Interaction):
+        """Show which Twitter accounts are being monitored for leaks"""
+        embed = discord.Embed(
+            title="🐦 Monitored Twitter/X Accounts",
+            description="These accounts are checked every 60 seconds for leaks",
+            color=discord.Color.from_rgb(29, 161, 242)  # Twitter blue
+        )
+
+        # List of tracked accounts (same as in _check_twitter_leaks)
+        accounts = [
+            ("@FutSheriff", "Most reliable FUT leaker", 95),
+            ("@FutWatch", "EA content tracking", 90),
+            ("@Fut_Scoreboard", "Database leaks", 88),
+            ("@FUTZone", "Content leaks", 85),
+            ("@FutChief", "SBC & promo leaks", 82),
+            ("@EASPORTSFIFA", "Official EA account", 100),
+            ("@donk_trading", "Market leaks", 80),
+            ("@FutAnalyst", "Data leaks", 85),
+        ]
+
+        # Group by reliability
+        high_reliability = []
+        medium_reliability = []
+
+        for account, description, score in accounts:
+            if score >= 85:
+                emoji = "🔥" if score >= 95 else "🟢"
+                high_reliability.append(f"{emoji} **{account}** ({score}%)\n   ↳ {description}")
+            else:
+                emoji = "🟡"
+                medium_reliability.append(f"{emoji} **{account}** ({score}%)\n   ↳ {description}")
+
+        if high_reliability:
+            embed.add_field(
+                name="🔥 High Reliability (85%+)",
+                value="\n\n".join(high_reliability),
+                inline=False
+            )
+
+        if medium_reliability:
+            embed.add_field(
+                name="🟡 Medium Reliability",
+                value="\n\n".join(medium_reliability),
+                inline=False
+            )
+
+        embed.add_field(
+            name="📊 Monitoring Stats",
+            value=f"✅ **{len(accounts)}** accounts tracked\n"
+                  f"⏱️ Checked every **60 seconds**\n"
+                  f"🔍 Last 5 tweets per account",
+            inline=False
+        )
+
+        embed.set_footer(text="FC26 • Using Nitter RSS feeds for free Twitter access")
+
+        await interaction.response.send_message(embed=embed)
 
     def _format_time_ago(self, dt: datetime) -> str:
         """Format datetime as 'X minutes ago'"""
