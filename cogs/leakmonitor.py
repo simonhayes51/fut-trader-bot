@@ -5,7 +5,7 @@ import aiohttp
 import logging
 import re
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Literal
 import asyncio
 
 log = logging.getLogger("fut.leakmonitor")
@@ -280,28 +280,35 @@ class LeakMonitor(commands.Cog):
         Returns: 'sbc', 'promo', 'evolution', 'player', 'content', or None
         """
         text = (leak_data.get("title", "") + " " + leak_data.get("content", "")).lower()
+        source = leak_data.get("source", "").lower()
 
         # Require actual leak context
         leak_context = any(word in text for word in [
             "leak", "leaked", "datamine", "upcoming", "confirmed", "announced"
         ])
 
-        if not leak_context:
+        # Trusted sources (Twitter accounts) get lighter filtering
+        is_trusted_source = source.startswith("@")
+
+        if not leak_context and not is_trusted_source:
             return None  # Not a real leak, just mentions the topic
 
-        # SBC leak - must have requirements mentioned
+        # SBC leak
         if "sbc" in text or "squad building" in text:
-            if any(word in text for word in ["requirement", "rated", "chem", "nation", "league"]):
+            # If from trusted source, any SBC mention counts
+            if is_trusted_source or leak_context:
                 return "sbc"
 
-        # Promo leak - must be about upcoming/new content
-        if any(word in text for word in ["promo", "team of the", "totw", "toty", "tots", "toty", "fut birthday"]):
-            if any(word in text for word in ["upcoming", "new", "next", "confirmed", "leaked"]):
+        # Promo leak
+        if any(word in text for word in ["promo", "team of the", "totw", "toty", "tots", "fut birthday", "team of the year"]):
+            # Trusted sources or clear leak context
+            if is_trusted_source or any(word in text for word in ["upcoming", "new", "next", "confirmed", "leaked"]):
                 return "promo"
 
-        # Evolution leak - must be about new evos
+        # Evolution leak
         if "evolution" in text or "evo" in text:
-            if any(word in text for word in ["new", "upcoming", "next", "confirmed", "leaked"]):
+            # If from trusted source or has leak context
+            if is_trusted_source or leak_context:
                 return "evolution"
 
         # Player leak
@@ -310,7 +317,7 @@ class LeakMonitor(commands.Cog):
 
         # Content leak
         if any(word in text for word in ["content drop", "schedule", "calendar", "roadmap"]):
-            if any(word in text for word in ["upcoming", "new", "next", "confirmed"]):
+            if is_trusted_source or any(word in text for word in ["upcoming", "new", "next", "confirmed"]):
                 return "content"
 
         return None
@@ -665,6 +672,67 @@ class LeakMonitor(commands.Cog):
         embed.set_footer(text="FC26 • Historical leak performance")
 
         await interaction.followup.send(embed=embed)
+
+    @app_commands.command(name="submitleak", description="📝 Manually submit a leak you found")
+    @app_commands.describe(
+        leak_type="Type of leak",
+        title="Leak title/summary",
+        source="Where you found it (e.g. @FutSheriff, Reddit, Discord)",
+        details="Full details (optional)"
+    )
+    async def submitleak(
+        self,
+        interaction: discord.Interaction,
+        leak_type: Literal["SBC", "Promo", "Evolution", "Player", "Content"],
+        title: str,
+        source: str,
+        details: str = ""
+    ):
+        """Manually submit a leak"""
+        # Create leak object
+        leak_data = {
+            "source": source,
+            "title": title,
+            "content": details,
+            "url": "",
+            "created": datetime.utcnow(),
+        }
+
+        # Process it
+        leak_type_lower = leak_type.lower()
+        confidence = 75  # Manual submissions start at 75%
+
+        # Boost confidence for known sources
+        if any(trusted in source.lower() for trusted in ["futsheriff", "futwatch", "ea"]):
+            confidence = 90
+
+        leak = {
+            "id": len(self.active_leaks) + 1,
+            "type": leak_type_lower,
+            "source": source,
+            "title": title,
+            "content": details,
+            "url": "",
+            "confidence": confidence,
+            "detected_at": datetime.utcnow(),
+            "impact": await self._analyze_market_impact(leak_type_lower, leak_data),
+        }
+
+        # Store leak
+        self.active_leaks.append(leak)
+        self.leak_history.append(leak)
+
+        # Create and distribute alert
+        embed = self._create_leak_embed(leak)
+        await self._distribute_leak_alert(leak)
+
+        # Confirm to submitter
+        await interaction.response.send_message(
+            f"✅ Leak submitted! **{leak_type}** leak from **{source}** has been added and distributed to all servers.",
+            ephemeral=True
+        )
+
+        log.info(f"[LeakMonitor] Manual leak submitted by {interaction.user}: {title}")
 
     @app_commands.command(name="leakaccounts", description="🐦 View monitored Twitter/X accounts")
     async def leakaccounts(self, interaction: discord.Interaction):
