@@ -80,10 +80,14 @@ router.get('/',
       const result = await query(`
         SELECT
           s.*,
+          s.card_name as player_name,
+          NULL as player_image,
+          u.username as trader_username,
           tp.display_name as trader_name,
           tp.avg_rating as trader_rating,
           u.avatar_url as trader_avatar,
           (SELECT COUNT(*) FROM comments WHERE commentable_type = 'signal' AND commentable_id = s.id) as comment_count,
+          s.views as view_count,
           CASE
             WHEN $${paramIndex + 1}::INTEGER IS NOT NULL THEN
               (SELECT interaction_type FROM user_interactions
