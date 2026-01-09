@@ -124,7 +124,7 @@ export default function Home() {
                     <div className="grid grid-cols-3 gap-4 text-center">
                       <div>
                         <div className="text-2xl font-bold text-green-600">
-                          {trader.win_rate?.toFixed(0) || 0}%
+                          {trader.win_rate ? Number(trader.win_rate).toFixed(0) : 0}%
                         </div>
                         <div className="text-xs text-gray-500">Win Rate</div>
                       </div>
@@ -195,11 +195,11 @@ export default function Home() {
                         }`}>
                           {signal.status}
                         </div>
-                        {signal.roi && (
+                        {signal.roi != null && (
                           <div className={`text-lg font-bold mt-1 ${
-                            signal.roi > 0 ? 'text-green-600' : 'text-red-600'
+                            Number(signal.roi) > 0 ? 'text-green-600' : 'text-red-600'
                           }`}>
-                            {signal.roi > 0 ? '+' : ''}{signal.roi.toFixed(1)}% ROI
+                            {Number(signal.roi) > 0 ? '+' : ''}{Number(signal.roi).toFixed(1)}% ROI
                           </div>
                         )}
                       </div>
