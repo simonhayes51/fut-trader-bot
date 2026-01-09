@@ -1,0 +1,38 @@
+{
+  "name": "fut-hub-api",
+  "version": "1.0.0",
+  "description": "FUT Hub API - Trading platform backend",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "migrate": "node scripts/migrate.js",
+    "seed": "node scripts/seed.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "pg": "^8.11.3",
+    "dotenv": "^16.3.1",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "morgan": "^1.10.0",
+    "bcrypt": "^5.1.1",
+    "jsonwebtoken": "^9.0.2",
+    "passport": "^0.7.0",
+    "passport-discord": "^0.1.4",
+    "express-session": "^1.17.3",
+    "stripe": "^14.10.0",
+    "axios": "^1.6.2",
+    "cheerio": "^1.0.0-rc.12",
+    "express-validator": "^7.0.1",
+    "multer": "^1.4.5-lts.1",
+    "aws-sdk": "^2.1515.0",
+    "redis": "^4.6.11",
+    "socket.io": "^4.6.1",
+    "compression": "^1.7.4",
+    "express-rate-limit": "^7.1.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}
