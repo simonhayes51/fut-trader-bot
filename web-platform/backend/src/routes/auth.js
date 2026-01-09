@@ -209,8 +209,12 @@ router.get('/discord/callback', async (req, res) => {
   }
 });
 
+// ============================================
+// LOGOUT
+// ============================================
+
 router.post('/logout', (req, res) => {
-  res.json({ message: 'Logged out' });
+  res.json({ success: true, message: 'Logged out successfully' });
 });
 
 router.get('/me', (req, res) => {
