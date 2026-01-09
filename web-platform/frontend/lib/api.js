@@ -72,6 +72,7 @@ export const api = {
   // Community Content
   getCommunityContent: (params) => apiClient.get('/api/community', { params }),
   getCommunityPost: (id) => apiClient.get(`/api/community/${id}`),
+  createCommunityPost: (data) => apiClient.post('/api/community', data),
 
   // Price Checker
   getPrice: (playerId) => apiClient.get(`/api/prices/${playerId}`),
