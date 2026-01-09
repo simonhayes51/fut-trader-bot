@@ -125,9 +125,9 @@ export default function SignalsPage() {
                     </div>
                     {signal.roi !== null && (
                       <div className={`text-2xl font-bold ${
-                        signal.roi > 0 ? 'text-green-600' : 'text-red-600'
+                        Number(signal.roi) > 0 ? 'text-green-600' : 'text-red-600'
                       }`}>
-                        {signal.roi > 0 ? '+' : ''}{signal.roi.toFixed(1)}% ROI
+                        {Number(signal.roi) > 0 ? '+' : ''}{Number(signal.roi).toFixed(1)}% ROI
                       </div>
                     )}
                     <div className="text-sm text-gray-500 mt-2">

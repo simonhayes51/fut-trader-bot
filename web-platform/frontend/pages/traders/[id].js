@@ -144,7 +144,7 @@ export default function TraderProfilePage() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <div className="bg-white rounded-lg shadow p-6 text-center">
             <div className="text-3xl font-bold text-green-600">
-              {trader.win_rate?.toFixed(1) || 0}%
+              {trader.win_rate ? Number(trader.win_rate).toFixed(1) : 0}%
             </div>
             <div className="text-gray-500 mt-2">Win Rate</div>
           </div>
@@ -162,7 +162,7 @@ export default function TraderProfilePage() {
           </div>
           <div className="bg-white rounded-lg shadow p-6 text-center">
             <div className="text-3xl font-bold text-orange-600">
-              {stats?.avg_roi?.toFixed(1) || 0}%
+              {stats?.avg_roi ? Number(stats.avg_roi).toFixed(1) : 0}%
             </div>
             <div className="text-gray-500 mt-2">Avg ROI</div>
           </div>
@@ -247,9 +247,9 @@ export default function TraderProfilePage() {
                           </div>
                           {signal.roi !== null && (
                             <div className={`text-xl font-bold ${
-                              signal.roi > 0 ? 'text-green-600' : 'text-red-600'
+                              Number(signal.roi) > 0 ? 'text-green-600' : 'text-red-600'
                             }`}>
-                              {signal.roi > 0 ? '+' : ''}{signal.roi.toFixed(1)}%
+                              {Number(signal.roi) > 0 ? '+' : ''}{Number(signal.roi).toFixed(1)}%
                             </div>
                           )}
                         </div>
@@ -278,11 +278,11 @@ export default function TraderProfilePage() {
                     <div className="space-y-2">
                       <div className="flex justify-between">
                         <span className="text-gray-600">Win Rate:</span>
-                        <span className="font-semibold">{stats.seven_day_win_rate?.toFixed(1) || 0}%</span>
+                        <span className="font-semibold">{stats.seven_day_win_rate ? Number(stats.seven_day_win_rate).toFixed(1) : 0}%</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-600">Avg ROI:</span>
-                        <span className="font-semibold">{stats.seven_day_avg_roi?.toFixed(1) || 0}%</span>
+                        <span className="font-semibold">{stats.seven_day_avg_roi ? Number(stats.seven_day_avg_roi).toFixed(1) : 0}%</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-600">Signals:</span>
@@ -296,11 +296,11 @@ export default function TraderProfilePage() {
                     <div className="space-y-2">
                       <div className="flex justify-between">
                         <span className="text-gray-600">Win Rate:</span>
-                        <span className="font-semibold">{stats.thirty_day_win_rate?.toFixed(1) || 0}%</span>
+                        <span className="font-semibold">{stats.thirty_day_win_rate ? Number(stats.thirty_day_win_rate).toFixed(1) : 0}%</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-600">Avg ROI:</span>
-                        <span className="font-semibold">{stats.thirty_day_avg_roi?.toFixed(1) || 0}%</span>
+                        <span className="font-semibold">{stats.thirty_day_avg_roi ? Number(stats.thirty_day_avg_roi).toFixed(1) : 0}%</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-600">Signals:</span>
@@ -316,13 +316,13 @@ export default function TraderProfilePage() {
                     <div>
                       <div className="text-gray-600 text-sm">Best Trade</div>
                       <div className="text-xl font-bold text-green-600">
-                        +{stats.best_trade?.toFixed(1) || 0}%
+                        +{stats.best_trade ? Number(stats.best_trade).toFixed(1) : 0}%
                       </div>
                     </div>
                     <div>
                       <div className="text-gray-600 text-sm">Worst Trade</div>
                       <div className="text-xl font-bold text-red-600">
-                        {stats.worst_trade?.toFixed(1) || 0}%
+                        {stats.worst_trade ? Number(stats.worst_trade).toFixed(1) : 0}%
                       </div>
                     </div>
                     <div>

@@ -129,13 +129,13 @@ export default function SignalDetailPage() {
           {signal.roi !== null && (
             <div className="mb-6">
               <div className={`inline-block px-8 py-4 rounded-lg ${
-                signal.roi > 0 ? 'bg-green-100' : 'bg-red-100'
+                Number(signal.roi) > 0 ? 'bg-green-100' : 'bg-red-100'
               }`}>
                 <div className="text-sm text-gray-600 mb-1">Return on Investment</div>
                 <div className={`text-4xl font-bold ${
-                  signal.roi > 0 ? 'text-green-600' : 'text-red-600'
+                  Number(signal.roi) > 0 ? 'text-green-600' : 'text-red-600'
                 }`}>
-                  {signal.roi > 0 ? '+' : ''}{signal.roi.toFixed(1)}%
+                  {Number(signal.roi) > 0 ? '+' : ''}{Number(signal.roi).toFixed(1)}%
                 </div>
               </div>
             </div>
