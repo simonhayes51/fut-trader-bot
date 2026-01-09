@@ -7,10 +7,29 @@ const { body, param, validationResult } = require('express-validator');
 // MIDDLEWARE
 // ============================================
 
+const jwt = require('jsonwebtoken');
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+
 const requireAuth = (req, res, next) => {
-  // TODO: Implement real auth
-  req.user = { id: 1 };
-  next();
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = {
+      id: decoded.userId,
+      discord_id: decoded.discord_id,
+      username: decoded.username
+    };
+    next();
+  } catch (error) {
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
 };
 
 // ============================================
@@ -506,6 +525,105 @@ router.get('/leaderboard/top',
     } catch (error) {
       console.error('Get leaderboard error:', error);
       res.status(500).json({ error: 'Failed to fetch leaderboard' });
+    }
+  }
+);
+
+// ============================================
+// SUBSCRIBE TO TRADER
+// ============================================
+
+router.post('/:id/subscribe',
+  requireAuth,
+  async (req, res) => {
+    try {
+      const traderId = parseInt(req.params.id);
+      const userId = req.user.id;
+
+      // Check if trader exists
+      const traderResult = await query(
+        'SELECT id, subscription_price_monthly FROM trader_profiles WHERE id = $1',
+        [traderId]
+      );
+
+      if (traderResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Trader not found' });
+      }
+
+      // Check if already subscribed
+      const existingSubscription = await query(
+        'SELECT id FROM subscriptions WHERE user_id = $1 AND trader_id = $2 AND status = $3',
+        [userId, traderId, 'active']
+      );
+
+      if (existingSubscription.rows.length > 0) {
+        return res.status(400).json({ error: 'Already subscribed to this trader' });
+      }
+
+      // Create subscription
+      const subscription = await query(`
+        INSERT INTO subscriptions (user_id, trader_id, status, started_at)
+        VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+        RETURNING *
+      `, [userId, traderId, 'active']);
+
+      // Update trader subscriber count
+      await query(
+        'UPDATE trader_profiles SET total_subscribers = total_subscribers + 1 WHERE id = $1',
+        [traderId]
+      );
+
+      res.json({
+        message: 'Successfully subscribed',
+        subscription: subscription.rows[0]
+      });
+
+    } catch (error) {
+      console.error('Subscribe error:', error);
+      res.status(500).json({ error: 'Failed to subscribe' });
+    }
+  }
+);
+
+// ============================================
+// UNSUBSCRIBE FROM TRADER
+// ============================================
+
+router.delete('/:id/subscribe',
+  requireAuth,
+  async (req, res) => {
+    try {
+      const traderId = parseInt(req.params.id);
+      const userId = req.user.id;
+
+      // Check if subscription exists
+      const existingSubscription = await query(
+        'SELECT id FROM subscriptions WHERE user_id = $1 AND trader_id = $2 AND status = $3',
+        [userId, traderId, 'active']
+      );
+
+      if (existingSubscription.rows.length === 0) {
+        return res.status(400).json({ error: 'No active subscription found' });
+      }
+
+      // Cancel subscription
+      await query(`
+        UPDATE subscriptions
+        SET status = $1, ended_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = $2 AND trader_id = $3 AND status = $4
+      `, ['cancelled', userId, traderId, 'active']);
+
+      // Update trader subscriber count
+      await query(
+        'UPDATE trader_profiles SET total_subscribers = GREATEST(0, total_subscribers - 1) WHERE id = $1',
+        [traderId]
+      );
+
+      res.json({ message: 'Successfully unsubscribed' });
+
+    } catch (error) {
+      console.error('Unsubscribe error:', error);
+      res.status(500).json({ error: 'Failed to unsubscribe' });
     }
   }
 );
