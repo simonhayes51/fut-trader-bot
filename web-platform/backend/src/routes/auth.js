@@ -164,6 +164,7 @@ router.get('/discord/callback', async (req, res) => {
     }
 
     if (req.accepts('html')) {
+      const postMessageOrigin = process.env.DISCORD_POSTMESSAGE_ORIGIN || '*';
       return res.type('html').send(`<!doctype html>
 <html lang="en">
   <head>
@@ -181,8 +182,17 @@ router.get('/discord/callback', async (req, res) => {
     <p><strong>Token</strong></p>
     <code>${jwtToken}</code>
     <script>
+      const payload = { token: ${JSON.stringify(jwtToken)} };
+      const origin = ${JSON.stringify(postMessageOrigin)};
+
       if (window.opener) {
-        window.opener.postMessage({ token: ${JSON.stringify(jwtToken)} }, '*');
+        window.opener.postMessage(payload, origin);
+      }
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage(payload, origin);
+      }
+      if (window.opener) {
+        setTimeout(() => window.close(), 250);
       }
     </script>
   </body>
