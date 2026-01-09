@@ -120,7 +120,7 @@ export default function TradersPage() {
                   <div className="grid grid-cols-3 gap-4 text-center mb-4">
                     <div>
                       <div className="text-xl font-bold text-green-600">
-                        {trader.win_rate?.toFixed(0) || 0}%
+                        {trader.win_rate ? Number(trader.win_rate).toFixed(0) : 0}%
                       </div>
                       <div className="text-xs text-gray-500">Win Rate</div>
                     </div>
@@ -142,9 +142,9 @@ export default function TradersPage() {
                     {trader.subscription_price ? (
                       <div className="flex items-center justify-between">
                         <span className="text-lg font-bold text-gray-900">
-                          £{trader.subscription_price}/month
+                          £{Number(trader.subscription_price).toFixed(2)}/month
                         </span>
-                        <button className="btn-primary text-sm">
+                        <button className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-4 py-2 rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all text-sm font-medium">
                           Subscribe
                         </button>
                       </div>
