@@ -126,14 +126,15 @@ const createJwt = (user) => {
 
   return jwt.sign(
     {
-      id: user.discordId,
+      userId: user.id,
+      discordId: user.discord_id,
       username: user.username,
       discriminator: user.discriminator,
-      avatar: user.avatar,
+      avatar: user.avatar_url,
       email: user.email,
     },
     secret,
-    { expiresIn: process.env.JWT_EXPIRES_IN || '7d' },
+    { expiresIn: process.env.JWT_EXPIRES_IN || '30d' },
   );
 };
 
