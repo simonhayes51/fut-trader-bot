@@ -156,50 +156,64 @@ router.get('/discord/callback', async (req, res) => {
     const storedUser = await upsertDiscordUser(discordUser, req);
     const jwtToken = createJwt(storedUser);
 
-    const successRedirect = process.env.DISCORD_SUCCESS_REDIRECT_URI;
-    if (successRedirect) {
-      const redirectUrl = new URL(successRedirect);
-      redirectUrl.searchParams.set('token', jwtToken);
-      return res.redirect(redirectUrl.toString());
+    // Always redirect to frontend callback with token
+    const frontendUrl = process.env.FRONTEND_URL || process.env.DISCORD_SUCCESS_REDIRECT_URI || 'https://calm-radiance-production.up.railway.app';
+    const callbackUrl = `${frontendUrl}/auth/callback?token=${jwtToken}`;
+
+    // Use redirect with HTML meta refresh as fallback
+    return res.type('html').send(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Redirecting...</title>
+  <meta http-equiv="refresh" content="0;url=${callbackUrl}">
+  <script>
+    window.location.href = "${callbackUrl}";
+  </script>
+  <style>
+    body {
+      margin: 0;
+      padding: 40px;
+      font-family: system-ui, -apple-system, sans-serif;
+      text-align: center;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-center;
     }
-
-    if (req.accepts('html')) {
-      const postMessageOrigin = process.env.DISCORD_POSTMESSAGE_ORIGIN || '*';
-      return res.type('html').send(`<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Discord login complete</title>
-    <style>
-      body { font-family: system-ui, -apple-system, sans-serif; margin: 2rem; }
-      code { word-break: break-all; }
-    </style>
-  </head>
-  <body>
-    <h1>Discord login complete</h1>
-    <p>You can close this window and return to the app.</p>
-    <p><strong>Token</strong></p>
-    <code>${jwtToken}</code>
-    <script>
-      const payload = { token: ${JSON.stringify(jwtToken)} };
-      const origin = ${JSON.stringify(postMessageOrigin)};
-
-      if (window.opener) {
-        window.opener.postMessage(payload, origin);
-      }
-      if (window.parent && window.parent !== window) {
-        window.parent.postMessage(payload, origin);
-      }
-      if (window.opener) {
-        setTimeout(() => window.close(), 250);
-      }
-    </script>
-  </body>
+    .container {
+      background: rgba(255,255,255,0.1);
+      padding: 40px;
+      border-radius: 20px;
+      backdrop-filter: blur(10px);
+    }
+    .spinner {
+      border: 4px solid rgba(255,255,255,0.3);
+      border-top: 4px solid white;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 20px auto;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    a { color: white; text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>✓ Login Successful!</h2>
+    <div class="spinner"></div>
+    <p>Redirecting you back to FUT Hub...</p>
+    <p style="opacity: 0.7; font-size: 14px;">If you are not redirected automatically, <a href="${callbackUrl}">click here</a>.</p>
+  </div>
+</body>
 </html>`);
-    }
-
-    return res.json({ token: jwtToken, user: storedUser });
   } catch (err) {
     const status = err.status || 500;
     return res.status(status).json({
