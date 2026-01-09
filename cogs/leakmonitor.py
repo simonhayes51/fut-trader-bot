@@ -5,7 +5,7 @@ import aiohttp
 import logging
 import re
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Literal
 import asyncio
 
 log = logging.getLogger("fut.leakmonitor")
@@ -82,8 +82,8 @@ class LeakMonitor(commands.Cog):
 
     async def _check_twitter_leaks(self):
         """
-        Monitor Twitter/X accounts for leaks using Nitter RSS feeds
-        Tracks known FUT leaker accounts
+        Monitor Twitter/X accounts for leaks
+        Uses Twitter Syndication API (free, no auth needed)
         """
         try:
             # Top FUT leaker accounts to monitor
@@ -91,77 +91,63 @@ class LeakMonitor(commands.Cog):
                 "FutSheriff",       # Most reliable FUT leaker
                 "FutWatch",         # EA content tracking
                 "Fut_Scoreboard",   # Database leaks
-                "FUTZone",          # Content leaks
-                "FutChief",         # SBC & promo leaks
                 "EASPORTSFIFA",     # Official EA account
-                "donk_trading",     # Market leaks
-                "FutAnalyst",       # Data leaks
             ]
 
-            # Nitter instances (public Twitter frontends with RSS)
-            nitter_instances = [
-                "nitter.net",
-                "nitter.poast.org",
-                "nitter.privacydev.net",
-            ]
+            for username in leaker_accounts[:3]:  # Check top 3 to avoid rate limits
+                try:
+                    # Twitter Syndication API - used by embedded tweets (free!)
+                    url = f"https://cdn.syndication.twimg.com/timeline/profile?screen_name={username}&limit=5"
 
-            for account in leaker_accounts:
-                # Try multiple nitter instances in case one is down
-                for instance in nitter_instances:
-                    try:
-                        # Fetch RSS feed from Nitter
-                        url = f"https://{instance}/{account}/rss"
-                        headers = {"User-Agent": "FUTTradingBot/1.0"}
+                    headers = {
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                        "Accept": "application/json",
+                        "Referer": "https://platform.twitter.com/",
+                    }
 
-                        async with self.session.get(url, headers=headers, timeout=10) as resp:
-                            if resp.status == 200:
-                                rss_text = await resp.text()
-                                await self._parse_twitter_rss(account, rss_text)
-                                break  # Success, move to next account
-                    except Exception as e:
-                        # Try next instance
-                        continue
+                    async with self.session.get(url, headers=headers, timeout=15) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+
+                            # Parse tweets from timeline
+                            tweets = data.get("tweets", {})
+
+                            for tweet_id, tweet_data in list(tweets.items())[:5]:
+                                text = tweet_data.get("text", "")
+
+                                if text:
+                                    text_lower = text.lower()
+
+                                    # Broad leak indicators for trusted accounts
+                                    leak_keywords = [
+                                        "leak", "leaked", "upcoming", "new sbc", "new promo",
+                                        "requirements", "confirmed", "totw", "toty", "evolution",
+                                        "content drop", "tomorrow", "today"
+                                    ]
+
+                                    if any(keyword in text_lower for keyword in leak_keywords):
+                                        log.info(f"[Twitter] Found potential leak from @{username}: {text[:100]}...")
+
+                                        await self._process_potential_leak({
+                                            "source": f"@{username}",
+                                            "title": text[:200],
+                                            "content": text[200:500] if len(text) > 200 else "",
+                                            "url": f"https://twitter.com/{username}/status/{tweet_id}",
+                                            "created": datetime.utcnow(),
+                                        })
+
+                        elif resp.status == 429:
+                            log.warning(f"[Twitter] Rate limited, will retry next cycle")
+                            break  # Stop checking accounts this cycle
+
+                    await asyncio.sleep(2)  # Rate limiting between accounts
+
+                except Exception as e:
+                    log.error(f"[Twitter Monitor] Error checking @{username}: {e}")
+                    continue
 
         except Exception as e:
             log.error(f"[Twitter Monitor] Error: {e}")
-
-    async def _parse_twitter_rss(self, account: str, rss_text: str):
-        """Parse Nitter RSS feed for tweets"""
-        try:
-            import xml.etree.ElementTree as ET
-
-            root = ET.fromstring(rss_text)
-
-            # Parse RSS items (tweets)
-            for item in root.findall('.//item')[:5]:  # Check last 5 tweets
-                title = item.find('title')
-                description = item.find('description')
-                link = item.find('link')
-                pub_date = item.find('pubDate')
-
-                if title is not None and description is not None:
-                    tweet_text = title.text or ""
-                    tweet_desc = description.text or ""
-                    full_text = (tweet_text + " " + tweet_desc).lower()
-
-                    # Check for leak indicators
-                    leak_indicators = [
-                        "leak", "leaked", "datamine", "upcoming",
-                        "confirmed", "new sbc", "new promo", "requirements",
-                        "totw", "toty", "evolution"
-                    ]
-
-                    if any(indicator in full_text for indicator in leak_indicators):
-                        await self._process_potential_leak({
-                            "source": f"@{account}",
-                            "title": tweet_text[:200],  # Limit length
-                            "content": tweet_desc[:500] if tweet_desc else "",
-                            "url": link.text if link is not None else f"https://twitter.com/{account}",
-                            "created": datetime.utcnow(),  # Use current time as approximation
-                        })
-
-        except Exception as e:
-            log.error(f"[Twitter Parser] Error parsing RSS for @{account}: {e}")
 
     async def _check_reddit_leaks(self):
         """
@@ -178,6 +164,8 @@ class LeakMonitor(commands.Cog):
                     if resp.status == 200:
                         data = await resp.json()
                         posts = data.get("data", {}).get("children", [])
+
+                        log.info(f"[Reddit] Checking {len(posts)} posts from r/{subreddit}")
 
                         for post in posts:
                             post_data = post.get("data", {})
@@ -206,6 +194,7 @@ class LeakMonitor(commands.Cog):
                             is_false_positive = any(pattern in text for pattern in false_positive_patterns)
 
                             if has_leak_indicator and not is_false_positive:
+                                log.info(f"[Reddit] Potential leak detected: {title[:100]}")
                                 await self._process_potential_leak({
                                     "source": f"r/{subreddit}",
                                     "title": title,
@@ -280,28 +269,35 @@ class LeakMonitor(commands.Cog):
         Returns: 'sbc', 'promo', 'evolution', 'player', 'content', or None
         """
         text = (leak_data.get("title", "") + " " + leak_data.get("content", "")).lower()
+        source = leak_data.get("source", "").lower()
 
         # Require actual leak context
         leak_context = any(word in text for word in [
             "leak", "leaked", "datamine", "upcoming", "confirmed", "announced"
         ])
 
-        if not leak_context:
+        # Trusted sources (Twitter accounts) get lighter filtering
+        is_trusted_source = source.startswith("@")
+
+        if not leak_context and not is_trusted_source:
             return None  # Not a real leak, just mentions the topic
 
-        # SBC leak - must have requirements mentioned
+        # SBC leak
         if "sbc" in text or "squad building" in text:
-            if any(word in text for word in ["requirement", "rated", "chem", "nation", "league"]):
+            # If from trusted source, any SBC mention counts
+            if is_trusted_source or leak_context:
                 return "sbc"
 
-        # Promo leak - must be about upcoming/new content
-        if any(word in text for word in ["promo", "team of the", "totw", "toty", "tots", "toty", "fut birthday"]):
-            if any(word in text for word in ["upcoming", "new", "next", "confirmed", "leaked"]):
+        # Promo leak
+        if any(word in text for word in ["promo", "team of the", "totw", "toty", "tots", "fut birthday", "team of the year"]):
+            # Trusted sources or clear leak context
+            if is_trusted_source or any(word in text for word in ["upcoming", "new", "next", "confirmed", "leaked"]):
                 return "promo"
 
-        # Evolution leak - must be about new evos
+        # Evolution leak
         if "evolution" in text or "evo" in text:
-            if any(word in text for word in ["new", "upcoming", "next", "confirmed", "leaked"]):
+            # If from trusted source or has leak context
+            if is_trusted_source or leak_context:
                 return "evolution"
 
         # Player leak
@@ -310,7 +306,7 @@ class LeakMonitor(commands.Cog):
 
         # Content leak
         if any(word in text for word in ["content drop", "schedule", "calendar", "roadmap"]):
-            if any(word in text for word in ["upcoming", "new", "next", "confirmed"]):
+            if is_trusted_source or any(word in text for word in ["upcoming", "new", "next", "confirmed"]):
                 return "content"
 
         return None
@@ -665,6 +661,109 @@ class LeakMonitor(commands.Cog):
         embed.set_footer(text="FC26 • Historical leak performance")
 
         await interaction.followup.send(embed=embed)
+
+    @app_commands.command(name="scannow", description="🔍 Force scan for leaks right now")
+    async def scannow(self, interaction: discord.Interaction):
+        """Manually trigger a leak scan"""
+        await interaction.response.defer()
+
+        log.info("[LeakMonitor] Manual scan triggered")
+
+        # Run all scanners
+        await asyncio.gather(
+            self._check_twitter_leaks(),
+            self._check_reddit_leaks(),
+            return_exceptions=True
+        )
+
+        # Show results
+        recent = [l for l in self.leak_history if (datetime.utcnow() - l["detected_at"]).total_seconds() < 300]  # Last 5 min
+
+        if recent:
+            embed = discord.Embed(
+                title="🔍 Scan Complete",
+                description=f"Found **{len(recent)}** new leaks in the last 5 minutes!",
+                color=discord.Color.green()
+            )
+            for leak in recent[:3]:
+                embed.add_field(
+                    name=f"{leak['type'].upper()}: {leak['title'][:100]}",
+                    value=f"From: {leak['source']} ({leak['confidence']}%)",
+                    inline=False
+                )
+        else:
+            embed = discord.Embed(
+                title="🔍 Scan Complete",
+                description="No new leaks found. This could mean:\n"
+                           "• No leaks posted recently\n"
+                           "• Twitter API having issues\n"
+                           "• Leaks filtered out by detection rules\n\n"
+                           "Check bot logs for details, or use `/submitleak` to add manually.",
+                color=discord.Color.orange()
+            )
+
+        await interaction.followup.send(embed=embed)
+
+    @app_commands.command(name="submitleak", description="📝 Manually submit a leak you found")
+    @app_commands.describe(
+        leak_type="Type of leak",
+        title="Leak title/summary",
+        source="Where you found it (e.g. @FutSheriff, Reddit, Discord)",
+        details="Full details (optional)"
+    )
+    async def submitleak(
+        self,
+        interaction: discord.Interaction,
+        leak_type: Literal["SBC", "Promo", "Evolution", "Player", "Content"],
+        title: str,
+        source: str,
+        details: str = ""
+    ):
+        """Manually submit a leak"""
+        # Create leak object
+        leak_data = {
+            "source": source,
+            "title": title,
+            "content": details,
+            "url": "",
+            "created": datetime.utcnow(),
+        }
+
+        # Process it
+        leak_type_lower = leak_type.lower()
+        confidence = 75  # Manual submissions start at 75%
+
+        # Boost confidence for known sources
+        if any(trusted in source.lower() for trusted in ["futsheriff", "futwatch", "ea"]):
+            confidence = 90
+
+        leak = {
+            "id": len(self.active_leaks) + 1,
+            "type": leak_type_lower,
+            "source": source,
+            "title": title,
+            "content": details,
+            "url": "",
+            "confidence": confidence,
+            "detected_at": datetime.utcnow(),
+            "impact": await self._analyze_market_impact(leak_type_lower, leak_data),
+        }
+
+        # Store leak
+        self.active_leaks.append(leak)
+        self.leak_history.append(leak)
+
+        # Create and distribute alert
+        embed = self._create_leak_embed(leak)
+        await self._distribute_leak_alert(leak)
+
+        # Confirm to submitter
+        await interaction.response.send_message(
+            f"✅ Leak submitted! **{leak_type}** leak from **{source}** has been added and distributed to all servers.",
+            ephemeral=True
+        )
+
+        log.info(f"[LeakMonitor] Manual leak submitted by {interaction.user}: {title}")
 
     @app_commands.command(name="leakaccounts", description="🐦 View monitored Twitter/X accounts")
     async def leakaccounts(self, interaction: discord.Interaction):
