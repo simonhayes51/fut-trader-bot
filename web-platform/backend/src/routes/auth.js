@@ -163,6 +163,32 @@ router.get('/discord/callback', async (req, res) => {
       return res.redirect(redirectUrl.toString());
     }
 
+    if (req.accepts('html')) {
+      return res.type('html').send(`<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Discord login complete</title>
+    <style>
+      body { font-family: system-ui, -apple-system, sans-serif; margin: 2rem; }
+      code { word-break: break-all; }
+    </style>
+  </head>
+  <body>
+    <h1>Discord login complete</h1>
+    <p>You can close this window and return to the app.</p>
+    <p><strong>Token</strong></p>
+    <code>${jwtToken}</code>
+    <script>
+      if (window.opener) {
+        window.opener.postMessage({ token: ${JSON.stringify(jwtToken)} }, '*');
+      }
+    </script>
+  </body>
+</html>`);
+    }
+
     return res.json({ token: jwtToken, user: storedUser });
   } catch (err) {
     const status = err.status || 500;
