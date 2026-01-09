@@ -67,6 +67,8 @@ router.get('/',
           u.username,
           u.avatar_url,
           u.is_verified_trader,
+          tp.subscription_price_monthly as subscription_price,
+          tp.total_reviews as review_count,
           (SELECT COUNT(*) FROM signals WHERE trader_id = tp.id AND status = 'active') as active_signals_count
         FROM trader_profiles tp
         JOIN users u ON u.id = tp.user_id
