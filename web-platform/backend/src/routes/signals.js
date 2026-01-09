@@ -76,6 +76,11 @@ router.get('/',
         : '';
 
       queryParams.push(limit, offset);
+      const limitIndex = paramIndex;
+      const offsetIndex = paramIndex + 1;
+      const userIdIndex = paramIndex + 2;
+
+      queryParams.push(userId);
 
       const result = await query(`
         SELECT
@@ -89,9 +94,9 @@ router.get('/',
           (SELECT COUNT(*) FROM comments WHERE commentable_type = 'signal' AND commentable_id = s.id) as comment_count,
           s.views as view_count,
           CASE
-            WHEN $${paramIndex + 1}::INTEGER IS NOT NULL THEN
+            WHEN $${userIdIndex}::INTEGER IS NOT NULL THEN
               (SELECT interaction_type FROM user_interactions
-               WHERE user_id = $${paramIndex + 1} AND signal_id = s.id AND interaction_type = 'invested')
+               WHERE user_id = $${userIdIndex} AND signal_id = s.id AND interaction_type = 'invested')
             ELSE NULL
           END as user_invested
         FROM signals s
@@ -99,8 +104,8 @@ router.get('/',
         JOIN users u ON u.id = tp.user_id
         ${whereClause}
         ORDER BY ${orderBy}
-        LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
-      `, [...queryParams, userId]);
+        LIMIT $${limitIndex} OFFSET $${offsetIndex}
+      `, queryParams);
 
       res.json({ signals: result.rows });
 
