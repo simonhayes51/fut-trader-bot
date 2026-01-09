@@ -69,39 +69,51 @@ const fetchDiscordUser = async (accessToken) => {
 };
 
 const upsertDiscordUser = async (profile, req) => {
-  const db = req.app?.locals?.db;
-  const now = new Date().toISOString();
-  const userData = {
-    discordId: profile.id,
-    username: profile.username,
-    discriminator: profile.discriminator,
-    avatar: profile.avatar,
-    email: profile.email,
-    updatedAt: now,
-  };
+  const { query } = require('../db');
 
-  if (db?.collection) {
-    const result = await db.collection('users').findOneAndUpdate(
-      { discordId: profile.id },
-      {
-        $set: userData,
-        $setOnInsert: { createdAt: now },
-      },
-      { upsert: true, returnDocument: 'after' },
+  // Check if user exists
+  const existingUser = await query(
+    'SELECT * FROM users WHERE discord_id = $1',
+    [profile.id]
+  );
+
+  if (existingUser.rows.length > 0) {
+    // Update existing user
+    const result = await query(
+      `UPDATE users
+       SET username = $1,
+           discriminator = $2,
+           avatar_url = $3,
+           email = $4,
+           last_login = CURRENT_TIMESTAMP,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE discord_id = $5
+       RETURNING *`,
+      [
+        profile.username,
+        profile.discriminator,
+        profile.avatar ? `https://cdn.discordapp.com/avatars/${profile.id}/${profile.avatar}.png` : null,
+        profile.email,
+        profile.id,
+      ]
     );
-
-    return result.value;
+    return result.rows[0];
+  } else {
+    // Create new user
+    const result = await query(
+      `INSERT INTO users (discord_id, username, discriminator, avatar_url, email)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING *`,
+      [
+        profile.id,
+        profile.username,
+        profile.discriminator,
+        profile.avatar ? `https://cdn.discordapp.com/avatars/${profile.id}/${profile.avatar}.png` : null,
+        profile.email,
+      ]
+    );
+    return result.rows[0];
   }
-
-  const existing = inMemoryUsers.get(profile.id);
-  const nextUser = {
-    ...existing,
-    ...userData,
-    createdAt: existing?.createdAt || now,
-  };
-
-  inMemoryUsers.set(profile.id, nextUser);
-  return nextUser;
 };
 
 const createJwt = (user) => {
