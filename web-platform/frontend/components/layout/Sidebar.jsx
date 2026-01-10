@@ -28,6 +28,7 @@ export default function Sidebar() {
   const navItems = [
     { icon: '🏠', label: 'Feed', href: '/feed', active: true },
     { icon: '🔍', label: 'Discover', href: '/traders' },
+    { icon: '➕', label: 'Post Signal', href: '/upload-signal', traderOnly: true },
     { icon: '🔔', label: 'Notifications', href: '/notifications', badge: 3 },
     { icon: '🔖', label: 'Saved', href: '/saved' },
   ];
@@ -54,23 +55,30 @@ export default function Sidebar() {
       {/* Navigation */}
       <nav className="flex-1 px-3">
         <div className="space-y-1 mb-8">
-          {navItems.map((item) => (
-            <Link key={item.href} href={item.href}>
-              <div className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all cursor-pointer ${
-                item.active
-                  ? 'bg-cyan-500/10 text-cyan-400'
-                  : 'text-gray-400 hover:bg-gray-800/50 hover:text-white'
-              }`}>
-                <span className="text-xl">{item.icon}</span>
-                <span className="font-semibold">{item.label}</span>
-                {item.badge && (
-                  <span className="ml-auto bg-cyan-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
-                    {item.badge}
-                  </span>
-                )}
-              </div>
-            </Link>
-          ))}
+          {navItems.map((item) => {
+            // Hide trader-only items if user is not a trader
+            if (item.traderOnly && (!user || !user.is_trader)) {
+              return null;
+            }
+
+            return (
+              <Link key={item.href} href={item.href}>
+                <div className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all cursor-pointer ${
+                  item.active
+                    ? 'bg-cyan-500/10 text-cyan-400'
+                    : 'text-gray-400 hover:bg-gray-800/50 hover:text-white'
+                }`}>
+                  <span className="text-xl">{item.icon}</span>
+                  <span className="font-semibold">{item.label}</span>
+                  {item.badge && (
+                    <span className="ml-auto bg-cyan-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                      {item.badge}
+                    </span>
+                  )}
+                </div>
+              </Link>
+            );
+          })}
         </div>
 
         {/* Tools Section */}
