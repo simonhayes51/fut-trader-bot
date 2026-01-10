@@ -200,6 +200,9 @@ router.post('/',
   body('cardName').isString().isLength({ min: 2, max: 255 }),
   body('cardRating').optional().isInt({ min: 40, max: 99 }),
   body('cardPosition').optional().isString(),
+  body('playerImage').optional().isString().isURL(),
+  body('cardType').optional().isString(),
+  body('tradeType').optional().isString(),
   body('signalType').isIn(['BUY', 'SELL', 'HOLD', 'AVOID']),
   body('isPremium').isBoolean(),
   body('entryPriceMin').optional().isInt({ min: 0 }),
@@ -221,6 +224,9 @@ router.post('/',
         cardName,
         cardRating,
         cardPosition,
+        playerImage,
+        cardType,
+        tradeType,
         signalType,
         isPremium,
         entryPriceMin,
@@ -237,16 +243,18 @@ router.post('/',
 
       const result = await query(`
         INSERT INTO signals (
-          trader_id, card_name, card_rating, card_position, signal_type,
-          is_premium, entry_price_min, entry_price_max, target_price,
-          stop_loss_price, time_frame, risk_level, confidence_level, reasoning
+          trader_id, card_name, card_rating, card_position, player_image,
+          card_type, trade_type, signal_type, is_premium, entry_price_min,
+          entry_price_max, target_price, stop_loss_price, time_frame,
+          risk_level, confidence_level, reasoning
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
         RETURNING *
       `, [
-        traderId, cardName, cardRating, cardPosition, signalType,
-        isPremium, entryPriceMin, entryPriceMax, targetPrice,
-        stopLossPrice, timeFrame, riskLevel, confidenceLevel, reasoning
+        traderId, cardName, cardRating, cardPosition, playerImage,
+        cardType, tradeType, signalType, isPremium, entryPriceMin,
+        entryPriceMax, targetPrice, stopLossPrice, timeFrame,
+        riskLevel, confidenceLevel, reasoning
       ]);
 
       res.status(201).json({

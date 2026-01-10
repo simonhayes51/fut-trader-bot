@@ -119,6 +119,9 @@ CREATE TABLE signals (
     card_name VARCHAR(255) NOT NULL,
     card_rating INTEGER,
     card_position VARCHAR(10),
+    player_image TEXT, -- URL to player card image
+    card_type VARCHAR(50), -- 'Gold', 'TOTW', 'Icon', 'Hero', etc.
+    trade_type VARCHAR(50), -- 'flip', 'risky', 'investment', 'safe_bet', 'snipe'
 
     signal_type VARCHAR(50) NOT NULL, -- 'BUY', 'SELL', 'HOLD', 'AVOID'
     is_premium BOOLEAN DEFAULT FALSE, -- premium = subscribers only
@@ -160,6 +163,8 @@ CREATE INDEX idx_signals_trader_id ON signals(trader_id);
 CREATE INDEX idx_signals_status ON signals(status);
 CREATE INDEX idx_signals_is_premium ON signals(is_premium);
 CREATE INDEX idx_signals_created_at ON signals(created_at DESC);
+CREATE INDEX idx_signals_card_type ON signals(card_type);
+CREATE INDEX idx_signals_trade_type ON signals(trade_type);
 
 -- ============================================
 -- CONTENT (One-off products)

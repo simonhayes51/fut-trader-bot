@@ -56,6 +56,9 @@ export const api = {
   // Signals
   getSignals: (params) => apiClient.get('/api/signals', { params }),
   getSignal: (id) => apiClient.get(`/api/signals/${id}`),
+  createSignal: (data) => apiClient.post('/api/signals', data),
+  updateSignal: (id, data) => apiClient.put(`/api/signals/${id}`, data),
+  closeSignal: (id, data) => apiClient.post(`/api/signals/${id}/close`, data),
 
   // Reviews
   getReviews: (type, id, params) => apiClient.get(`/api/reviews/${type}/${id}`, { params }),
