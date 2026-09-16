@@ -1,11 +1,11 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChatInputCommandInteraction, Client, EmbedBuilder, SlashCommandBuilder } from "discord.js";
+import { ActionRowBuilder, AutocompleteInteraction, ButtonBuilder, ButtonStyle, ChatInputCommandInteraction, Client, EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import { createCheckout, createPortal, getMemberBilling, listPlans, reconcileMemberBilling } from "./billing.js";
-import { getFeature } from "./db.js";
+import { getFeature, query } from "./db.js";
 
 export const billingCommandData = [
   new SlashCommandBuilder().setName("premium").setDescription("View premium plans or subscribe")
-    .addStringOption(o=>o.setName("plan").setDescription("Plan slug (optional)"))
-    .addStringOption(o=>o.setName("referral").setDescription("Referral code (optional)")),
+    .addStringOption(o=>o.setName("plan").setDescription("Choose a premium plan").setAutocomplete(true))
+    .addStringOption(o=>o.setName("referral").setDescription("Choose a referral code (optional)").setAutocomplete(true)),
   new SlashCommandBuilder().setName("subscription").setDescription("View or manage your premium subscription")
 ].map(c=>c.toJSON());
 
@@ -18,6 +18,39 @@ async function memberSubscription(guildId:string,userId:string) {
     catch(err) { console.error("Stripe reconciliation failed",err); }
   }
   return sub;
+}
+
+export async function handleBillingAutocomplete(i:AutocompleteInteraction) {
+  if(i.commandName!=="premium" || !i.guildId) return false;
+
+  const focused=i.options.getFocused(true);
+  const search=String(focused.value||"").toLowerCase();
+
+  if(focused.name==="plan") {
+    const plans=await listPlans(i.guildId,true);
+    const choices=plans
+      .filter(p=>!search || p.name.toLowerCase().includes(search) || p.slug.toLowerCase().includes(search))
+      .slice(0,25)
+      .map(p=>({name:`${p.name}${p.trial_days?` • ${p.trial_days}-day trial`:""}`.slice(0,100),value:p.slug}));
+    await i.respond(choices);
+    return true;
+  }
+
+  if(focused.name==="referral") {
+    const refs=await query<{code:string;owner_discord_user_id:string|null}>(
+      `SELECT code,owner_discord_user_id FROM referral_codes WHERE guild_id=$1 AND active=true ORDER BY code LIMIT 100`,
+      [i.guildId]
+    );
+    const choices=refs
+      .filter(r=>!search || r.code.toLowerCase().includes(search))
+      .slice(0,25)
+      .map(r=>({name:r.code.slice(0,100),value:r.code}));
+    await i.respond(choices);
+    return true;
+  }
+
+  await i.respond([]);
+  return true;
 }
 
 export async function handleBillingCommand(_client:Client,i:ChatInputCommandInteraction) {
