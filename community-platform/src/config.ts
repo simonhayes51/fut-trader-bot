@@ -10,7 +10,10 @@ export const config = {
   baseUrl: process.env.BASE_URL || "http://localhost:3000",
   adminIds: new Set((process.env.DASHBOARD_ADMIN_IDS || "").split(",").map(v => v.trim()).filter(Boolean)),
   xBearerToken: process.env.X_BEARER_TOKEN || "",
-  socialPollSeconds: Math.max(60, Number(process.env.SOCIAL_POLL_SECONDS || 120))
+  socialPollSeconds: Math.max(60, Number(process.env.SOCIAL_POLL_SECONDS || 120)),
+  stripeSecretKey: process.env.STRIPE_SECRET_KEY || "",
+  stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET || "",
+  billingCurrency: (process.env.BILLING_CURRENCY || "gbp").toLowerCase()
 };
 
 function required(key: string): string {
