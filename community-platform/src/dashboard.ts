@@ -34,7 +34,7 @@ app.use(session({
 }));
 
 function dashboardSidebar(pathname:string) {
-  const items=[
+  const items: Array<[string,string]>=[
     ["/dashboard","Overview"],["/setup","Setup"],["/members","Members"],["/analytics","Analytics"],
     ["/commands","Commands"],["/automation","Automation"],["/discord","Discord"],["/trading","Trade calls"],
     ["/tickets","Tickets"],["/social","Social feeds"],["/billing","Premium"],["/moderation","Moderation"],["/audit","Audit log"]
