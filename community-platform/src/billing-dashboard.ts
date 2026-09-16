@@ -2,7 +2,7 @@ import { Router } from "express";
 import { client } from "./bot.js";
 import { config } from "./config.js";
 import { audit, query } from "./db.js";
-import { generateReferralCode, grantComp, handleStripeWebhook, reconcileCheckoutSession, revokeEntitlement } from "./billing.js";
+import { generateReferralCode, grantComp, handleStripeWebhook, reconcileCheckoutSession, revokeEntitlement, stripe } from "./billing.js";
 
 export const billingRouter=Router();
 const auth=(req:any,res:any,next:any)=>req.session?.user?next():res.redirect("/login");
@@ -49,31 +49,46 @@ billingRouter.get("/return",(req,res)=>res.render("billing-result",{
 }));
 
 billingRouter.get("/",auth,async(req:any,res)=>{
-  const [plans,subs,refs,events]=await Promise.all([
+  const [plans,subs,refs,events,stripePriceResult]=await Promise.all([
     query<any>(`SELECT * FROM billing_plans WHERE guild_id=$1 ORDER BY sort_order,name`,[config.targetGuildId]),
     query<any>(`SELECT s.*,p.name plan_name,p.slug FROM billing_subscriptions s LEFT JOIN billing_plans p ON p.id=s.plan_id WHERE s.guild_id=$1 ORDER BY s.updated_at DESC LIMIT 250`,[config.targetGuildId]),
     query<any>(`SELECT * FROM referral_codes WHERE guild_id=$1 ORDER BY created_at DESC`,[config.targetGuildId]),
-    query<any>(`SELECT stripe_event_id,event_type,processed_at,error,created_at FROM billing_events ORDER BY created_at DESC LIMIT 50`,[])
+    query<any>(`SELECT stripe_event_id,event_type,processed_at,error,created_at FROM billing_events ORDER BY created_at DESC LIMIT 50`,[]),
+    stripe ? stripe.prices.list({active:true,type:"recurring",limit:100,expand:["data.product"]}).catch(()=>null) : Promise.resolve(null)
   ]);
   const guild=client.guilds.cache.get(config.targetGuildId);
-  const roles=guild?[...guild.roles.cache.values()].filter(r=>r.id!==guild.id).sort((a,b)=>b.position-a.position):[];
+  const roles=guild?[...guild.roles.cache.values()].filter(r=>r.id!==guild.id&&!r.managed).sort((a,b)=>b.position-a.position):[];
+  let members:any[]=[];
+  if(guild){
+    const collection=await guild.members.fetch().catch(()=>guild.members.cache);
+    members=[...collection.values()].filter(m=>!m.user.bot).map(m=>({id:m.id,name:m.displayName,username:m.user.username})).sort((a,b)=>a.name.localeCompare(b.name));
+  }
+  const prices=(stripePriceResult?.data||[]).map((p:any)=>({
+    id:p.id,
+    label:(typeof p.product==="object"&&p.product?.name)||p.nickname||p.id,
+    amount:p.unit_amount,
+    currency:p.currency,
+    interval:p.recurring?.interval||"month",
+    intervalCount:p.recurring?.interval_count||1
+  }));
   const metrics={
     active:subs.filter(s=>["active","trialing","comped","gifted","past_due"].includes(s.status)).length,
     trialing:subs.filter(s=>s.status==="trialing").length,
     pastDue:subs.filter(s=>s.status==="past_due").length,
     cancelling:subs.filter(s=>s.cancel_at_period_end).length
   };
-  res.render("billing",{user:req.session.user,plans,subs,refs,events,roles,metrics,stripeReady:Boolean(config.stripeSecretKey&&config.stripeWebhookSecret),baseUrl:config.baseUrl});
+  res.render("billing",{user:req.session.user,plans,subs,refs,events,roles,members,prices,metrics,stripeReady:Boolean(config.stripeSecretKey&&config.stripeWebhookSecret),baseUrl:config.baseUrl});
 });
 
 billingRouter.post("/plans",auth,async(req:any,res)=>{
-  const slug=String(req.body.slug||"").trim().toLowerCase().replace(/[^a-z0-9_-]/g,"-");
-  if(!slug||!req.body.name||!req.body.stripePriceId||!req.body.roleId) return res.status(400).send("Name, slug, Stripe Price ID and Discord role are required.");
+  const name=String(req.body.name||"").trim();
+  const slug=String(req.body.slug||name).trim().toLowerCase().replace(/[^a-z0-9_-]+/g,"-").replace(/^-+|-+$/g,"");
+  if(!slug||!name||!req.body.stripePriceId||!req.body.roleId) return res.status(400).send("Plan name, Stripe price and Discord role are required.");
   await query(`INSERT INTO billing_plans(guild_id,name,slug,description,stripe_price_id,role_id,trial_days,sort_order) VALUES($1,$2,$3,$4,$5,$6,$7,$8)
     ON CONFLICT(guild_id,slug) DO UPDATE SET name=$2,description=$4,stripe_price_id=$5,role_id=$6,trial_days=$7,sort_order=$8,updated_at=now()`,[
-    config.targetGuildId,String(req.body.name),slug,String(req.body.description||""),String(req.body.stripePriceId),String(req.body.roleId),Math.max(0,Number(req.body.trialDays||0)),Number(req.body.sortOrder||0)
+    config.targetGuildId,name,slug,String(req.body.description||""),String(req.body.stripePriceId),String(req.body.roleId),Math.max(0,Number(req.body.trialDays||0)),Number(req.body.sortOrder||0)
   ]);
-  await audit(config.targetGuildId,req.session.user.id,"billing.plan.saved",{slug,name:req.body.name});
+  await audit(config.targetGuildId,req.session.user.id,"billing.plan.saved",{slug,name});
   res.redirect("/billing");
 });
 
@@ -86,7 +101,7 @@ billingRouter.post("/plans/:id/toggle",auth,async(req:any,res)=>{
 billingRouter.post("/comp",auth,async(req:any,res)=>{
   const userId=String(req.body.discordUserId||"").trim();
   const planId=Number(req.body.planId),days=Math.max(1,Number(req.body.days||30));
-  if(!/^\d{15,22}$/.test(userId)||!planId) return res.status(400).send("Valid Discord user ID and plan are required.");
+  if(!/^\d{15,22}$/.test(userId)||!planId) return res.status(400).send("Choose a Discord member and plan.");
   await grantComp(config.targetGuildId,userId,planId,days,req.session.user.id);
   res.redirect("/billing");
 });
