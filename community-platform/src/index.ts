@@ -5,10 +5,12 @@ import { db } from "./db.js";
 import { startBot, client } from "./bot.js";
 import { app } from "./dashboard.js";
 import { extrasRouter } from "./dashboard-extras.js";
+import { nativeDiscordRouter } from "./native-discord.js";
 import { pollSocialFeeds } from "./social.js";
 import { runAutomationTick } from "./feature-suite.js";
 
 app.use(extrasRouter);
+app.use(nativeDiscordRouter);
 
 async function readSql(name:string) {
   return fs.readFile(path.join(process.cwd(),"src",name),"utf8").catch(()=>fs.readFile(path.join(process.cwd(),"dist",name),"utf8"));
