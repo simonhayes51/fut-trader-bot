@@ -1,27 +1,31 @@
 <!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Social feeds • FC27 Control</title><link rel="stylesheet" href="/style.css"></head><body>
-<aside class="sidebar"><a class="brand" href="/dashboard"><span>FC27</span> Control</a><nav><a href="/dashboard">Overview</a><a href="/trading">Trade calls</a><a href="/tickets">Tickets</a><a class="active" href="/social">Social feeds</a><a href="/moderation">Moderation</a><a href="/audit">Audit log</a></nav></aside>
+<aside class="sidebar"><a class="brand" href="/dashboard"><span>FC27</span> Control</a><nav><a href="/dashboard">Overview</a><a href="/trading">Trade calls</a><a href="/tickets">Tickets</a><a class="active" href="/social">Social feeds</a><a href="/billing">Premium & billing</a><a href="/moderation">Moderation</a><a href="/audit">Audit log</a></nav></aside>
 <main class="content">
-<header><div><div class="eyebrow">TWEETSHIFT-STYLE AUTOMATION</div><h1>Social feeds</h1><p class="muted">Route RSS, Reddit, YouTube feeds, X accounts or your own webhooks directly into selected Discord channels.</p></div></header>
-<section class="panel"><h2>Add feed</h2>
-<form method="post" class="form-grid">
-<label><span>Name</span><input name="name" required placeholder="FUT Sheriff"></label>
-<label><span>Provider</span><select name="provider"><option value="rss">RSS / Atom</option><option value="reddit">Reddit RSS</option><option value="youtube">YouTube RSS</option><option value="x">X / Twitter (official API)</option><option value="webhook">Generic webhook</option></select></label>
-<label class="wide"><span>Source</span><input name="source" placeholder="RSS URL, @username, or label for webhook"></label>
-<label><span>Discord channel</span><select name="channelId" required><% channels.filter(c=>c.type!==4).forEach(c=>{ %><option value="<%= c.id %>">#<%= c.name %></option><% }) %></select></label>
-<label><span>Mention role</span><select name="mentionRoleId"><option value="">None</option><% roles.forEach(r=>{ %><option value="<%= r.id %>">@<%= r.name %></option><% }) %></select></label>
-<label><span>Include keywords</span><input name="includeKeywords" placeholder="sbc, evolution, promo"></label>
-<label><span>Exclude keywords</span><input name="excludeKeywords" placeholder="giveaway, ad"></label>
-<div class="wide"><button class="button" type="submit">Create feed</button></div>
+<header><div><div class="eyebrow">AUTOMATIC POSTS</div><h1>Social feeds</h1><p class="muted">Choose what you want to follow and where it should post. The bot handles the rest.</p></div></header>
+<section class="panel"><h2>Add a social feed</h2><p class="muted" style="margin-bottom:18px">Pick the source, paste the account/feed, then choose the Discord channel.</p>
+<form method="post" class="form-grid" id="feed-form">
+<label><span>What are you following?</span><small>Select the type of source.</small><select name="provider" id="provider"><option value="rss">Website / RSS feed</option><option value="reddit">Reddit community</option><option value="youtube">YouTube channel</option><option value="x">X / Twitter account</option><option value="webhook">Another app / custom webhook</option></select></label>
+<label><span>Give this feed a name</span><small>Only used in this dashboard.</small><input name="name" required placeholder="FUT Sheriff"></label>
+<label class="wide" id="source-wrap"><span id="source-label">Feed address</span><small id="source-help">Paste the RSS or Atom feed URL.</small><input name="source" id="source" placeholder="https://example.com/feed.xml"></label>
+<label><span>Post into</span><small>Choose the Discord channel members should see.</small><select name="channelId" required><option value="">Choose channel</option><% channels.filter(c=>c.type!==4).forEach(c=>{ %><option value="<%= c.id %>"># <%= c.name %></option><% }) %></select></label>
+<label><span>Who should be notified?</span><small>Optional. Mention this role on each new post.</small><select name="mentionRoleId"><option value="">Nobody</option><% roles.forEach(r=>{ %><option value="<%= r.id %>">@<%= r.name %></option><% }) %></select></label>
+<details class="wide"><summary class="muted">Optional keyword filters</summary><div class="form-grid" style="margin-top:12px"><label><span>Only post when it mentions</span><small>Comma-separated words. Leave blank to post everything.</small><input name="includeKeywords" placeholder="SBC, evolution, promo"></label><label><span>Never post when it mentions</span><small>Comma-separated words to ignore.</small><input name="excludeKeywords" placeholder="giveaway, ad"></label></div></details>
+<div class="wide"><button class="button" type="submit">Add feed</button></div>
 </form></section>
-<section class="section"><div class="section-head"><h2>Configured feeds</h2><span class="muted"><%= feeds.length %> total</span></div>
-<div class="table-wrap"><table><thead><tr><th>Name</th><th>Provider</th><th>Destination</th><th>Filters</th><th>Status</th><th></th></tr></thead><tbody>
-<% feeds.forEach(f=>{ %><tr>
-<td><strong><%= f.name %></strong><% if(f.provider==='webhook'){ %><small class="block"><code><%= baseUrl %>/hooks/social/<%= f.secret_key %></code></small><% } else { %><small class="block"><%= f.source %></small><% } %></td>
-<td><span class="pill"><%= f.provider.toUpperCase() %></span></td><td><code><%= f.channel_id %></code></td>
-<td><small>+ <%= (f.include_keywords||[]).join(', ')||'any' %><br>- <%= (f.exclude_keywords||[]).join(', ')||'none' %></small></td>
-<td><span class="pill <%= f.enabled?'on':'off' %>"><%= f.enabled?'Enabled':'Disabled' %></span></td>
-<td class="actions"><form method="post" action="/social/<%= f.id %>/toggle"><button class="ghost"><%= f.enabled?'Pause':'Enable' %></button></form><form method="post" action="/social/<%= f.id %>/delete" onsubmit="return confirm('Delete this feed?')"><button class="danger">Delete</button></form></td>
+<section class="section"><div class="section-head"><h2>Your feeds</h2><span class="muted"><%= feeds.length %> configured</span></div>
+<div class="table-wrap"><table><thead><tr><th>Feed</th><th>Type</th><th>Posts into</th><th>Status</th><th></th></tr></thead><tbody>
+<% feeds.forEach(f=>{ const channel=channels.find(c=>c.id===f.channel_id); %><tr>
+<td><strong><%= f.name %></strong><% if(f.provider==='webhook'){ %><small class="block">Custom webhook ready to receive posts</small><% } else { %><small class="block"><%= f.source %></small><% } %></td>
+<td><span class="pill"><%= f.provider==='x'?'X / Twitter':f.provider==='rss'?'Website / RSS':f.provider.charAt(0).toUpperCase()+f.provider.slice(1) %></span></td><td># <%= channel?.name||'Channel unavailable' %></td>
+<td><span class="pill <%= f.enabled?'on':'off' %>"><%= f.enabled?'Posting':'Paused' %></span></td>
+<td class="actions"><form method="post" action="/social/<%= f.id %>/toggle"><button class="ghost"><%= f.enabled?'Pause':'Resume' %></button></form><form method="post" action="/social/<%= f.id %>/delete" onsubmit="return confirm('Delete this feed?')"><button class="danger">Delete</button></form></td>
 </tr><% }) %>
-<% if(!feeds.length){ %><tr><td colspan="6" class="empty">No feeds configured yet.</td></tr><% } %>
+<% if(!feeds.length){ %><tr><td colspan="5" class="empty">No feeds yet. Add one above.</td></tr><% } %>
 </tbody></table></div></section>
-</main></body></html>
+<details class="section"><summary><strong>Custom webhook addresses</strong> <span class="muted">Only needed when connecting another app</span></summary><div class="panel" style="margin-top:12px"><% const hooks=feeds.filter(f=>f.provider==='webhook'); if(!hooks.length){ %><p class="muted">No custom webhooks configured.</p><% } %><% hooks.forEach(f=>{ %><p><strong><%= f.name %></strong><br><code><%= baseUrl %>/hooks/social/<%= f.secret_key %></code></p><% }) %></div></details>
+</main>
+<script>
+const p=document.getElementById('provider'),label=document.getElementById('source-label'),help=document.getElementById('source-help'),source=document.getElementById('source'),wrap=document.getElementById('source-wrap');
+const hints={rss:['Feed address','Paste the RSS or Atom feed URL.','https://example.com/feed.xml'],reddit:['Reddit community','Enter the subreddit name or Reddit RSS URL.','EAFC or https://www.reddit.com/r/EAFC/.rss'],youtube:['YouTube feed','Paste the YouTube channel feed URL.','https://www.youtube.com/feeds/videos.xml?channel_id=...'],x:['X / Twitter account','Enter the account username, with or without @.','@EASPORTSFC'],webhook:['Webhook label','Optional label for the system sending posts.','EAFC.Live alerts']};
+function updateHint(){const h=hints[p.value];label.textContent=h[0];help.textContent=h[1];source.placeholder=h[2];source.required=p.value!=='webhook'}p.addEventListener('change',updateHint);updateHint();
+</script></body></html>
