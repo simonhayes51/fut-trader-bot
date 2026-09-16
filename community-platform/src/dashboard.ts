@@ -9,6 +9,7 @@ import { audit, one, query } from "./db.js";
 import { moduleMap, modules } from "./modules.js";
 import { createWebhookSecret, deliverWebhook } from "./social.js";
 import { billingRouter } from "./billing-dashboard.js";
+import { PostgresSessionStore } from "./session-store.js";
 
 declare module "express-session" {
   interface SessionData { user?: { id:string; username:string; avatar?:string; permissions?:string }; oauthState?: string; }
@@ -17,8 +18,6 @@ declare module "express-session" {
 const here=path.dirname(fileURLToPath(import.meta.url));
 export const app=express();
 
-// Railway terminates HTTPS at its reverse proxy. Trust the first proxy so
-// express-session can set secure cookies correctly in production.
 app.set("trust proxy",1);
 app.set("view engine","ejs");
 app.set("views",path.join(here,"..","views"));
@@ -26,6 +25,7 @@ app.use(express.urlencoded({extended:true,limit:"1mb"}));
 app.use(express.json({limit:"1mb",verify:(req:any,_res,buf)=>{req.rawBody=Buffer.from(buf);}}));
 app.use(express.static(path.join(here,"..","public")));
 app.use(session({
+  store:new PostgresSessionStore(),
   secret:config.sessionSecret,
   resave:false,
   saveUninitialized:false,
@@ -85,7 +85,10 @@ app.get("/auth/discord/callback",async(req,res)=>{
     if(!allowed) return res.status(403).send("You need Manage Server permission for this Discord server.");
     req.session.user={id:user.id,username:user.username,avatar:user.avatar,permissions:guild?.permissions};
     await audit(config.targetGuildId,user.id,"dashboard.login",{username:user.username});
-    res.redirect("/dashboard");
+    req.session.save(err=>{
+      if(err) return res.status(500).send("Unable to save dashboard session.");
+      res.redirect("/dashboard");
+    });
   } catch(err) { console.error(err); res.status(500).send("Discord login failed."); }
 });
 
