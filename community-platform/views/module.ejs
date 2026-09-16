@@ -1,0 +1,19 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title><%= def.name %> • FC27 Control</title><link rel="stylesheet" href="/style.css"></head><body>
+<aside class="sidebar"><a class="brand" href="/dashboard"><span>FC27</span> Control</a><nav><a href="/dashboard">Overview</a><a href="/trading">Trade calls</a><a href="/tickets">Tickets</a><a href="/social">Social feeds</a><a href="/moderation">Moderation</a><a href="/audit">Audit log</a></nav></aside>
+<main class="content narrow">
+  <a class="back" href="/dashboard">← Back to modules</a>
+  <header><div><div class="eyebrow"><%= def.category.toUpperCase() %></div><h1><%= def.name %></h1><p class="muted"><%= def.description %></p></div></header>
+  <% if (typeof saved !== 'undefined') { %><div class="notice">Saved.</div><% } %>
+  <form method="post" class="panel">
+    <label class="toggle-row"><div><strong>Module enabled</strong><small>Disable this to stop the feature without deleting its settings.</small></div><input type="checkbox" name="enabled" <%= enabled?'checked':'' %>></label>
+    <hr>
+    <label><span>Configuration</span><small>All settings are live after saving. Channel and role IDs can be copied from the reference lists below.</small>
+      <textarea name="config" rows="22"><%= JSON.stringify(current,null,2) %></textarea>
+    </label>
+    <div class="form-actions"><button class="button" type="submit">Save configuration</button></div>
+  </form>
+  <div class="two-col">
+    <section class="panel"><h3>Channels</h3><div class="reference"><% channels.forEach(c=>{ %><div><span># <%= c.name %></span><code><%= c.id %></code></div><% }) %></div></section>
+    <section class="panel"><h3>Roles</h3><div class="reference"><% roles.forEach(r=>{ %><div><span>@<%= r.name %></span><code><%= r.id %></code></div><% }) %></div></section>
+  </div>
+</main></body></html>
