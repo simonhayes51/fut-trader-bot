@@ -6,6 +6,10 @@ import { commandData, handleCommand } from "./commands.js";
 import { billingCommandData, handleBillingAutocomplete, handleBillingCommand } from "./billing-commands.js";
 import { handleJoin, handleMessage } from "./automod.js";
 import { getFeature, query } from "./db.js";
+import {
+  featureCommandData, handleComponent, handleContextCommand, handleFeatureAutocomplete,
+  handleFeatureCommand, onMemberActivity, onMemberJoinLeave
+} from "./feature-suite.js";
 
 export const client = new Client({
   intents: [
@@ -13,14 +17,15 @@ export const client = new Client({
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildModeration
+    GatewayIntentBits.GuildModeration,
+    GatewayIntentBits.GuildMessageReactions
   ],
-  partials: [Partials.Channel, Partials.Message, Partials.User, Partials.GuildMember]
+  partials: [Partials.Channel, Partials.Message, Partials.User, Partials.GuildMember, Partials.Reaction]
 });
 
 export async function startBot() {
   const rest=new REST({version:"10"}).setToken(config.discordToken);
-  await rest.put(Routes.applicationGuildCommands(config.clientId,config.targetGuildId),{body:[...commandData,...billingCommandData]});
+  await rest.put(Routes.applicationGuildCommands(config.clientId,config.targetGuildId),{body:[...commandData,...billingCommandData,...featureCommandData]});
 
   client.once(Events.ClientReady, async ready => {
     console.log(`Discord ready as ${ready.user.tag}`);
@@ -29,34 +34,39 @@ export async function startBot() {
   });
 
   client.on(Events.InteractionCreate, async interaction => {
-    if(interaction.isAutocomplete()) {
-      try {
-        const handled=await handleBillingAutocomplete(interaction);
-        if(!handled) await interaction.respond([]).catch(()=>{});
-      } catch(err) {
-        console.error("Autocomplete error",err);
+    try {
+      if(interaction.isAutocomplete()) {
+        if(await handleBillingAutocomplete(interaction)) return;
+        if(await handleFeatureAutocomplete(interaction)) return;
         await interaction.respond([]).catch(()=>{});
+        return;
       }
-      return;
-    }
-
-    if(interaction.isChatInputCommand()) {
-      try {
-        const handled=await handleBillingCommand(client,interaction);
-        if(!handled) await handleCommand(client,interaction);
+      if(interaction.isButton()) {
+        if(await handleComponent(client,interaction)) return;
       }
-      catch(err) {
-        console.error(err);
-        const payload={content:"Something went wrong running that command.",ephemeral:true};
-        if(interaction.replied||interaction.deferred) await interaction.followUp(payload).catch(()=>{});
-        else await interaction.reply(payload).catch(()=>{});
+      if(interaction.isUserContextMenuCommand()||interaction.isMessageContextMenuCommand()) {
+        if(await handleContextCommand(interaction)) return;
       }
+      if(interaction.isChatInputCommand()) {
+        if(await handleBillingCommand(client,interaction)) return;
+        if(await handleFeatureCommand(client,interaction)) return;
+        await handleCommand(client,interaction);
+      }
+    } catch(err) {
+      console.error("Interaction error",err);
+      const payload={content:"Something went wrong running that action.",ephemeral:true};
+      if("replied" in interaction && (interaction.replied||interaction.deferred)) await interaction.followUp(payload).catch(()=>{});
+      else if("reply" in interaction) await interaction.reply(payload).catch(()=>{});
     }
   });
 
-  client.on(Events.MessageCreate, handleMessage);
+  client.on(Events.MessageCreate, async message => {
+    await handleMessage(message);
+    await onMemberActivity(message).catch(console.error);
+  });
 
   client.on(Events.GuildMemberAdd, async member => {
+    await onMemberJoinLeave(member.guild.id,"joins").catch(console.error);
     await handleJoin(client,member);
     const feature=await getFeature(member.guild.id,"welcome",{channelId:"",autoRoleId:"",message:"Welcome {user} to {server}!",dmWelcome:false});
     if(!feature.enabled) return;
@@ -68,6 +78,7 @@ export async function startBot() {
     }
     if(feature.config.dmWelcome) await member.send(text.replace(`<@${member.id}>`,member.user.username)).catch(()=>{});
   });
+  client.on(Events.GuildMemberRemove,member=>{void onMemberJoinLeave(member.guild.id,"leaves").catch(console.error);});
 
   await client.login(config.discordToken);
 }
