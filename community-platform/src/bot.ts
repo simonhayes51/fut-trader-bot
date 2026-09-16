@@ -3,6 +3,7 @@ import {
 } from "discord.js";
 import { config } from "./config.js";
 import { commandData, handleCommand } from "./commands.js";
+import { billingCommandData, handleBillingCommand } from "./billing-commands.js";
 import { handleJoin, handleMessage } from "./automod.js";
 import { getFeature, query } from "./db.js";
 
@@ -19,7 +20,7 @@ export const client = new Client({
 
 export async function startBot() {
   const rest=new REST({version:"10"}).setToken(config.discordToken);
-  await rest.put(Routes.applicationGuildCommands(config.clientId,config.targetGuildId),{body:commandData});
+  await rest.put(Routes.applicationGuildCommands(config.clientId,config.targetGuildId),{body:[...commandData,...billingCommandData]});
 
   client.once(Events.ClientReady, async ready => {
     console.log(`Discord ready as ${ready.user.tag}`);
@@ -29,7 +30,10 @@ export async function startBot() {
 
   client.on(Events.InteractionCreate, async interaction => {
     if(interaction.isChatInputCommand()) {
-      try { await handleCommand(client,interaction); }
+      try {
+        const handled=await handleBillingCommand(client,interaction);
+        if(!handled) await handleCommand(client,interaction);
+      }
       catch(err) {
         console.error(err);
         const payload={content:"Something went wrong running that command.",ephemeral:true};
