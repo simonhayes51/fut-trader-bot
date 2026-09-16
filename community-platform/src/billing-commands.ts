@@ -1,5 +1,5 @@
 import { ChatInputCommandInteraction, Client, EmbedBuilder, SlashCommandBuilder } from "discord.js";
-import { createCheckout, createPortal, getMemberBilling, listPlans } from "./billing.js";
+import { createCheckout, createPortal, getMemberBilling, listPlans, reconcileMemberBilling } from "./billing.js";
 import { getFeature } from "./db.js";
 
 export const billingCommandData = [
@@ -40,7 +40,10 @@ export async function handleBillingCommand(_client:Client,i:ChatInputCommandInte
     await i.reply({embeds:[embed],ephemeral:true});
     return true;
   }
-  const sub=await getMemberBilling(i.guildId,i.user.id);
+  let sub=await getMemberBilling(i.guildId,i.user.id);
+  if(!sub) {
+    try { sub=await reconcileMemberBilling(i.guildId,i.user.id); } catch(err) { console.error("Stripe reconciliation failed",err); }
+  }
   if(!sub) {
     await i.reply({content:"You don't currently have a billing account. Use `/premium` to view plans.",ephemeral:true});
     return true;
