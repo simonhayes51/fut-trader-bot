@@ -1,0 +1,25 @@
+name: Community Platform CI
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'community-platform/**'
+      - '.github/workflows/community-platform-ci.yml'
+  pull_request:
+    paths:
+      - 'community-platform/**'
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: community-platform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: community-platform/package-lock.json
+      - run: npm ci
+      - run: npm run build
