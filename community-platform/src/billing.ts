@@ -77,7 +77,7 @@ export async function syncEntitlement(guildId:string,userId:string,planId:number
   if(!active && member.roles.cache.has(plan.role_id)) await member.roles.remove(plan.role_id,"Premium entitlement inactive").catch(console.error);
 }
 
-async function processSubscription(sub:Stripe.Subscription) {
+export async function processSubscription(sub:Stripe.Subscription) {
   const meta=sub.metadata||{};
   const guildId=meta.guildId||config.targetGuildId;
   const userId=meta.discordUserId;
@@ -88,22 +88,57 @@ async function processSubscription(sub:Stripe.Subscription) {
   const periodEnd=new Date((sub.items.data[0]?.current_period_end||Math.floor(Date.now()/1000))*1000);
   await query(`INSERT INTO billing_subscriptions(guild_id,discord_user_id,plan_id,stripe_subscription_id,stripe_customer_id,status,current_period_end,cancel_at_period_end,referral_code,updated_at)
     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,now())
-    ON CONFLICT(stripe_subscription_id) DO UPDATE SET plan_id=$3,status=$6,current_period_end=$7,cancel_at_period_end=$8,updated_at=now()`,
+    ON CONFLICT(stripe_subscription_id) DO UPDATE SET plan_id=$3,status=$6,current_period_end=$7,cancel_at_period_end=$8,referral_code=$9,updated_at=now()`,
     [guildId,userId,planId,sub.id,customerId,sub.status,periodEnd,sub.cancel_at_period_end,meta.referralCode||null]);
   await syncEntitlement(guildId,userId,planId,sub.status,"stripe",periodEnd);
+}
+
+export async function reconcileMemberBilling(guildId:string,discordUserId:string) {
+  if(!stripe) return null;
+  const result=await stripe.subscriptions.search({
+    query:`metadata['guildId']:'${guildId}' AND metadata['discordUserId']:'${discordUserId}'`,
+    limit:10
+  });
+  const candidates=result.data.sort((a,b)=>b.created-a.created);
+  for(const sub of candidates) await processSubscription(sub);
+  return getMemberBilling(guildId,discordUserId);
+}
+
+export async function reconcileCheckoutSession(sessionId:string) {
+  if(!stripe) return null;
+  const session=await stripe.checkout.sessions.retrieve(sessionId,{expand:["subscription"]});
+  const sub=session.subscription;
+  if(sub && typeof sub!=="string") {
+    await processSubscription(sub as Stripe.Subscription);
+    return sub;
+  }
+  if(typeof sub==="string") {
+    const full=await stripe.subscriptions.retrieve(sub);
+    await processSubscription(full);
+    return full;
+  }
+  return null;
 }
 
 export async function handleStripeWebhook(rawBody:Buffer,signature:string) {
   if(!stripe||!config.stripeWebhookSecret) throw new Error("Stripe webhook is not configured");
   const event=stripe.webhooks.constructEvent(rawBody,signature,config.stripeWebhookSecret);
-  const seen=await one<any>(`SELECT id FROM billing_events WHERE stripe_event_id=$1`,[event.id]);
-  if(seen) return event;
-  await query(`INSERT INTO billing_events(stripe_event_id,event_type,payload) VALUES($1,$2,$3::jsonb)`,[event.id,event.type,JSON.stringify(event)]);
+  const existing=await one<any>(`SELECT id,processed_at FROM billing_events WHERE stripe_event_id=$1`,[event.id]);
+  if(existing?.processed_at) return event;
+  if(!existing) {
+    await query(`INSERT INTO billing_events(stripe_event_id,event_type,payload) VALUES($1,$2,$3::jsonb)`,[event.id,event.type,JSON.stringify(event)]);
+  } else {
+    await query(`UPDATE billing_events SET event_type=$2,payload=$3::jsonb,error=NULL WHERE stripe_event_id=$1`,[event.id,event.type,JSON.stringify(event)]);
+  }
   try {
     if(event.type==="checkout.session.completed") {
       const s=event.data.object as Stripe.Checkout.Session;
       const guildId=s.metadata?.guildId||config.targetGuildId,userId=s.metadata?.discordUserId||s.client_reference_id;
       if(userId && typeof s.customer==="string") await upsertCustomer(guildId,userId,s.customer);
+      if(typeof s.subscription==="string") {
+        const sub=await stripe.subscriptions.retrieve(s.subscription);
+        await processSubscription(sub);
+      }
       const ref=s.metadata?.referralCode;
       if(ref) await query(`UPDATE referral_codes SET conversions=conversions+1 WHERE guild_id=$1 AND lower(code)=lower($2)`,[guildId,ref]);
     }
@@ -116,7 +151,7 @@ export async function handleStripeWebhook(rawBody:Buffer,signature:string) {
       const dispute=event.data.object as Stripe.Dispute;
       await audit(config.targetGuildId,null,"billing.dispute",{disputeId:dispute.id,charge:dispute.charge});
     }
-    await query(`UPDATE billing_events SET processed_at=now() WHERE stripe_event_id=$1`,[event.id]);
+    await query(`UPDATE billing_events SET processed_at=now(),error=NULL WHERE stripe_event_id=$1`,[event.id]);
   } catch(err:any) {
     await query(`UPDATE billing_events SET error=$2 WHERE stripe_event_id=$1`,[event.id,String(err?.message||err)]);
     throw err;
