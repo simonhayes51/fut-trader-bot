@@ -2,7 +2,7 @@ import { Router } from "express";
 import { client } from "./bot.js";
 import { config } from "./config.js";
 import { audit, query } from "./db.js";
-import { generateReferralCode, grantComp, handleStripeWebhook, revokeEntitlement } from "./billing.js";
+import { generateReferralCode, grantComp, handleStripeWebhook, reconcileCheckoutSession, revokeEntitlement } from "./billing.js";
 
 export const billingRouter=Router();
 const auth=(req:any,res:any,next:any)=>req.session?.user?next():res.redirect("/login");
@@ -19,9 +19,34 @@ billingRouter.post("/webhook",async(req:any,res)=>{
   }
 });
 
-billingRouter.get("/success",(_req,res)=>res.send("<h1>Payment successful</h1><p>Your Discord Premium role will sync automatically. You can close this window and return to Discord.</p>"));
-billingRouter.get("/cancelled",(_req,res)=>res.send("<h1>Checkout cancelled</h1><p>No payment was taken. You can return to Discord and try again whenever you like.</p>"));
-billingRouter.get("/return",(_req,res)=>res.send("<h1>Billing updated</h1><p>You can close this window and return to Discord.</p>"));
+billingRouter.get("/success",async(req,res)=>{
+  const sessionId=String(req.query.session_id||"");
+  let synced=false;
+  if(sessionId) {
+    try { synced=Boolean(await reconcileCheckoutSession(sessionId)); }
+    catch(err) { console.error("Checkout success reconciliation failed",err); }
+  }
+  res.render("billing-result",{
+    tone:"success",icon:"✓",badge:synced?"Premium access synced":"Payment received",
+    title:"You're in.",
+    message:synced
+      ?"Your FC27 Premium membership has been linked to Discord and your Premium role has been synced."
+      :"Your checkout completed successfully. Discord access will sync automatically in a moment.",
+    showDashboard:Boolean((req as any).session?.user)
+  });
+});
+
+billingRouter.get("/cancelled",(req,res)=>res.render("billing-result",{
+  tone:"warning",icon:"↩",badge:"No charge made",title:"Checkout cancelled",
+  message:"Nothing has been changed. You can return to Discord and subscribe whenever you're ready.",
+  showDashboard:Boolean((req as any).session?.user)
+}));
+
+billingRouter.get("/return",(req,res)=>res.render("billing-result",{
+  tone:"info",icon:"✓",badge:"Billing updated",title:"All done",
+  message:"Your billing settings have been updated. Any subscription changes will sync back to Discord automatically.",
+  showDashboard:Boolean((req as any).session?.user)
+}));
 
 billingRouter.get("/",auth,async(req:any,res)=>{
   const [plans,subs,refs,events]=await Promise.all([
