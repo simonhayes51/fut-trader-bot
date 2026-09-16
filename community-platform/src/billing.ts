@@ -16,10 +16,21 @@ export async function listPlans(guildId:string, activeOnly=false) {
   return query<BillingPlan>(`SELECT * FROM billing_plans WHERE guild_id=$1 ${activeOnly?"AND active=true":""} ORDER BY sort_order,name`,[guildId]);
 }
 
+const paidLikeStatuses=new Set(["active","trialing","past_due","unpaid","paused"]);
+
 export async function createCheckout(input:{guildId:string;discordUserId:string;planId:number;referralCode?:string}) {
   if(!stripe) throw new Error("Stripe is not configured");
   const plan=await one<BillingPlan>(`SELECT * FROM billing_plans WHERE id=$1 AND guild_id=$2 AND active=true`,[input.planId,input.guildId]);
   if(!plan) throw new Error("Plan not found");
+
+  let current=await getMemberBilling(input.guildId,input.discordUserId);
+  if(!current) {
+    try { current=await reconcileMemberBilling(input.guildId,input.discordUserId); } catch(err) { console.error("Stripe reconciliation before checkout failed",err); }
+  }
+  if(current && paidLikeStatuses.has(String(current.status))) {
+    throw new Error("You already have an active Premium subscription. Use /subscription to manage it.");
+  }
+
   const existing=await one<any>(`SELECT stripe_customer_id FROM billing_customers WHERE guild_id=$1 AND discord_user_id=$2`,[input.guildId,input.discordUserId]);
   const referral=input.referralCode ? await one<any>(`SELECT * FROM referral_codes WHERE guild_id=$1 AND lower(code)=lower($2) AND active=true`,[input.guildId,input.referralCode]) : null;
   const params:Stripe.Checkout.SessionCreateParams={
@@ -36,10 +47,10 @@ export async function createCheckout(input:{guildId:string;discordUserId:string;
     }
   };
   if(existing?.stripe_customer_id) params.customer=existing.stripe_customer_id;
-  const session=await stripe.checkout.sessions.create(params);
+  const checkout=await stripe.checkout.sessions.create(params);
   if(referral) await query(`UPDATE referral_codes SET clicks=clicks+1 WHERE id=$1`,[referral.id]);
-  await audit(input.guildId,input.discordUserId,"billing.checkout.created",{planId:plan.id,sessionId:session.id,referralCode:referral?.code});
-  return session.url!;
+  await audit(input.guildId,input.discordUserId,"billing.checkout.created",{planId:plan.id,sessionId:checkout.id,referralCode:referral?.code});
+  return checkout.url!;
 }
 
 export async function createPortal(guildId:string,discordUserId:string) {
