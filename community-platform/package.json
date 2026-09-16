@@ -2,6 +2,7 @@
   "name": "fc27-community-platform",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "description": "Fully configurable FC27 trading-community Discord bot and web dashboard",
   "main": "dist/index.js",
   "scripts": {
