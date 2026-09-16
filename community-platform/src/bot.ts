@@ -17,9 +17,26 @@ export const client = new Client({
   partials: [Partials.Channel, Partials.Message, Partials.User, Partials.GuildMember, Partials.Reaction]
 });
 
+function normalizeCommandOptions(command:any):any {
+  const clone={...command};
+  if(!Array.isArray(command?.options)) return clone;
+
+  const options=command.options.map((option:any)=>normalizeCommandOptions(option));
+  const hasSubcommands=options.some((option:any)=>option?.type===1||option?.type===2);
+
+  clone.options=hasSubcommands
+    ? options
+    : options.map((option:any,index:number)=>({option,index}))
+        .sort((a:any,b:any)=>Number(Boolean(b.option?.required))-Number(Boolean(a.option?.required))||a.index-b.index)
+        .map((entry:any)=>entry.option);
+
+  return clone;
+}
+
 export async function startBot() {
   const rest=new REST({version:"10"}).setToken(config.discordToken);
-  await rest.put(Routes.applicationGuildCommands(config.clientId,config.targetGuildId),{body:[...commandData,...billingCommandData,...featureCommandData,...ticketOpsCommandData]});
+  const commands=[...commandData,...billingCommandData,...featureCommandData,...ticketOpsCommandData].map(normalizeCommandOptions);
+  await rest.put(Routes.applicationGuildCommands(config.clientId,config.targetGuildId),{body:commands});
   client.once(Events.ClientReady, async ready => {console.log(`Discord ready as ${ready.user.tag}`);const guild=await ready.guilds.fetch(config.targetGuildId).catch(()=>null);if(guild)await query(`INSERT INTO guild_settings(guild_id,guild_name) VALUES($1,$2) ON CONFLICT(guild_id) DO UPDATE SET guild_name=$2,updated_at=now()`,[guild.id,guild.name]);});
   client.on(Events.InteractionCreate, async interaction => {try{
     if(interaction.isAutocomplete()){if(await handleBillingAutocomplete(interaction))return;if(await handleFeatureAutocomplete(interaction))return;await interaction.respond([]).catch(()=>{});return;}
