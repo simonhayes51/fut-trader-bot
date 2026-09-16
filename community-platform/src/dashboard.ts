@@ -2,7 +2,7 @@ import express from "express";
 import session from "express-session";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { PermissionFlagsBits } from "discord.js";
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, PermissionFlagsBits, TextChannel } from "discord.js";
 import { client } from "./bot.js";
 import { config } from "./config.js";
 import { audit, one, query } from "./db.js";
@@ -34,7 +34,7 @@ app.use(session({
 }));
 
 function dashboardSidebar(pathname:string) {
-  const items: Array<[string,string]>=[
+  const items:[string,string][]=[
     ["/dashboard","Overview"],["/setup","Setup"],["/members","Members"],["/analytics","Analytics"],
     ["/commands","Commands"],["/automation","Automation"],["/discord","Discord"],["/trading","Trade calls"],
     ["/tickets","Tickets"],["/social","Social feeds"],["/billing","Premium"],["/moderation","Moderation"],["/audit","Audit log"]
@@ -44,8 +44,6 @@ function dashboardSidebar(pathname:string) {
   return `<aside class="sidebar"><a class="brand" href="/dashboard"><span>FC27</span> Control</a><nav>${links}</nav><form method="post" action="/logout"><button class="ghost full">Log out</button></form></aside>`;
 }
 
-// One shared navigation + polish layer for every dashboard view.
-// This prevents individual EJS pages drifting apart as new sections are added.
 app.use((req:any,res:any,next:any)=>{
   const originalRender=res.render.bind(res);
   res.render=(view:string,options?:any,callback?:any)=>{
@@ -87,8 +85,42 @@ async function getGuildUi() {
   const guild=client.guilds.cache.get(config.targetGuildId);
   if(!guild) return {channels:[],roles:[]};
   const channels=[...guild.channels.cache.values()].filter(c=>c.isTextBased()||c.type===4).map(c=>({id:c.id,name:c.name,type:c.type})).sort((a,b)=>a.name.localeCompare(b.name));
-  const roles=[...guild.roles.cache.values()].filter(r=>r.id!==guild.id).map(r=>({id:r.id,name:r.name})).sort((a,b)=>b.name.localeCompare(a.name));
+  const botHighest=guild.members.me?.roles.highest.position ?? 0;
+  const roles=[...guild.roles.cache.values()]
+    .filter(r=>r.id!==guild.id&&!r.managed&&r.position<botHighest)
+    .map(r=>({id:r.id,name:r.name})).sort((a,b)=>b.name.localeCompare(a.name));
   return {channels,roles};
+}
+
+async function publishRoleMenus(cfg:any) {
+  const guild=client.guilds.cache.get(config.targetGuildId);
+  if(!guild) throw new Error("Bot is not connected to Discord.");
+  const channelId=String(cfg?.channelId||"");
+  if(!channelId) throw new Error("Choose a role selection channel first.");
+  const channel=await client.channels.fetch(channelId).catch(()=>null);
+  if(!channel?.isTextBased()) throw new Error("The selected role channel is not available to the bot.");
+  const me=guild.members.me;
+  if(!me) throw new Error("Bot member is not available in the server.");
+  const permissions=(channel as any).permissionsFor?.(me);
+  if(permissions && (!permissions.has(PermissionFlagsBits.ViewChannel)||!permissions.has(PermissionFlagsBits.SendMessages))) {
+    throw new Error("The bot needs View Channel and Send Messages permission in the selected role channel.");
+  }
+  const groups=Array.isArray(cfg?.groups)?cfg.groups:[];
+  if(!groups.length) throw new Error("Add at least one role group before publishing.");
+  for(const group of groups){
+    const buttons=(Array.isArray(group.roleIds)?group.roleIds:[]).map((id:string)=>{
+      const role=guild.roles.cache.get(id);
+      if(!role||role.managed||role.position>=me.roles.highest.position) return null;
+      return new ButtonBuilder().setCustomId(`role:${id}`).setLabel(role.name.slice(0,80)).setStyle(ButtonStyle.Secondary);
+    }).filter((b):b is ButtonBuilder=>Boolean(b));
+    if(!buttons.length) continue;
+    const rows:ActionRowBuilder<ButtonBuilder>[]=[];
+    for(let i=0;i<buttons.length;i+=5) rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(...buttons.slice(i,i+5)));
+    await (channel as TextChannel).send({
+      embeds:[new EmbedBuilder().setTitle(String(group.name||"Choose roles").slice(0,256)).setDescription(Number(group.maxSelect||1)===1?"Choose one role below. Click again to remove it.":"Choose any roles that apply to you. Click again to remove a role.")],
+      components:rows.slice(0,5)
+    });
+  }
 }
 
 app.get("/",(req,res)=>res.redirect(req.session.user?"/dashboard":"/login"));
@@ -144,7 +176,7 @@ app.get("/modules/:key",requireAuth,async(req,res)=>{
   const def=moduleMap.get(req.params.key);if(!def) return res.status(404).send("Unknown module");
   const row=await one<any>(`SELECT enabled,config FROM feature_settings WHERE guild_id=$1 AND feature_key=$2`,[config.targetGuildId,def.key]);
   const ui=await getGuildUi();
-  res.render("module",{user:req.session.user,def,enabled:row?.enabled??true,current:{...def.defaults,...(row?.config||{})},saved:req.query.saved==="1",...ui});
+  res.render("module",{user:req.session.user,def,enabled:row?.enabled??true,current:{...def.defaults,...(row?.config||{})},saved:req.query.saved==="1",publishError:req.query.error?String(req.query.error):"",...ui});
 });
 app.post("/modules/:key",requireAuth,async(req,res)=>{
   const def=moduleMap.get(req.params.key);if(!def) return res.status(404).send("Unknown module");
@@ -152,6 +184,15 @@ app.post("/modules/:key",requireAuth,async(req,res)=>{
   const enabled=req.body.enabled==="on";
   await query(`INSERT INTO feature_settings(guild_id,feature_key,enabled,config,updated_at) VALUES($1,$2,$3,$4::jsonb,now()) ON CONFLICT(guild_id,feature_key) DO UPDATE SET enabled=$3,config=$4::jsonb,updated_at=now()`,[config.targetGuildId,def.key,enabled,JSON.stringify(parsed)]);
   await audit(config.targetGuildId,req.session.user!.id,"feature.update",{key:def.key,enabled,config:parsed});
+  if(def.key==="role_menus"&&enabled){
+    try{
+      await publishRoleMenus(parsed);
+      await audit(config.targetGuildId,req.session.user!.id,"role_menu.publish",{channelId:parsed.channelId,groups:Array.isArray(parsed.groups)?parsed.groups.length:0});
+    }catch(err:any){
+      console.error("Role menu publish failed",err);
+      return res.redirect(`/modules/${def.key}?error=${encodeURIComponent(err?.message||"Could not publish role menu")}`);
+    }
+  }
   res.redirect(`/modules/${def.key}?saved=1`);
 });
 
