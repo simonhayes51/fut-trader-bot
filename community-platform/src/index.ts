@@ -2,13 +2,17 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { config } from "./config.js";
 import { db } from "./db.js";
-import { startBot } from "./bot.js";
+import { startBot, client } from "./bot.js";
 import { app } from "./dashboard.js";
 import { pollSocialFeeds } from "./social.js";
+import { runAutomationTick } from "./feature-suite.js";
 
+async function readSql(name:string) {
+  return fs.readFile(path.join(process.cwd(),"src",name),"utf8").catch(()=>fs.readFile(path.join(process.cwd(),"dist",name),"utf8"));
+}
 async function initSchema() {
-  const sql=await fs.readFile(path.join(process.cwd(),"src","schema.sql"),"utf8").catch(()=>fs.readFile(path.join(process.cwd(),"dist","schema.sql"),"utf8"));
-  await db.query(sql);
+  await db.query(await readSql("schema.sql"));
+  await db.query(await readSql("schema-v2.sql"));
 }
 
 async function main() {
@@ -17,5 +21,7 @@ async function main() {
   app.listen(config.port,()=>console.log(`Dashboard listening on ${config.baseUrl}`));
   setInterval(()=>pollSocialFeeds().catch(console.error),config.socialPollSeconds*1000);
   setTimeout(()=>pollSocialFeeds().catch(console.error),5000);
+  setInterval(()=>runAutomationTick(client).catch(console.error),60_000);
+  setTimeout(()=>runAutomationTick(client).catch(console.error),10_000);
 }
 main().catch(err=>{console.error(err);process.exit(1);});
