@@ -17,6 +17,9 @@ declare module "express-session" {
 const here=path.dirname(fileURLToPath(import.meta.url));
 export const app=express();
 
+// Railway terminates HTTPS at its reverse proxy. Trust the first proxy so
+// express-session can set secure cookies correctly in production.
+app.set("trust proxy",1);
 app.set("view engine","ejs");
 app.set("views",path.join(here,"..","views"));
 app.use(express.urlencoded({extended:true,limit:"1mb"}));
@@ -26,6 +29,7 @@ app.use(session({
   secret:config.sessionSecret,
   resave:false,
   saveUninitialized:false,
+  proxy:true,
   cookie:{httpOnly:true,sameSite:"lax",secure:process.env.NODE_ENV==="production",maxAge:7*24*60*60*1000}
 }));
 app.use("/billing",billingRouter);
@@ -63,7 +67,10 @@ app.get("/auth/discord",(req,res)=>{
   req.session.oauthState=state;
   const url=new URL("https://discord.com/oauth2/authorize");
   url.searchParams.set("client_id",config.clientId);url.searchParams.set("redirect_uri",config.redirectUri);url.searchParams.set("response_type","code");url.searchParams.set("scope","identify guilds");url.searchParams.set("state",state);
-  res.redirect(url.toString());
+  req.session.save(err=>{
+    if(err) return res.status(500).send("Unable to start Discord login.");
+    res.redirect(url.toString());
+  });
 });
 
 app.get("/auth/discord/callback",async(req,res)=>{
