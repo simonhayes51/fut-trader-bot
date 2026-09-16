@@ -1,12 +1,12 @@
 <!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Dashboard • FC27 Control</title><link rel="stylesheet" href="/style.css"></head><body>
 <aside class="sidebar">
   <a class="brand" href="/dashboard"><span>FC27</span> Control</a>
-  <nav><a class="active" href="/dashboard">Overview</a><a href="/trading">Trade calls</a><a href="/tickets">Tickets</a><a href="/social">Social feeds</a><a href="/billing">Premium & billing</a><a href="/moderation">Moderation</a><a href="/audit">Audit log</a></nav>
+  <nav><a class="active" href="/dashboard">Overview</a><a href="/setup">Setup wizard</a><a href="/members">Members</a><a href="/analytics">Analytics</a><a href="/commands">Commands</a><a href="/automation">Automation</a><a href="/trading">Trade calls</a><a href="/tickets">Tickets</a><a href="/social">Social feeds</a><a href="/billing">Premium & billing</a><a href="/moderation">Moderation</a><a href="/audit">Audit log</a></nav>
   <div class="sidebar-user"><strong><%= user.username %></strong><small>Administrator</small></div>
   <form method="post" action="/logout"><button class="ghost full">Log out</button></form>
 </aside>
 <main class="content">
-  <header><div><div class="eyebrow">SERVER CONTROL CENTRE</div><h1><%= guild?.name || 'FC27 Server' %></h1><p class="muted">Configure the bot without touching code or environment variables.</p></div><div class="status"><span class="dot"></span> Bot online</div></header>
+  <header><div><div class="eyebrow">SERVER CONTROL CENTRE</div><h1><%= guild?.name || 'FC27 Server' %></h1><p class="muted">Run the whole community from here. No Discord IDs, JSON or code.</p></div><div class="status"><span class="dot"></span> Bot online</div></header>
   <section class="stats">
     <div class="stat"><span>Tracked members</span><strong><%= stats.members_tracked || 0 %></strong></div>
     <div class="stat"><span>Premium access</span><strong><%= stats.premium_members || 0 %></strong></div>
@@ -15,6 +15,14 @@
     <div class="stat"><span>Active feeds</span><strong><%= stats.active_feeds || 0 %></strong></div>
     <div class="stat"><span>Warnings</span><strong><%= stats.warnings || 0 %></strong></div>
   </section>
+  <section class="section"><div class="section-head"><h2>Control centre</h2></div><div class="module-grid">
+    <a class="module-card" href="/setup"><div class="module-top"><span class="pill on">Start here</span><span class="arrow">→</span></div><h3>Setup & health</h3><p>Quick setup, permission checks, test messages and role-menu publishing.</p></a>
+    <a class="module-card" href="/members"><div class="module-top"><span class="pill on">Live</span><span class="arrow">→</span></div><h3>Member centre</h3><p>Search members and see trading, Premium, reputation, tickets, warnings and achievements together.</p></a>
+    <a class="module-card" href="/analytics"><div class="module-top"><span class="pill on">Live</span><span class="arrow">→</span></div><h3>Analytics</h3><p>Community activity, growth, helpful members and tracked trading profit.</p></a>
+    <a class="module-card" href="/commands"><div class="module-top"><span class="pill on">Live</span><span class="arrow">→</span></div><h3>Command manager</h3><p>Enable commands, make them Premium-only and restrict them by role or channel.</p></a>
+    <a class="module-card" href="/automation"><div class="module-top"><span class="pill on">Live</span><span class="arrow">→</span></div><h3>Automation</h3><p>Create scheduled posts without cron syntax and review giveaways.</p></a>
+    <a class="module-card" href="/billing"><div class="module-top"><span class="pill on">Live</span><span class="arrow">→</span></div><h3>Premium & referrals</h3><p>Plans, trials, complimentary access, referrals and Stripe events.</p></a>
+  </div></section>
   <% for (const category of ['Billing','Community','Trading','Moderation','Automation','Social']) { %>
   <section class="section">
     <div class="section-head"><h2><%= category %></h2><% if(category==='Billing'){ %><a class="ghost" href="/billing">Open billing control →</a><% } %></div>
