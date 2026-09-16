@@ -51,6 +51,11 @@ CREATE TABLE IF NOT EXISTS billing_events (
   id BIGSERIAL PRIMARY KEY,stripe_event_id TEXT NOT NULL UNIQUE,event_type TEXT NOT NULL,payload JSONB NOT NULL DEFAULT '{}'::jsonb,
   processed_at TIMESTAMPTZ,error TEXT,created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE TABLE IF NOT EXISTS user_sessions (
+  sid TEXT PRIMARY KEY,
+  sess JSONB NOT NULL,
+  expire TIMESTAMPTZ NOT NULL
+);
 
 CREATE INDEX IF NOT EXISTS idx_audit_log_guild_created ON audit_log(guild_id,created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_rep_guild_receiver ON reputation_events(guild_id,receiver_id);
@@ -59,3 +64,4 @@ CREATE INDEX IF NOT EXISTS idx_social_enabled ON social_feeds(guild_id,enabled);
 CREATE INDEX IF NOT EXISTS idx_billing_sub_guild_user ON billing_subscriptions(guild_id,discord_user_id,updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_entitlements_active ON entitlements(guild_id,discord_user_id,active);
 CREATE INDEX IF NOT EXISTS idx_billing_events_created ON billing_events(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_sessions_expire ON user_sessions(expire);
