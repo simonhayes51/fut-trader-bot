@@ -1,0 +1,14 @@
+<% function nav(active) { %>
+<aside class="sidebar">
+  <a class="brand" href="/dashboard"><span>FC27</span> Control</a>
+  <nav>
+    <a class="<%= active==='dashboard'?'active':'' %>" href="/dashboard">Overview</a>
+    <a class="<%= active==='trading'?'active':'' %>" href="/trading">Trade calls</a>
+    <a class="<%= active==='tickets'?'active':'' %>" href="/tickets">Tickets</a>
+    <a class="<%= active==='social'?'active':'' %>" href="/social">Social feeds</a>
+    <a class="<%= active==='moderation'?'active':'' %>" href="/moderation">Moderation</a>
+    <a class="<%= active==='audit'?'active':'' %>" href="/audit">Audit log</a>
+  </nav>
+  <form method="post" action="/logout"><button class="ghost full">Log out</button></form>
+</aside>
+<% } %>

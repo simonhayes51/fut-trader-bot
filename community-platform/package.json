@@ -1,0 +1,34 @@
+{
+  "name": "fc27-community-platform",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Fully configurable FC27 trading-community Discord bot and web dashboard",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "db:init": "tsx src/init-db.ts"
+  },
+  "dependencies": {
+    "discord.js": "^14.22.1",
+    "ejs": "^3.1.10",
+    "express": "^5.1.0",
+    "express-session": "^1.18.2",
+    "fast-xml-parser": "^5.2.5",
+    "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "@types/ejs": "^3.1.5",
+    "@types/express": "^5.0.3",
+    "@types/express-session": "^1.18.2",
+    "@types/node": "^24.3.0",
+    "@types/pg": "^8.15.5",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

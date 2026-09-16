@@ -1,0 +1,27 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Social feeds • FC27 Control</title><link rel="stylesheet" href="/style.css"></head><body>
+<aside class="sidebar"><a class="brand" href="/dashboard"><span>FC27</span> Control</a><nav><a href="/dashboard">Overview</a><a href="/trading">Trade calls</a><a href="/tickets">Tickets</a><a class="active" href="/social">Social feeds</a><a href="/moderation">Moderation</a><a href="/audit">Audit log</a></nav></aside>
+<main class="content">
+<header><div><div class="eyebrow">TWEETSHIFT-STYLE AUTOMATION</div><h1>Social feeds</h1><p class="muted">Route RSS, Reddit, YouTube feeds, X accounts or your own webhooks directly into selected Discord channels.</p></div></header>
+<section class="panel"><h2>Add feed</h2>
+<form method="post" class="form-grid">
+<label><span>Name</span><input name="name" required placeholder="FUT Sheriff"></label>
+<label><span>Provider</span><select name="provider"><option value="rss">RSS / Atom</option><option value="reddit">Reddit RSS</option><option value="youtube">YouTube RSS</option><option value="x">X / Twitter (official API)</option><option value="webhook">Generic webhook</option></select></label>
+<label class="wide"><span>Source</span><input name="source" placeholder="RSS URL, @username, or label for webhook"></label>
+<label><span>Discord channel</span><select name="channelId" required><% channels.filter(c=>c.type!==4).forEach(c=>{ %><option value="<%= c.id %>">#<%= c.name %></option><% }) %></select></label>
+<label><span>Mention role</span><select name="mentionRoleId"><option value="">None</option><% roles.forEach(r=>{ %><option value="<%= r.id %>">@<%= r.name %></option><% }) %></select></label>
+<label><span>Include keywords</span><input name="includeKeywords" placeholder="sbc, evolution, promo"></label>
+<label><span>Exclude keywords</span><input name="excludeKeywords" placeholder="giveaway, ad"></label>
+<div class="wide"><button class="button" type="submit">Create feed</button></div>
+</form></section>
+<section class="section"><div class="section-head"><h2>Configured feeds</h2><span class="muted"><%= feeds.length %> total</span></div>
+<div class="table-wrap"><table><thead><tr><th>Name</th><th>Provider</th><th>Destination</th><th>Filters</th><th>Status</th><th></th></tr></thead><tbody>
+<% feeds.forEach(f=>{ %><tr>
+<td><strong><%= f.name %></strong><% if(f.provider==='webhook'){ %><small class="block"><code><%= baseUrl %>/hooks/social/<%= f.secret_key %></code></small><% } else { %><small class="block"><%= f.source %></small><% } %></td>
+<td><span class="pill"><%= f.provider.toUpperCase() %></span></td><td><code><%= f.channel_id %></code></td>
+<td><small>+ <%= (f.include_keywords||[]).join(', ')||'any' %><br>- <%= (f.exclude_keywords||[]).join(', ')||'none' %></small></td>
+<td><span class="pill <%= f.enabled?'on':'off' %>"><%= f.enabled?'Enabled':'Disabled' %></span></td>
+<td class="actions"><form method="post" action="/social/<%= f.id %>/toggle"><button class="ghost"><%= f.enabled?'Pause':'Enable' %></button></form><form method="post" action="/social/<%= f.id %>/delete" onsubmit="return confirm('Delete this feed?')"><button class="danger">Delete</button></form></td>
+</tr><% }) %>
+<% if(!feeds.length){ %><tr><td colspan="6" class="empty">No feeds configured yet.</td></tr><% } %>
+</tbody></table></div></section>
+</main></body></html>
