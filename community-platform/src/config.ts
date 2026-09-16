@@ -1,3 +1,7 @@
+function stripTrailingSlash(value: string): string {
+  return value.replace(/\/+$/, "");
+}
+
 export const config = {
   discordToken: required("DISCORD_TOKEN"),
   clientId: required("DISCORD_CLIENT_ID"),
@@ -7,7 +11,7 @@ export const config = {
   databaseUrl: required("DATABASE_URL"),
   sessionSecret: required("SESSION_SECRET"),
   port: Number(process.env.PORT || 3000),
-  baseUrl: process.env.BASE_URL || "http://localhost:3000",
+  baseUrl: stripTrailingSlash(process.env.BASE_URL || "http://localhost:3000"),
   adminIds: new Set((process.env.DASHBOARD_ADMIN_IDS || "").split(",").map(v => v.trim()).filter(Boolean)),
   xBearerToken: process.env.X_BEARER_TOKEN || "",
   socialPollSeconds: Math.max(60, Number(process.env.SOCIAL_POLL_SECONDS || 120)),
