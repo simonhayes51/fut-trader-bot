@@ -32,6 +32,39 @@ app.use(session({
   proxy:true,
   cookie:{httpOnly:true,sameSite:"lax",secure:process.env.NODE_ENV==="production",maxAge:7*24*60*60*1000}
 }));
+
+function dashboardSidebar(pathname:string) {
+  const items=[
+    ["/dashboard","Overview"],["/setup","Setup"],["/members","Members"],["/analytics","Analytics"],
+    ["/commands","Commands"],["/automation","Automation"],["/discord","Discord"],["/trading","Trade calls"],
+    ["/tickets","Tickets"],["/social","Social feeds"],["/billing","Premium"],["/moderation","Moderation"],["/audit","Audit log"]
+  ];
+  const activeFor=(href:string)=>href==="/dashboard" ? pathname==="/dashboard" || pathname.startsWith("/modules/") : pathname===href || pathname.startsWith(`${href}/`);
+  const links=items.map(([href,label])=>`<a class="${activeFor(href)?"active":""}" href="${href}">${label}</a>`).join("");
+  return `<aside class="sidebar"><a class="brand" href="/dashboard"><span>FC27</span> Control</a><nav>${links}</nav><form method="post" action="/logout"><button class="ghost full">Log out</button></form></aside>`;
+}
+
+// One shared navigation + polish layer for every dashboard view.
+// This prevents individual EJS pages drifting apart as new sections are added.
+app.use((req:any,res:any,next:any)=>{
+  const originalRender=res.render.bind(res);
+  res.render=(view:string,options?:any,callback?:any)=>{
+    if(typeof options==="function"){callback=options;options={};}
+    return req.app.render(view,{...res.locals,...(options||{})},(err:any,html:string)=>{
+      if(err){if(callback)return callback(err);return next(err);}
+      let output=html;
+      if(output.includes('<aside class="sidebar">')){
+        output=output.replace(/<aside class="sidebar">[\s\S]*?<\/aside>/,dashboardSidebar(req.path));
+        if(!output.includes('/polish.css')) output=output.replace("</head>",'<link rel="stylesheet" href="/polish.css"></head>');
+      }
+      if(callback)return callback(null,output);
+      res.send(output);
+    });
+  };
+  void originalRender;
+  next();
+});
+
 app.use("/billing",billingRouter);
 
 async function discordToken(code:string) {
