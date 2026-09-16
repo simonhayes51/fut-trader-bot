@@ -3,17 +3,83 @@
 <main class="content narrow">
   <a class="back" href="/dashboard">← Back to modules</a>
   <header><div><div class="eyebrow"><%= def.category.toUpperCase() %></div><h1><%= def.name %></h1><p class="muted"><%= def.description %></p></div></header>
-  <% if (typeof saved !== 'undefined') { %><div class="notice">Saved.</div><% } %>
-  <form method="post" class="panel">
-    <label class="toggle-row"><div><strong>Module enabled</strong><small>Disable this to stop the feature without deleting its settings.</small></div><input type="checkbox" name="enabled" <%= enabled?'checked':'' %>></label>
+  <% if (typeof saved !== 'undefined') { %><div class="notice">Saved. Your changes are live.</div><% } %>
+  <%
+    const niceName=(key)=>key
+      .replace(/Id$/,'').replace(/Ids$/,'s')
+      .replace(/([a-z])([A-Z])/g,'$1 $2')
+      .replace(/^./,s=>s.toUpperCase())
+      .replace('Dm ','DM ').replace('Xp','XP').replace('Wl ','W/L ');
+    const help={
+      channelId:'Where the bot should post this feature.', autoRoleId:'Role automatically given to new members.',
+      message:'The message new members will receive. You can use {user} and {server}.', dmWelcome:'Also send the welcome message privately.',
+      dailyLimit:'Maximum times one member can use this each day.', minAccountAgeDays:'Minimum Discord account age required.',
+      leaderboardSize:'How many members to show on the leaderboard.', messageXp:'XP earned for an eligible message.', helpfulXp:'Bonus XP for helpful activity.',
+      cooldownSeconds:'How long before the same member can earn XP again.', taxPercent:'EA transfer-market tax percentage.', ephemeralCalculators:'Only show calculator results to the person using the command.',
+      autoThread:'Automatically create a discussion thread.', requireReason:'Require traders to explain the reason for a call.', voteMinutes:'How long voting stays open.', cooldownMinutes:'How long members wait before using this again.',
+      createThread:'Create a discussion thread automatically.', categoryId:'Discord category where ticket channels should be created.', logChannelId:'Where staff logs should be sent.',
+      minAccountAgeHours:'Flag accounts newer than this.', joinsPerMinuteAlert:'Alert staff if this many people join within one minute.',
+      blockInvites:'Delete unauthorised Discord invite links.', maxMentions:'Maximum mentions allowed in one message.', duplicateWindowSeconds:'Time window used to detect repeated messages.', duplicateLimit:'How many duplicate messages triggers action.',
+      timeoutMinutes:'Timeout length when timeout is selected.', compactEmbeds:'Use smaller social-feed posts.', gracePastDue:'Keep Premium temporarily during a failed-payment grace period.', removeRoleOnCancel:'Remove Premium role when access ends.', allowPromotionCodes:'Allow Stripe discount codes at checkout.', referralsEnabled:'Allow referral codes.', defaultTrialDays:'Default free-trial length for new plans.'
+    };
+    const isComplex=(v)=>Array.isArray(v)&&v.some(x=>x&&typeof x==='object');
+    const channelSingle=(key)=>/(channelId|logChannelId|alertChannelId|categoryId)$/i.test(key);
+    const roleSingle=(key)=>/roleId$/i.test(key)&&!/roleIds$/i.test(key);
+    const channelMulti=(key)=>/channelIds$/i.test(key);
+    const roleMulti=(key)=>/roleIds$/i.test(key);
+  %>
+  <form method="post" class="panel setup-panel" id="module-form">
+    <label class="toggle-row module-master"><div><strong>Enable <%= def.name %></strong><small>Turn the whole feature on or off. Your settings are kept.</small></div><input type="checkbox" name="enabled" <%= enabled?'checked':'' %>></label>
     <hr>
-    <label><span>Configuration</span><small>All settings are live after saving. Channel and role IDs can be copied from the reference lists below.</small>
-      <textarea name="config" rows="22"><%= JSON.stringify(current,null,2) %></textarea>
-    </label>
-    <div class="form-actions"><button class="button" type="submit">Save configuration</button></div>
+    <div class="settings-title"><div><h2>Settings</h2><p class="muted">Choose what you want. No IDs or code needed.</p></div></div>
+    <div class="settings-grid">
+    <% Object.entries(current).forEach(([key,value])=>{ %>
+      <% if (isComplex(value)) { %>
+        <details class="advanced-setting wide"><summary><strong><%= niceName(key) %></strong><span>Advanced</span></summary><div class="advanced-body"><p class="muted">This feature uses structured rules. Only edit this if you need custom mappings.</p><textarea class="config-input" data-key="<%= key %>" data-type="json" rows="8"><%= JSON.stringify(value,null,2) %></textarea></div></details>
+      <% } else if (typeof value === 'boolean') { %>
+        <label class="setting-card toggle-setting"><div><strong><%= niceName(key) %></strong><small><%= help[key]||'Turn this option on or off.' %></small></div><input class="config-input" data-key="<%= key %>" data-type="boolean" type="checkbox" <%= value?'checked':'' %>></label>
+      <% } else if (typeof value === 'number') { %>
+        <label class="setting-field"><span><%= niceName(key) %></span><small><%= help[key]||'Enter the value you want to use.' %></small><input class="config-input" data-key="<%= key %>" data-type="number" type="number" value="<%= value %>" min="0"></label>
+      <% } else if (channelSingle(key)) { %>
+        <label class="setting-field"><span><%= niceName(key) %></span><small><%= help[key]||'Choose a Discord channel.' %></small><select class="config-input" data-key="<%= key %>" data-type="string"><option value="">Not set</option><% channels.forEach(c=>{ %><option value="<%= c.id %>" <%= String(value)===c.id?'selected':'' %>><%= key==='categoryId'?'':'# ' %><%= c.name %></option><% }) %></select></label>
+      <% } else if (roleSingle(key)) { %>
+        <label class="setting-field"><span><%= niceName(key) %></span><small><%= help[key]||'Choose a Discord role.' %></small><select class="config-input" data-key="<%= key %>" data-type="string"><option value="">Not set</option><% roles.forEach(r=>{ %><option value="<%= r.id %>" <%= String(value)===r.id?'selected':'' %>>@<%= r.name %></option><% }) %></select></label>
+      <% } else if (channelMulti(key)) { %>
+        <label class="setting-field wide"><span><%= niceName(key) %></span><small>Select all channels that apply. Hold Ctrl/Cmd to select more than one.</small><select class="config-input multi-select" data-key="<%= key %>" data-type="array-select" multiple><% channels.forEach(c=>{ %><option value="<%= c.id %>" <%= Array.isArray(value)&&value.includes(c.id)?'selected':'' %>># <%= c.name %></option><% }) %></select></label>
+      <% } else if (roleMulti(key)) { %>
+        <label class="setting-field wide"><span><%= niceName(key) %></span><small>Select all roles that apply. Hold Ctrl/Cmd to select more than one.</small><select class="config-input multi-select" data-key="<%= key %>" data-type="array-select" multiple><% roles.forEach(r=>{ %><option value="<%= r.id %>" <%= Array.isArray(value)&&value.includes(r.id)?'selected':'' %>>@<%= r.name %></option><% }) %></select></label>
+      <% } else if (Array.isArray(value)) { %>
+        <label class="setting-field wide"><span><%= niceName(key) %></span><small>Add one item per line.</small><textarea class="config-input list-input" data-key="<%= key %>" data-type="array-lines" rows="5"><%= value.join('\n') %></textarea></label>
+      <% } else if (key==='action') { %>
+        <label class="setting-field"><span>What should happen?</span><small>Choose the automatic moderation action.</small><select class="config-input" data-key="<%= key %>" data-type="string"><option value="delete" <%= value==='delete'?'selected':'' %>>Delete the message</option><option value="timeout" <%= value==='timeout'?'selected':'' %>>Delete + timeout member</option></select></label>
+      <% } else if (key==='message' || String(value).length>80) { %>
+        <label class="setting-field wide"><span><%= niceName(key) %></span><small><%= help[key]||'Write the text the bot should use.' %></small><textarea class="config-input" data-key="<%= key %>" data-type="string" rows="4"><%= value %></textarea></label>
+      <% } else { %>
+        <label class="setting-field"><span><%= niceName(key) %></span><small><%= help[key]||'Set this option.' %></small><input class="config-input" data-key="<%= key %>" data-type="string" type="text" value="<%= value %>"></label>
+      <% } %>
+    <% }) %>
+    </div>
+    <textarea name="config" id="config-output" hidden></textarea>
+    <div class="form-actions sticky-save"><button class="button" type="submit">Save changes</button><span class="muted">Changes take effect immediately.</span></div>
   </form>
-  <div class="two-col">
-    <section class="panel"><h3>Channels</h3><div class="reference"><% channels.forEach(c=>{ %><div><span># <%= c.name %></span><code><%= c.id %></code></div><% }) %></div></section>
-    <section class="panel"><h3>Roles</h3><div class="reference"><% roles.forEach(r=>{ %><div><span>@<%= r.name %></span><code><%= r.id %></code></div><% }) %></div></section>
-  </div>
-</main></body></html>
+</main>
+<script>
+const form=document.getElementById('module-form');
+form.addEventListener('submit',e=>{
+  const out={};
+  try {
+    document.querySelectorAll('.config-input').forEach(el=>{
+      const key=el.dataset.key,type=el.dataset.type;
+      if(type==='boolean') out[key]=el.checked;
+      else if(type==='number') out[key]=Number(el.value||0);
+      else if(type==='array-select') out[key]=Array.from(el.selectedOptions).map(o=>o.value);
+      else if(type==='array-lines') out[key]=el.value.split(/\n|,/).map(v=>v.trim()).filter(Boolean);
+      else if(type==='json') out[key]=JSON.parse(el.value||'[]');
+      else out[key]=el.value;
+    });
+    document.getElementById('config-output').value=JSON.stringify(out);
+  } catch(err) {
+    e.preventDefault(); alert('One of the Advanced settings contains invalid data. Please check it and try again.');
+  }
+});
+</script></body></html>
