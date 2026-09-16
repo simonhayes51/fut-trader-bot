@@ -3,7 +3,7 @@ import {
 } from "discord.js";
 import { config } from "./config.js";
 import { commandData, handleCommand } from "./commands.js";
-import { billingCommandData, handleBillingCommand } from "./billing-commands.js";
+import { billingCommandData, handleBillingAutocomplete, handleBillingCommand } from "./billing-commands.js";
 import { handleJoin, handleMessage } from "./automod.js";
 import { getFeature, query } from "./db.js";
 
@@ -29,6 +29,17 @@ export async function startBot() {
   });
 
   client.on(Events.InteractionCreate, async interaction => {
+    if(interaction.isAutocomplete()) {
+      try {
+        const handled=await handleBillingAutocomplete(interaction);
+        if(!handled) await interaction.respond([]).catch(()=>{});
+      } catch(err) {
+        console.error("Autocomplete error",err);
+        await interaction.respond([]).catch(()=>{});
+      }
+      return;
+    }
+
     if(interaction.isChatInputCommand()) {
       try {
         const handled=await handleBillingCommand(client,interaction);
