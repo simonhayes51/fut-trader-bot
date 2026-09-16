@@ -3,7 +3,7 @@
 <main class="content narrow">
   <a class="back" href="/dashboard">← Overview</a>
   <header><div><div class="eyebrow"><%= def.category.toUpperCase() %></div><h1><%= def.name %></h1><p class="muted page-summary"><%= def.description %></p></div></header>
-  <% if (typeof saved !== 'undefined') { %><div class="notice">✓ Saved</div><% } %>
+  <% if (typeof saved !== 'undefined') { %><div class="notice">✓ <%= def.key==='role_menus' ? 'Saved & published to Discord' : 'Saved' %></div><% } %>
 
   <form method="post" class="panel setup-panel" id="module-form">
     <label class="toggle-row module-master"><div><strong>Enabled</strong><small>Pause this feature without losing its settings.</small></div><input type="checkbox" name="enabled" <%= enabled?'checked':'' %>></label>
@@ -40,7 +40,7 @@
       <% }) %>
     </div>
     <textarea name="config" id="config-output" hidden></textarea>
-    <div class="form-actions sticky-save"><button class="button" type="submit">Save</button></div>
+    <div class="form-actions sticky-save"><button class="button" id="save-button" type="submit"><%= def.key==='role_menus' ? 'Save & publish' : 'Save' %></button></div>
   </form>
 </main>
 <template id="role-group-template"><div class="repeater-row role-group-row"><div class="row-head"><strong>New group</strong><button type="button" class="danger mini remove-row">Remove</button></div><div class="form-grid"><label>Name<input class="rg-name" placeholder="Platform"></label><label>Selection<select class="rg-max"><option value="1">One role</option><option value="99">Multiple roles</option></select></label></div><div class="check-picker"><% roles.forEach(r=>{ %><label class="check-option"><input class="rg-role" type="checkbox" value="<%= r.id %>"><span>@<%= r.name %></span></label><% }) %></div></div></template>
@@ -48,5 +48,10 @@
 <script>
 function bindRemove(root=document){root.querySelectorAll('.remove-row').forEach(b=>{if(b.dataset.bound)return;b.dataset.bound='1';b.addEventListener('click',()=>b.closest('.repeater-row').remove())})}
 bindRemove();const addRoleGroup=document.getElementById('add-role-group');if(addRoleGroup)addRoleGroup.addEventListener('click',()=>{const host=document.getElementById('role-groups');host.append(document.getElementById('role-group-template').content.cloneNode(true));bindRemove(host)});const addReward=document.getElementById('add-reward');if(addReward)addReward.addEventListener('click',()=>{const host=document.getElementById('reward-rows');host.append(document.getElementById('reward-template').content.cloneNode(true));bindRemove(host)});
-document.getElementById('module-form').addEventListener('submit',()=>{const out={};document.querySelectorAll('.config-input').forEach(el=>{const key=el.dataset.key,type=el.dataset.type;if(type==='boolean')out[key]=el.checked;else if(type==='number')out[key]=Number(el.value||0);else if(type==='array-lines')out[key]=el.value.split(/\n/).map(v=>v.trim()).filter(Boolean);else if(type==='checkbox-array')out[key]=Array.from(el.querySelectorAll('input:checked')).map(x=>x.value);else if(type==='role-groups')out[key]=Array.from(el.querySelectorAll('.role-group-row')).map(row=>({name:row.querySelector('.rg-name').value.trim(),maxSelect:Number(row.querySelector('.rg-max').value),roleIds:Array.from(row.querySelectorAll('.rg-role:checked')).map(x=>x.value)})).filter(g=>g.name&&g.roleIds.length);else if(type==='rewards')out[key]=Array.from(el.querySelectorAll('.reward-row')).map(row=>({xp:Number(row.querySelector('.reward-xp').value||0),roleId:row.querySelector('.reward-role').value})).filter(r=>r.roleId);else out[key]=el.value;});document.getElementById('config-output').value=JSON.stringify(out);});
+const form=document.getElementById('module-form');
+function serializeConfig(){const out={};document.querySelectorAll('.config-input').forEach(el=>{const key=el.dataset.key,type=el.dataset.type;if(type==='boolean')out[key]=el.checked;else if(type==='number')out[key]=Number(el.value||0);else if(type==='array-lines')out[key]=el.value.split(/\n/).map(v=>v.trim()).filter(Boolean);else if(type==='checkbox-array')out[key]=Array.from(el.querySelectorAll('input:checked')).map(x=>x.value);else if(type==='role-groups')out[key]=Array.from(el.querySelectorAll('.role-group-row')).map(row=>({name:row.querySelector('.rg-name').value.trim(),maxSelect:Number(row.querySelector('.rg-max').value),roleIds:Array.from(row.querySelectorAll('.rg-role:checked')).map(x=>x.value)})).filter(g=>g.name&&g.roleIds.length);else if(type==='rewards')out[key]=Array.from(el.querySelectorAll('.reward-row')).map(row=>({xp:Number(row.querySelector('.reward-xp').value||0),roleId:row.querySelector('.reward-role').value})).filter(r=>r.roleId);else out[key]=el.value;});document.getElementById('config-output').value=JSON.stringify(out);}
+form.addEventListener('submit',serializeConfig);
+<% if(def.key==='role_menus'){ %>
+form.addEventListener('submit',async e=>{e.preventDefault();const button=document.getElementById('save-button');button.disabled=true;button.textContent='Publishing…';try{const data=new URLSearchParams();for(const [k,v] of new FormData(form).entries())data.append(k,String(v));const saved=await fetch(window.location.pathname,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:data.toString(),redirect:'follow'});if(!saved.ok)throw new Error('Could not save role settings');const published=await fetch('/setup/publish-roles',{method:'POST',redirect:'follow'});if(!published.ok)throw new Error('Could not publish role menu');window.location.href='/modules/role_menus?saved=1';}catch(err){button.disabled=false;button.textContent='Save & publish';alert(err.message||'Could not publish the role menu.');}});
+<% } %>
 </script></body></html>
