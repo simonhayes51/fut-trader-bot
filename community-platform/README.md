@@ -1,4 +1,4 @@
-# FC27 Community Platform
+# EAFC.Live Community Platform
 
 A standalone Discord community bot + web control panel for an FC27 trading server. It is deliberately separate from any EAFC.Live product bot.
 
