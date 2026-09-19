@@ -72,20 +72,45 @@ async function upsertCustomer(guildId:string,userId:string,customerId:string) {
 
 function entitlementActive(status:string) { return ["active","trialing","past_due","comped","gifted"].includes(status); }
 
-export async function syncEntitlement(guildId:string,userId:string,planId:number,status:string,source="stripe",expiresAt?:Date|null) {
+export async function recalculateEntitlement(guildId:string,userId:string,planId:number) {
   const plan=await one<BillingPlan>(`SELECT * FROM billing_plans WHERE id=$1 AND guild_id=$2`,[planId,guildId]);
   if(!plan) return;
-  const active=entitlementActive(status) && (!expiresAt || expiresAt.getTime()>Date.now());
+  await query(`UPDATE entitlement_grants SET active=false,updated_at=now() WHERE guild_id=$1 AND discord_user_id=$2 AND entitlement_key=$3 AND active=true AND expires_at IS NOT NULL AND expires_at<=now()`,[guildId,userId,`plan:${plan.slug}`]);
+  const grants=await query<any>(`SELECT * FROM entitlement_grants WHERE guild_id=$1 AND discord_user_id=$2 AND entitlement_key=$3 AND active=true AND (expires_at IS NULL OR expires_at>now())`,[guildId,userId,`plan:${plan.slug}`]);
+  const active=grants.length>0;
+  const permanent=grants.some(g=>g.expires_at===null);
+  const expiresAt=permanent?null:(grants.length?new Date(Math.max(...grants.map(g=>new Date(g.expires_at).getTime()))):new Date());
   await query(`INSERT INTO entitlements(guild_id,discord_user_id,entitlement_key,source,source_ref,active,expires_at,updated_at)
+    VALUES($1,$2,$3,'aggregate',$4,$5,$6,now())
+    ON CONFLICT(guild_id,discord_user_id,entitlement_key) DO UPDATE SET source='aggregate',source_ref=$4,active=$5,expires_at=$6,updated_at=now()`,
+    [guildId,userId,`plan:${plan.slug}`,String(planId),active,expiresAt]);
+  const guild=client.guilds.cache.get(guildId);if(!guild||!plan.role_id)return;
+  const member=await guild.members.fetch(userId).catch(()=>null);if(!member)return;
+  if(active&&!member.roles.cache.has(plan.role_id))await member.roles.add(plan.role_id,"EAFC.Live Premium entitlement active").catch(console.error);
+  if(!active&&member.roles.cache.has(plan.role_id))await member.roles.remove(plan.role_id,"EAFC.Live Premium entitlement expired").catch(console.error);
+}
+
+export async function syncEntitlement(guildId:string,userId:string,planId:number,status:string,source="stripe",expiresAt?:Date|null,sourceRef?:string) {
+  const plan=await one<BillingPlan>(`SELECT * FROM billing_plans WHERE id=$1 AND guild_id=$2`,[planId,guildId]);
+  if(!plan) return;
+  const active=entitlementActive(status)&&(!expiresAt||expiresAt.getTime()>Date.now());
+  const ref=sourceRef||String(planId);
+  await query(`INSERT INTO entitlement_grants(guild_id,discord_user_id,entitlement_key,source,source_ref,active,expires_at,updated_at)
     VALUES($1,$2,$3,$4,$5,$6,$7,now())
-    ON CONFLICT(guild_id,discord_user_id,entitlement_key) DO UPDATE SET source=$4,source_ref=$5,active=$6,expires_at=$7,updated_at=now()`,
-    [guildId,userId,`plan:${plan.slug}`,source,String(planId),active,expiresAt||null]);
-  const guild=client.guilds.cache.get(guildId);
-  if(!guild||!plan.role_id) return;
-  const member=await guild.members.fetch(userId).catch(()=>null);
-  if(!member) return;
-  if(active && !member.roles.cache.has(plan.role_id)) await member.roles.add(plan.role_id,"Premium entitlement active").catch(console.error);
-  if(!active && member.roles.cache.has(plan.role_id)) await member.roles.remove(plan.role_id,"Premium entitlement inactive").catch(console.error);
+    ON CONFLICT(guild_id,discord_user_id,entitlement_key,source,source_ref)
+    DO UPDATE SET active=$6,expires_at=$7,updated_at=now()`,
+    [guildId,userId,`plan:${plan.slug}`,source,ref,active,expiresAt||null]);
+  await recalculateEntitlement(guildId,userId,planId);
+}
+
+export async function refreshExpiredEntitlements() {
+  const expired=await query<any>(`UPDATE entitlement_grants SET active=false,updated_at=now() WHERE active=true AND expires_at IS NOT NULL AND expires_at<=now() RETURNING guild_id,discord_user_id,entitlement_key`);
+  const seen=new Set<string>();
+  for(const grant of expired){
+    const key=`${grant.guild_id}:${grant.discord_user_id}:${grant.entitlement_key}`;if(seen.has(key))continue;seen.add(key);
+    const plan=await one<BillingPlan>(`SELECT * FROM billing_plans WHERE guild_id=$1 AND ('plan:'||slug)=$2`,[grant.guild_id,grant.entitlement_key]);
+    if(plan)await recalculateEntitlement(grant.guild_id,grant.discord_user_id,plan.id);
+  }
 }
 
 export async function processSubscription(sub:Stripe.Subscription) {
@@ -101,7 +126,7 @@ export async function processSubscription(sub:Stripe.Subscription) {
     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,now())
     ON CONFLICT(stripe_subscription_id) DO UPDATE SET plan_id=$3,status=$6,current_period_end=$7,cancel_at_period_end=$8,referral_code=$9,updated_at=now()`,
     [guildId,userId,planId,sub.id,customerId,sub.status,periodEnd,sub.cancel_at_period_end,meta.referralCode||null]);
-  await syncEntitlement(guildId,userId,planId,sub.status,"stripe",periodEnd);
+  await syncEntitlement(guildId,userId,planId,sub.status,"stripe",periodEnd,sub.id);
 }
 
 export async function reconcileMemberBilling(guildId:string,discordUserId:string) {
@@ -179,15 +204,17 @@ export async function grantComp(guildId:string,userId:string,planId:number,days:
   const current=await one<any>(`SELECT expires_at FROM entitlements WHERE guild_id=$1 AND discord_user_id=$2 AND entitlement_key=$3 AND active=true`,[guildId,userId,`plan:${plan.slug}`]);
   const base=current?.expires_at && new Date(current.expires_at).getTime()>Date.now()?new Date(current.expires_at).getTime():Date.now();
   const expires=new Date(base+Math.max(1,days)*86400000);
-  await query(`INSERT INTO billing_subscriptions(guild_id,discord_user_id,plan_id,status,current_period_end,source,updated_at)
-    VALUES($1,$2,$3,'comped',$4,'manual',now())`,[guildId,userId,planId,expires]);
-  await syncEntitlement(guildId,userId,planId,"comped","manual",expires);
+  const grantRow=await one<any>(`INSERT INTO billing_subscriptions(guild_id,discord_user_id,plan_id,status,current_period_end,source,updated_at)
+    VALUES($1,$2,$3,'comped',$4,'manual',now()) RETURNING id`,[guildId,userId,planId,expires]);
+  await syncEntitlement(guildId,userId,planId,"comped","manual",expires,`comp:${grantRow?.id||Date.now()}`);
   await audit(guildId,actorId,"billing.comp.granted",{userId,planId,days,expires});
 }
 
 export async function revokeEntitlement(guildId:string,userId:string,planId:number,actorId:string) {
-  await syncEntitlement(guildId,userId,planId,"revoked","manual",new Date());
+  const plan=await one<BillingPlan>(`SELECT * FROM billing_plans WHERE id=$1 AND guild_id=$2`,[planId,guildId]);
+  if(plan)await query(`UPDATE entitlement_grants SET active=false,updated_at=now() WHERE guild_id=$1 AND discord_user_id=$2 AND entitlement_key=$3 AND source='manual'`,[guildId,userId,`plan:${plan.slug}`]);
   await query(`UPDATE billing_subscriptions SET status='revoked',updated_at=now() WHERE guild_id=$1 AND discord_user_id=$2 AND plan_id=$3 AND status IN ('comped','gifted')`,[guildId,userId,planId]);
+  await recalculateEntitlement(guildId,userId,planId);
   await audit(guildId,actorId,"billing.entitlement.revoked",{userId,planId});
 }
 
