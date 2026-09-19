@@ -1,7 +1,7 @@
 import {
   ActionRowBuilder, AuditLogEvent, ButtonBuilder, ButtonStyle, ChannelType, Client, ContextMenuCommandBuilder,
-  ApplicationCommandType, GuildMember, PermissionFlagsBits, SlashCommandBuilder, StringSelectMenuBuilder,
-  StringSelectMenuOptionBuilder, TextChannel
+  ApplicationCommandType, GuildMember, ModalBuilder, PermissionFlagsBits, SlashCommandBuilder, StringSelectMenuBuilder,
+  StringSelectMenuOptionBuilder, TextChannel, TextInputBuilder, TextInputStyle
 } from "discord.js";
 import { audit, getFeature, one, query } from "./db.js";
 import { config } from "./config.js";
@@ -85,8 +85,18 @@ function onboardingStep(step:number){
     );
     return [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(interests)];
   }
+  if(step===3){
+    const notifications=new StringSelectMenuBuilder().setCustomId("v5:onboard:notifications").setPlaceholder("Choose notifications (optional)").setMinValues(0).setMaxValues(4).addOptions(
+      new StringSelectMenuOptionBuilder().setLabel("Announcements").setValue("Announcements").setEmoji("📢"),
+      new StringSelectMenuOptionBuilder().setLabel("Giveaways").setValue("Giveaways").setEmoji("🎉"),
+      new StringSelectMenuOptionBuilder().setLabel("Events").setValue("Events").setEmoji("📅"),
+      new StringSelectMenuOptionBuilder().setLabel("Premium").setValue("Premium").setEmoji("💎")
+    );
+    return [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(notifications)];
+  }
+  const questions=new ButtonBuilder().setCustomId("v5:onboard:questions").setLabel("Optional questions").setStyle(ButtonStyle.Secondary).setEmoji("📝");
   const finish=new ButtonBuilder().setCustomId("v5:onboard:finish").setLabel("Finish onboarding").setStyle(ButtonStyle.Success).setEmoji("✅");
-  return [new ActionRowBuilder<ButtonBuilder>().addComponents(finish)];
+  return [new ActionRowBuilder<ButtonBuilder>().addComponents(questions,finish)];
 }
 
 export async function publishOnboardingPanel(guildId:string,channelId:string){
@@ -109,11 +119,12 @@ async function finishOnboarding(i:any){
   const roleIds:string[]=[];
   const platformRole=cfg.platform_roles?.[ans.platform];if(platformRole)roleIds.push(String(platformRole));
   for(const interest of ans.interests||[]){const r=cfg.interest_roles?.[interest];if(r)roleIds.push(String(r));}
+  for(const n of ans.notification_roles||[]){const r=cfg.notification_roles?.[n];if(r)roleIds.push(String(r));}
   if(cfg.verified_role_id)roleIds.push(String(cfg.verified_role_id));
   for(const roleId of [...new Set(roleIds)])await member.roles.add(roleId,"EAFC.Live onboarding").catch(()=>{});
   if(cfg.quarantine_role_id&&member.roles.cache.has(String(cfg.quarantine_role_id)))await member.roles.remove(String(cfg.quarantine_role_id),"Verification completed").catch(()=>{});
   await query(`UPDATE onboarding_answers SET verified=true,completed_at=now(),updated_at=now() WHERE guild_id=$1 AND user_id=$2`,[i.guildId,i.user.id]);
-  await query(`INSERT INTO member_profiles(guild_id,user_id,platform,interests) VALUES($1,$2,$3,$4) ON CONFLICT(guild_id,user_id) DO UPDATE SET platform=$3,interests=$4,updated_at=now()`,[i.guildId,i.user.id,ans.platform,ans.interests||[]]);
+  await query(`INSERT INTO member_profiles(guild_id,user_id,platform,interests,notification_preferences,metadata) VALUES($1,$2,$3,$4,$5::jsonb,$6::jsonb) ON CONFLICT(guild_id,user_id) DO UPDATE SET platform=$3,interests=$4,notification_preferences=$5::jsonb,metadata=member_profiles.metadata||$6::jsonb,updated_at=now()`,[i.guildId,i.user.id,ans.platform,ans.interests||[],JSON.stringify({roles:ans.notification_roles||[]}),JSON.stringify({onboarding_answers:ans.answers||{}})]);
   await query(`INSERT INTO member_stats(guild_id,user_id,verified_at) VALUES($1,$2,now()) ON CONFLICT(guild_id,user_id) DO UPDATE SET verified_at=COALESCE(member_stats.verified_at,now())`,[i.guildId,i.user.id]);
   await query(`INSERT INTO member_funnel(guild_id,user_id,verified_at,roles_selected_at) VALUES($1,$2,now(),now()) ON CONFLICT(guild_id,user_id) DO UPDATE SET verified_at=COALESCE(member_funnel.verified_at,now()),roles_selected_at=COALESCE(member_funnel.roles_selected_at,now())`,[i.guildId,i.user.id]);
   await recordUsage(i.guildId,i.user.id,"complete","onboarding",i.channelId);
@@ -203,7 +214,24 @@ export async function handleV5Component(client:Client,i:any){
   }
   if(id==="v5:onboard:interests"&&i.isStringSelectMenu()){
     await query(`INSERT INTO onboarding_answers(guild_id,user_id,interests) VALUES($1,$2,$3) ON CONFLICT(guild_id,user_id) DO UPDATE SET interests=$3,updated_at=now()`,[i.guildId,i.user.id,i.values]);
-    await i.update({embeds:[brandEmbed("Step 3 of 3 • Finish",`Interests: **${i.values.join(", ")}**\nFinish to verify your account and apply your roles.`,BRAND.colours.success)],components:onboardingStep(3)});return true;
+    await i.update({embeds:[brandEmbed("Step 3 of 4 • Notifications",`Interests: **${i.values.join(", ")}**\nChoose which community notifications you want, or select none.`,BRAND.colours.primary)],components:onboardingStep(3)});return true;
+  }
+  if(id==="v5:onboard:notifications"&&i.isStringSelectMenu()){
+    await query(`INSERT INTO onboarding_answers(guild_id,user_id,notification_roles) VALUES($1,$2,$3) ON CONFLICT(guild_id,user_id) DO UPDATE SET notification_roles=$3,updated_at=now()`,[i.guildId,i.user.id,i.values||[]]);
+    await i.update({embeds:[brandEmbed("Step 4 of 4 • Finish",`Notifications: **${(i.values||[]).length?(i.values||[]).join(", "):"None"}**\nYou can answer the optional join questions, or finish now.`,BRAND.colours.success)],components:onboardingStep(4)});return true;
+  }
+  if(id==="v5:onboard:questions"&&i.isButton()){
+    const cfg=await onboardingConfig(i.guildId),questions=(cfg.questions||[]).slice(0,5);
+    if(!questions.length){await i.reply({content:"There are no optional questions configured.",ephemeral:true});return true;}
+    const modal=new ModalBuilder().setCustomId("v5:onboard:questions-modal").setTitle("A little about you");
+    for(let n=0;n<questions.length;n++){const q=questions[n],input=new TextInputBuilder().setCustomId(String(q.key||`q${n+1}`)).setLabel(String(q.label||q.question||`Question ${n+1}`).slice(0,45)).setStyle(TextInputStyle.Short).setRequired(false).setMaxLength(200);modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(input));}
+    await i.showModal(modal);return true;
+  }
+  if(id==="v5:onboard:questions-modal"&&i.isModalSubmit()){
+    const cfg=await onboardingConfig(i.guildId),questions=(cfg.questions||[]).slice(0,5),answers:any={};
+    for(let n=0;n<questions.length;n++){const key=String(questions[n].key||`q${n+1}`);answers[key]=i.fields.getTextInputValue(key)||"";}
+    await query(`INSERT INTO onboarding_answers(guild_id,user_id,answers) VALUES($1,$2,$3::jsonb) ON CONFLICT(guild_id,user_id) DO UPDATE SET answers=$3::jsonb,updated_at=now()`,[i.guildId,i.user.id,JSON.stringify(answers)]);
+    await i.reply({content:"Optional answers saved. Return to the onboarding message and press **Finish onboarding**.",ephemeral:true});return true;
   }
   if(id==="v5:onboard:finish"){await finishOnboarding(i);return true;}
 
