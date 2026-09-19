@@ -1,8 +1,9 @@
 <!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Social feeds • EAFC.Live Control</title><link rel="stylesheet" href="/style.css"></head><body>
 <aside class="sidebar"><a class="brand" href="/dashboard"><span>EAFC.Live</span> Control</a><nav><a href="/dashboard">Overview</a><a href="/trading">Trade calls</a><a href="/tickets">Tickets</a><a class="active" href="/social">Social feeds</a><a href="/billing">Premium & billing</a><a href="/moderation">Moderation</a><a href="/audit">Audit log</a></nav></aside>
-<main class="content">
-<header><div><div class="eyebrow">AUTOMATIC POSTS</div><h1>Social feeds</h1><p class="muted">Choose what you want to follow and where it should post. The bot handles the rest.</p></div></header>
-<section class="panel"><h2>Add a social feed</h2><p class="muted" style="margin-bottom:18px">Pick the source, paste the account/feed, then choose the Discord channel.</p>
+<main class="content saas-page">
+<section class="page-hero compact"><div><div class="eyebrow">COMMUNITY / CONTENT FEEDS</div><h1>Social feeds</h1><p>Connect external sources and route curated content into the right Discord channels.</p></div><div class="hero-actions"><a class="ghost" href="/automation">Automation</a></div></section>
+<section class="stats compact-stats"><div class="stat"><span>Configured feeds</span><strong><%= feeds.length %></strong></div><div class="stat"><span>Posting now</span><strong><%= feeds.filter(f=>f.enabled).length %></strong></div><div class="stat"><span>Webhook feeds</span><strong><%= feeds.filter(f=>f.provider==='webhook').length %></strong></div><div class="stat"><span>Paused</span><strong><%= feeds.filter(f=>!f.enabled).length %></strong></div></section>
+<section class="panel"><div class="section-head"><div><h2>Add content source</h2><p>Pick the source, destination and optional filters.</p></div></div>
 <form method="post" class="form-grid" id="feed-form">
 <label><span>What are you following?</span><small>Select the type of source.</small><select name="provider" id="provider"><option value="rss">Website / RSS feed</option><option value="reddit">Reddit community</option><option value="youtube">YouTube channel</option><option value="x">X / Twitter account</option><option value="webhook">Another app / custom webhook</option></select></label>
 <label><span>Give this feed a name</span><small>Only used in this dashboard.</small><input name="name" required placeholder="FUT Sheriff"></label>
@@ -12,7 +13,7 @@
 <details class="wide"><summary class="muted">Optional keyword filters</summary><div class="form-grid" style="margin-top:12px"><label><span>Only post when it mentions</span><small>Comma-separated words. Leave blank to post everything.</small><input name="includeKeywords" placeholder="SBC, evolution, promo"></label><label><span>Never post when it mentions</span><small>Comma-separated words to ignore.</small><input name="excludeKeywords" placeholder="giveaway, ad"></label></div></details>
 <div class="wide"><button class="button" type="submit">Add feed</button></div>
 </form></section>
-<section class="section"><div class="section-head"><h2>Your feeds</h2><span class="muted"><%= feeds.length %> configured</span></div>
+<section class="section"><div class="section-head"><div><h2>Content sources</h2><p>Pause or remove any feed without touching code.</p></div><span class="table-count"><%= feeds.length %> configured</span></div>
 <div class="table-wrap"><table><thead><tr><th>Feed</th><th>Type</th><th>Posts into</th><th>Status</th><th></th></tr></thead><tbody>
 <% feeds.forEach(f=>{ const channel=channels.find(c=>c.id===f.channel_id); %><tr>
 <td><strong><%= f.name %></strong><% if(f.provider==='webhook'){ %><small class="block">Custom webhook ready to receive posts</small><% } else { %><small class="block"><%= f.source %></small><% } %></td>
