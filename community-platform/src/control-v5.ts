@@ -38,13 +38,15 @@ v5ControlRouter.get("/control/onboarding",async(req:any,res)=>{
 });
 
 v5ControlRouter.post("/control/onboarding",async(req:any,res)=>{
-  const gid=config.targetGuildId,platformRoles:any={},interestRoles:any={};
+  const gid=config.targetGuildId,platformRoles:any={},interestRoles:any={},notificationRoles:any={};
   for(const key of ["PlayStation","Xbox","PC"]){const v=req.body[`platform_${key.replace(/[^A-Za-z]/g,"")}`];if(v)platformRoles[key]=v;}
   for(const key of ["EAFC.Live","Ultimate Team","SBCs & Objectives","Gameplay","Community"]){const field=`interest_${key.replace(/[^A-Za-z]/g,"")}`,v=req.body[field];if(v)interestRoles[key]=v;}
-  await query(`INSERT INTO onboarding_configs(guild_id,enabled,channel_id,verified_role_id,quarantine_role_id,platform_roles,interest_roles,min_account_age_hours,welcome_title,welcome_body)
-    VALUES($1,true,$2,$3,$4,$5::jsonb,$6::jsonb,$7,$8,$9)
-    ON CONFLICT(guild_id) DO UPDATE SET enabled=true,channel_id=$2,verified_role_id=$3,quarantine_role_id=$4,platform_roles=$5::jsonb,interest_roles=$6::jsonb,min_account_age_hours=$7,welcome_title=$8,welcome_body=$9,updated_at=now()`,
-    [gid,req.body.channelId||null,req.body.verifiedRoleId||null,req.body.quarantineRoleId||null,JSON.stringify(platformRoles),JSON.stringify(interestRoles),Math.max(0,num(req.body.minAccountAgeHours,24)),String(req.body.welcomeTitle||"Welcome to EAFC.Live"),String(req.body.welcomeBody||"Verify your account, choose your platform and personalise your community experience.")]);
+  for(const key of ["Announcements","Giveaways","Events","Premium"]){const v=req.body[`notification_${key}`];if(v)notificationRoles[key]=v;}
+  const questions=String(req.body.questions||"").split("\n").map((x:string)=>x.trim()).filter(Boolean).slice(0,5).map((label:string,n:number)=>({key:`q${n+1}`,label}));
+  await query(`INSERT INTO onboarding_configs(guild_id,enabled,channel_id,verified_role_id,quarantine_role_id,platform_roles,interest_roles,notification_roles,questions,min_account_age_hours,welcome_title,welcome_body)
+    VALUES($1,true,$2,$3,$4,$5::jsonb,$6::jsonb,$7::jsonb,$8::jsonb,$9,$10,$11)
+    ON CONFLICT(guild_id) DO UPDATE SET enabled=true,channel_id=$2,verified_role_id=$3,quarantine_role_id=$4,platform_roles=$5::jsonb,interest_roles=$6::jsonb,notification_roles=$7::jsonb,questions=$8::jsonb,min_account_age_hours=$9,welcome_title=$10,welcome_body=$11,updated_at=now()`,
+    [gid,req.body.channelId||null,req.body.verifiedRoleId||null,req.body.quarantineRoleId||null,JSON.stringify(platformRoles),JSON.stringify(interestRoles),JSON.stringify(notificationRoles),JSON.stringify(questions),Math.max(0,num(req.body.minAccountAgeHours,24)),String(req.body.welcomeTitle||"Welcome to EAFC.Live"),String(req.body.welcomeBody||"Verify your account, choose your platform and personalise your community experience.")]);
   await audit(gid,req.session.user.id,"onboarding.settings.update",{channelId:req.body.channelId});res.redirect("/control/onboarding?saved=1");
 });
 
