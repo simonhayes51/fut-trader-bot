@@ -39,7 +39,7 @@ function dashboardSidebar(pathname:string,user?:{username?:string;avatar?:string
     {label:"Growth",items:[["/economy","◈","Economy"],["/billing","◆","Premium"],["/automation","↻","Automation"]]},
     {label:"Community",items:[["/trading","↗","Trade calls"],["/social","◉","Social feeds"],["/tickets","◇","Tickets"],["/discord","♢","Discord"]]},
     {label:"System",items:[["/commands","⌘","Commands"],["/moderation","⊘","Moderation"],["/setup","⚙","Setup"],["/audit","≡","Audit log"]]}
-  ] as const;
+  ];
   const activeFor=(href:string)=>href==="/dashboard" ? pathname==="/dashboard" || pathname.startsWith("/modules/") : pathname===href || pathname.startsWith(`${href}/`);
   const nav=groups.map(group=>`<div class="nav-group"><div class="nav-label">${group.label}</div>${group.items.map(([href,icon,label])=>`<a class="${activeFor(href)?"active":""}" href="${href}"><span class="nav-icon">${icon}</span><span>${label}</span></a>`).join("")}</div>`).join("");
   const initial=(user?.username||"A").slice(0,1).toUpperCase();
