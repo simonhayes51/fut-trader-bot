@@ -12,6 +12,10 @@ import { levelFromXp } from "./economy-core.js";
 export const extrasRouter=Router();
 const auth=(req:any,res:any,next:any)=>req.session?.user?next():res.redirect("/login");
 extrasRouter.use(auth);
+// legacy-control-redirects: the new /control workspace owns member and analytics navigation.
+extrasRouter.get("/members",(req,res)=>res.redirect("/control/members"));
+extrasRouter.get("/members/:id",(req,res)=>res.redirect("/control/members"));
+extrasRouter.get("/analytics",(req,res)=>res.redirect("/control"));
 
 function guild(){return client.guilds.cache.get(config.targetGuildId);}
 async function ui(){const g=guild();if(!g)return{channels:[],roles:[],members:[]};const members=await g.members.fetch().catch(()=>g.members.cache);const botHighest=g.members.me?.roles.highest.position??0;return{channels:[...g.channels.cache.values()].map(c=>({id:c.id,name:c.name,type:c.type})).sort((a,b)=>a.name.localeCompare(b.name)),roles:[...g.roles.cache.values()].filter(r=>r.id!==g.id&&!r.managed&&r.position<botHighest).sort((a,b)=>b.position-a.position).map(r=>({id:r.id,name:r.name})),members:[...members.values()].filter(m=>!m.user.bot).sort((a,b)=>a.displayName.localeCompare(b.displayName)).map(m=>({id:m.id,name:m.displayName,username:m.user.username}))};}
