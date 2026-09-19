@@ -9,6 +9,7 @@ import { brandEmbed, BRAND } from "./brand.js";
 
 const tax=(sell:number)=>Math.floor(sell*.95);
 const coins=(n:number)=>Math.round(n).toLocaleString("en-GB");
+let lastEntitlementRoleSweep=0;
 
 const slash:any[]=[
  new SlashCommandBuilder().setName("rank").setDescription("View your activity rank").addUserOption(o=>o.setName("member").setDescription("Member")),
@@ -139,7 +140,7 @@ export async function runAutomationTick(client:Client){
  const gs=await query<any>(`SELECT * FROM giveaways WHERE status='LIVE' AND ends_at<=now()`);for(const g of gs){const e=await query<any>(`SELECT * FROM giveaway_entries WHERE giveaway_id=$1`,[g.id]);const w=weightedPick(e,Number(g.winner_count||1));await query(`UPDATE giveaways SET status='ENDED',winners=$1 WHERE id=$2`,[w,g.id]);const ch=await client.channels.fetch(g.channel_id).catch(()=>null);if(ch?.isTextBased())await (ch as TextChannel).send(`🎉 **${g.prize}** giveaway ended! Winner${w.length===1?'':'s'}: ${w.map(x=>`<@${x}>`).join(', ')||'No eligible entries'}`).catch(()=>{});}
  const rooms=await query<any>(`SELECT * FROM temp_rooms WHERE status='OPEN' AND expires_at IS NOT NULL AND expires_at<=now()`);for(const r of rooms){const ch=await client.channels.fetch(r.channel_id).catch(()=>null);if(ch)await (ch as any).delete("Temporary trading room expired").catch(()=>{});await query(`UPDATE temp_rooms SET status='CLOSED' WHERE id=$1`,[r.id]);}
  await refreshExpiredEntitlements();
- await reconcileActiveEntitlementRoles(config.targetGuildId);
+ if(Date.now()-lastEntitlementRoleSweep>5*60_000){lastEntitlementRoleSweep=Date.now();await reconcileActiveEntitlementRoles(config.targetGuildId);}
 }
 
 export async function onMemberActivity(message:any){if(!message.guildId||message.author.bot)return;await query(`INSERT INTO activity_daily(guild_id,user_id,activity_date,messages) VALUES($1,$2,current_date,1) ON CONFLICT(guild_id,user_id,activity_date) DO UPDATE SET messages=activity_daily.messages+1`,[message.guildId,message.author.id]);await query(`INSERT INTO server_metrics_daily(guild_id,metric_date,messages) VALUES($1,current_date,1) ON CONFLICT(guild_id,metric_date) DO UPDATE SET messages=server_metrics_daily.messages+1`,[message.guildId]);const s=await one<any>(`SELECT * FROM member_stats WHERE guild_id=$1 AND user_id=$2`,[message.guildId,message.author.id]);const awards:[string,boolean][]=[["first_steps",Number(s?.messages||0)>=1],["hundred_messages",Number(s?.messages||0)>=100],["community_regular",Number(s?.messages||0)>=1000],["helpful_10",Number(s?.thanks_received||0)>=10]];for(const [k,ok] of awards)if(ok)await query(`INSERT INTO achievements(guild_id,user_id,achievement_key) VALUES($1,$2,$3) ON CONFLICT DO NOTHING`,[message.guildId,message.author.id,k]);}
