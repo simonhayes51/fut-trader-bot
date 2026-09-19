@@ -76,7 +76,7 @@ v5ControlRouter.get("/control/security",async(req:any,res)=>{
   const events=await query<any>(`SELECT * FROM security_events WHERE guild_id=$1 ORDER BY created_at DESC LIMIT 50`,[gid]);
   let inspector:any=null;if(req.query.memberId&&req.query.channelId)try{inspector=await inspectMemberPermission(gid,String(req.query.memberId),String(req.query.channelId));}catch(e:any){inspector={error:e.message};}
   const score=Math.max(0,100-findings.reduce((n:any,f:any)=>n+(f.severity==="critical"?20:f.severity==="warning"?8:2),0));
-  res.render("control-security",{user:req.session.user,...base,feature,findings,events,inspector,score,saved:req.query.saved==="1"});
+  res.render("control-security",{user:req.session.user,...base,feature,findings,events,inspector,score,requestedMember:String(req.query.memberId||""),requestedChannel:String(req.query.channelId||""),saved:req.query.saved==="1"});
 });
 
 v5ControlRouter.post("/control/security",async(req:any,res)=>{
