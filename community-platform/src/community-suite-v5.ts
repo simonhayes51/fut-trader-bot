@@ -350,7 +350,7 @@ export async function onV5AuditEntry(entry:any,guild:any){
   const feature=await getFeature(guild.id,"security_suite",{antiNuke:true,actionWindowSeconds:60,maxDestructiveActions:4,trustedRoleIds:[],trustedUserIds:[]});
   if(!feature.enabled||feature.config.antiNuke===false)return;
   const actor=await guild.members.fetch(entry.executorId).catch(()=>null);if(!actor||actor.id===guild.ownerId||actor.user.bot)return;
-  if((feature.config.trustedUserIds||[]).includes(actor.id)||actor.roles.cache.some((r:any)=>(feature.config.trustedRoleIds||[]).includes(r.id)))return;
+  if(((feature.config.trustedUserIds||[]) as string[]).includes(actor.id)||actor.roles.cache.some((r:any)=>((feature.config.trustedRoleIds||[]) as string[]).includes(r.id)))return;
   const actionType=String(entry.action),seconds=Math.max(10,Number(feature.config.actionWindowSeconds||60)),limit=Math.max(1,Number(feature.config.maxDestructiveActions||4));
   const state=await one<any>(`SELECT * FROM staff_action_windows WHERE guild_id=$1 AND actor_id=$2 AND action_type=$3`,[guild.id,actor.id,actionType]);
   const fresh=!state||Date.now()-new Date(state.window_started_at).getTime()>seconds*1000,count=fresh?1:Number(state.action_count||0)+1;
@@ -535,8 +535,9 @@ export async function applyHealthFix(guildId:string,findingId:number){
 export async function inspectMemberPermission(guildId:string,userId:string,channelId:string){
   const guild=globalClient?.guilds.cache.get(guildId);if(!guild)throw new Error("Guild unavailable.");
   const member=await guild.members.fetch(userId),channel=guild.channels.cache.get(channelId);if(!channel)throw new Error("Channel unavailable.");
-  const perms=channel.permissionsFor(member),everyone=channel.permissionOverwrites.cache.get(guild.id),memberOw=channel.permissionOverwrites.cache.get(member.id);
-  const roleDetails=member.roles.cache.filter((r:any)=>r.id!==guild.id).map((r:any)=>{const ow=channel.permissionOverwrites.cache.get(r.id);return {id:r.id,name:r.name,allow:ow?[...ow.allow.toArray()]:[],deny:ow?[...ow.deny.toArray()]:[]};});
+  const c:any=channel;if(!c.permissionsFor||!c.permissionOverwrites)throw new Error("That channel type does not expose permission overwrites.");
+  const perms=c.permissionsFor(member),everyone=c.permissionOverwrites.cache.get(guild.id),memberOw=c.permissionOverwrites.cache.get(member.id);
+  const roleDetails=member.roles.cache.filter((r:any)=>r.id!==guild.id).map((r:any)=>{const ow=c.permissionOverwrites.cache.get(r.id);return {id:r.id,name:r.name,allow:ow?[...ow.allow.toArray()]:[],deny:ow?[...ow.deny.toArray()]:[]};});
   return {member:{id:member.id,name:member.displayName},channel:{id:channel.id,name:channel.name},effective:perms?[...perms.toArray()]:[],everyone:{allow:everyone?[...everyone.allow.toArray()]:[],deny:everyone?[...everyone.deny.toArray()]:[]},memberOverride:{allow:memberOw?[...memberOw.allow.toArray()]:[],deny:memberOw?[...memberOw.deny.toArray()]:[]},roles:roleDetails};
 }
 
