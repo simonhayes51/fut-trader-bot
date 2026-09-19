@@ -179,16 +179,29 @@ app.post("/logout",(req,res)=>req.session.destroy(()=>res.redirect("/login")));
 app.get("/dashboard",requireAuth,async(req,res)=>{
   const settings=await query<any>(`SELECT feature_key,enabled,config,updated_at FROM feature_settings WHERE guild_id=$1`,[config.targetGuildId]);
   const byKey=new Map(settings.map(s=>[s.feature_key,s]));
-  const stats=await one<any>(`SELECT
-    (SELECT count(*) FROM member_stats WHERE guild_id=$1) members_tracked,
-    (SELECT count(*) FROM trade_calls WHERE guild_id=$1) trade_calls,
-    (SELECT count(*) FROM tickets WHERE guild_id=$1 AND status='OPEN') open_tickets,
-    (SELECT count(*) FROM social_feeds WHERE guild_id=$1 AND enabled=true) active_feeds,
-    (SELECT count(*) FROM warnings WHERE guild_id=$1) warnings,
-    (SELECT count(*) FROM billing_subscriptions WHERE guild_id=$1 AND status IN ('active','trialing','past_due','comped','gifted')) premium_members,
-    (SELECT COALESCE(sum(coins_balance),0) FROM member_economy WHERE guild_id=$1) coins_circulating,
-    (SELECT count(*) FROM store_redemptions WHERE guild_id=$1 AND status='PENDING') pending_rewards`,[config.targetGuildId]);
-  res.render("dashboard",{user:req.session.user,modules,moduleSettings:byKey,stats:stats||{},guild:client.guilds.cache.get(config.targetGuildId)});
+  const [stats,season,recentAudit,topMembers,queue]=await Promise.all([
+    one<any>(`SELECT
+      (SELECT count(*) FROM member_stats WHERE guild_id=$1) members_tracked,
+      (SELECT count(*) FROM member_stats WHERE guild_id=$1 AND last_message_at>now()-interval '7 days') active_7d,
+      (SELECT count(*) FROM trade_calls WHERE guild_id=$1) trade_calls,
+      (SELECT count(*) FROM trade_calls WHERE guild_id=$1 AND status='LIVE') live_calls,
+      (SELECT count(*) FROM tickets WHERE guild_id=$1 AND status='OPEN') open_tickets,
+      (SELECT count(*) FROM social_feeds WHERE guild_id=$1 AND enabled=true) active_feeds,
+      (SELECT count(*) FROM warnings WHERE guild_id=$1) warnings,
+      (SELECT count(DISTINCT discord_user_id) FROM entitlements WHERE guild_id=$1 AND active=true AND (expires_at IS NULL OR expires_at>now())) premium_members,
+      (SELECT COALESCE(sum(coins_balance),0) FROM member_economy WHERE guild_id=$1) coins_circulating,
+      (SELECT COALESCE(sum(lifetime_coins_earned),0) FROM member_economy WHERE guild_id=$1) coins_earned,
+      (SELECT count(*) FROM member_quest_progress WHERE guild_id=$1 AND rewarded_at>now()-interval '7 days') quests_7d,
+      (SELECT count(*) FROM store_redemptions WHERE guild_id=$1 AND status='PENDING') pending_rewards`,[config.targetGuildId]),
+    one<any>(`SELECT s.*,COALESCE((SELECT count(*) FROM season_member_stats m WHERE m.season_id=s.id),0) participants FROM economy_seasons s WHERE s.guild_id=$1 AND s.active=true ORDER BY s.starts_at DESC LIMIT 1`,[config.targetGuildId]),
+    query<any>(`SELECT action,actor_id,details,created_at FROM audit_log WHERE guild_id=$1 ORDER BY created_at DESC LIMIT 8`,[config.targetGuildId]),
+    query<any>(`SELECT e.user_id,e.xp_total,e.coins_balance,COALESCE(s.current_streak,0) current_streak FROM member_economy e LEFT JOIN member_streaks s ON s.guild_id=e.guild_id AND s.user_id=e.user_id WHERE e.guild_id=$1 ORDER BY e.xp_total DESC LIMIT 5`,[config.targetGuildId]),
+    one<any>(`SELECT count(*) FILTER(WHERE status IN ('PENDING','PROCESSING')) waiting,count(*) FILTER(WHERE status='FAILED') failed FROM economy_event_queue WHERE guild_id=$1`,[config.targetGuildId])
+  ]);
+  const guild=client.guilds.cache.get(config.targetGuildId);
+  const names=new Map<string,string>();
+  if(guild){for(const row of topMembers){const m=await guild.members.fetch(row.user_id).catch(()=>null);if(m)names.set(row.user_id,m.displayName);}}
+  res.render("dashboard",{user:req.session.user,modules,moduleSettings:byKey,stats:stats||{},season,recentAudit,topMembers:topMembers.map(m=>({...m,name:names.get(m.user_id)||m.user_id})),queue:queue||{},guild});
 });
 
 app.get("/modules/:key",requireAuth,async(req,res)=>{
