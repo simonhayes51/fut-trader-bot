@@ -246,7 +246,7 @@ export async function onMemberJoinLeave(guildId:string,type:"joins"|"leaves"){
 }
 
 function cronMatches(expr:string,d=new Date()){
-  const [min,hour,_dom,_month,dow]=expr.split(" ");const check=(part:string,value:number)=>part==="*"||part.split(",").map(Number).includes(value);
+  const parts=expr.split(" ");const min=parts[0]||"*",hour=parts[1]||"*",dow=parts[4]||"*";const check=(part:string,value:number)=>part==="*"||part.split(",").map(Number).includes(value);
   return check(min,d.getMinutes())&&check(hour,d.getHours())&&check(dow,d.getDay());
 }
 
