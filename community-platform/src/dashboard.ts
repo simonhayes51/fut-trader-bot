@@ -35,9 +35,10 @@ app.use(session({
 
 function dashboardSidebar(pathname:string,user?:{username?:string;avatar?:string}) {
   const groups:Array<{label:string;items:Array<[string,string,string]>}>=[
-    {label:"Overview",items:[["/control","⌂","Home"],["/control/members","◎","Members"],["/control/engagement","◈","Engagement"]]},
-    {label:"Community",items:[["/control/community","◇","Community"],["/control/automation","↻","Automation"],["/discord","♢","Discord tools"]]},
-    {label:"Operations",items:[["/control/safety","⊘","Safety & support"],["/billing","◆","Premium"],["/economy","¤","Rewards economy"]]},
+    {label:"Overview",items:[["/control","⌂","Home"],["/control/members","◎","Members"],["/control/insights","▦","Insights"]]},
+    {label:"Experience",items:[["/control/onboarding","◌","Onboarding"],["/control/community","◇","Community"],["/control/kudos","👏","Kudos & retention"],["/control/rewards","¤","Rewards"]]},
+    {label:"Content & growth",items:[["/control/studio","✦","Message studio"],["/control/automation","↻","Automation"],["/control/growth","↗","Growth & partners"],["/discord","♢","Discord tools"]]},
+    {label:"Operations",items:[["/control/security","◉","Security & health"],["/control/safety","⊘","Safety & support"],["/billing","◆","Premium"]]},
     {label:"Configuration",items:[["/control/settings","⚙","Features"],["/commands","⌘","Command access"],["/audit","≡","Audit log"]]}
   ];
   const activeFor=(href:string)=>href==="/control"?pathname==="/control":pathname===href||pathname.startsWith(`${href}/`);
@@ -59,7 +60,7 @@ app.use((req:any,res:any,next:any)=>{
       let output=html;
       if(output.includes('<aside class="sidebar">')){
         output=output.replace(/<aside class="sidebar">[\s\S]*?<\/aside>/,dashboardSidebar(req.path,options?.user||req.session?.user));
-        if(!output.includes('/polish.css')) output=output.replace("</head>",'<link rel="stylesheet" href="/polish.css"></head>');
+        if(output.includes('/style.css')&&!output.includes('/polish.css')) output=output.replace("</head>",'<link rel="stylesheet" href="/polish.css"></head>');
       }
       if(callback)return callback(null,output);
       res.send(output);

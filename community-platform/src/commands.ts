@@ -42,7 +42,10 @@ async function giveKudos(guildId:string,giverId:string,receiverId:string,reason:
   if(Number(count?.count||0)>=dailyLimit)throw new Error("You've reached today's kudos limit.");
   const repeat=await one<any>(`SELECT 1 FROM reputation_events WHERE guild_id=$1 AND giver_id=$2 AND receiver_id=$3 AND created_at>now()-interval '12 hours' LIMIT 1`,[guildId,giverId,receiverId]);
   if(repeat)throw new Error("You've already given that member kudos recently. Spread it around.");
-  await query(`INSERT INTO reputation_events(guild_id,giver_id,receiver_id,reason) VALUES($1,$2,$3,$4)`,[guildId,giverId,receiverId,reason]);
+  const pair=await one<any>(`SELECT count(*) c FROM reputation_events WHERE guild_id=$1 AND ((giver_id=$2 AND receiver_id=$3) OR (giver_id=$3 AND receiver_id=$2)) AND created_at>now()-interval '7 days'`,[guildId,giverId,receiverId]);
+  if(Number(pair?.c||0)>=6)throw new Error("Kudos between the same two members are temporarily capped to prevent farming.");
+  const parts=String(reason).split(": "),category=parts[0]||"Community",comment=parts.slice(1).join(": ")||null;
+  await query(`INSERT INTO reputation_events(guild_id,giver_id,receiver_id,reason,category,comment) VALUES($1,$2,$3,$4,$5,$6)`,[guildId,giverId,receiverId,reason,category,comment]);
   await query(`INSERT INTO member_stats(guild_id,user_id,thanks_received) VALUES($1,$2,1) ON CONFLICT(guild_id,user_id) DO UPDATE SET thanks_received=member_stats.thanks_received+1`,[guildId,receiverId]);
   await query(`INSERT INTO member_stats(guild_id,user_id,thanks_given) VALUES($1,$2,1) ON CONFLICT(guild_id,user_id) DO UPDATE SET thanks_given=member_stats.thanks_given+1`,[guildId,giverId]);
 }
