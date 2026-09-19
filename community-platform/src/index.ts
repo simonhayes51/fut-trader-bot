@@ -11,7 +11,9 @@ import { pollSocialFeeds } from "./social.js";
 import { runAutomationTick } from "./feature-suite.js";
 import { economyRouter } from "./economy-dashboard.js";
 import { runEconomyTick } from "./economy.js";
+import { controlRouter } from "./control-center.js";
 
+app.use(controlRouter);
 app.use(secureSetupRouter);
 app.use(extrasRouter);
 app.use(nativeDiscordRouter);
