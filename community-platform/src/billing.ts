@@ -175,7 +175,11 @@ export async function handleStripeWebhook(rawBody:Buffer,signature:string) {
 }
 
 export async function grantComp(guildId:string,userId:string,planId:number,days:number,actorId:string) {
-  const expires=new Date(Date.now()+Math.max(1,days)*86400000);
+  const plan=await one<BillingPlan>(`SELECT * FROM billing_plans WHERE id=$1 AND guild_id=$2`,[planId,guildId]);
+  if(!plan) throw new Error("Plan not found");
+  const current=await one<any>(`SELECT expires_at FROM entitlements WHERE guild_id=$1 AND discord_user_id=$2 AND entitlement_key=$3 AND active=true`,[guildId,userId,`plan:${plan.slug}`]);
+  const base=current?.expires_at && new Date(current.expires_at).getTime()>Date.now()?new Date(current.expires_at).getTime():Date.now();
+  const expires=new Date(base+Math.max(1,days)*86400000);
   await query(`INSERT INTO billing_subscriptions(guild_id,discord_user_id,plan_id,status,current_period_end,source,updated_at)
     VALUES($1,$2,$3,'comped',$4,'manual',now())`,[guildId,userId,planId,expires]);
   await syncEntitlement(guildId,userId,planId,"comped","manual",expires);
