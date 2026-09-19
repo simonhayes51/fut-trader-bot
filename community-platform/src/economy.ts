@@ -41,11 +41,13 @@ export async function handleEconomyAutocomplete(i:any){
 async function profileEmbed(guildId:string,user:any){
   const p=await getEconomyProfile(guildId,user.id),xp=Number(p.eco.xp_total||0),level=p.level;
   const next=level>=100?xp:Number(p.nextLevelXp),into=xp-Number(p.levelFloor),span=Math.max(1,next-Number(p.levelFloor));
-  const [premium,stats]=await Promise.all([
+  const [premium,stats,custom]=await Promise.all([
     one<any>(`SELECT 1 FROM entitlements WHERE guild_id=$1 AND discord_user_id=$2 AND active=true AND (expires_at IS NULL OR expires_at>now())`,[guildId,user.id]),
-    one<any>(`SELECT thanks_received,thanks_given,messages FROM member_stats WHERE guild_id=$1 AND user_id=$2`,[guildId,user.id])
+    one<any>(`SELECT thanks_received,thanks_given,messages FROM member_stats WHERE guild_id=$1 AND user_id=$2`,[guildId,user.id]),
+    one<any>(`SELECT * FROM member_profiles WHERE guild_id=$1 AND user_id=$2`,[guildId,user.id])
   ]);
-  const e=brandEmbed(`${user.username} • Community profile`,undefined,premium?BRAND.colours.premium:BRAND.colours.primary).setThumbnail(user.displayAvatarURL());
+  const accent=custom?.accent&&/^#?[0-9a-f]{6}$/i.test(String(custom.accent))?parseInt(String(custom.accent).replace("#",""),16):(premium?BRAND.colours.premium:BRAND.colours.primary);
+  const e=brandEmbed(`${user.username}${custom?.profile_title?` • ${custom.profile_title}`:""}`,undefined,accent).setThumbnail(user.displayAvatarURL());
   e.addFields(
     {name:`Level ${level}`,value:`${progressBar(into,span)}\n${compactNumber(xp)} XP • #${p.rank} server rank`,inline:false},
     {name:"🪙 Live Coins",value:compactNumber(p.eco.coins_balance||0),inline:true},
@@ -55,7 +57,8 @@ async function profileEmbed(guildId:string,user:any){
     {name:"💬 Community activity",value:`${compactNumber(stats?.messages||0)} messages`,inline:true}
   );
   if(p.season)e.addFields({name:`🏆 ${p.season.name}`,value:`${compactNumber(p.season.xp_earned||0)} season XP • ends <t:${Math.floor(new Date(p.season.ends_at).getTime()/1000)}:R>`,inline:false});
-  if(p.achievements.length)e.addFields({name:"Latest achievements",value:p.achievements.slice(0,6).map((a:any)=>`${a.icon||"🏅"} ${a.name||String(a.achievement_key).replaceAll("_"," ")}`).join(" • "),inline:false});
+  if(p.achievements.length){const featured=(custom?.featured_achievements||[]).length?p.achievements.filter((a:any)=>(custom.featured_achievements||[]).includes(a.achievement_key)):p.achievements;e.addFields({name:"Achievement showcase",value:(featured.length?featured:p.achievements).slice(0,6).map((a:any)=>`${a.icon||"🏅"} ${a.name||String(a.achievement_key).replaceAll("_"," ")}`).join(" • "),inline:false});}
+  if(custom?.platform||(custom?.interests||[]).length)e.addFields({name:"About",value:[custom.platform?`🎮 ${custom.platform}`:"",(custom.interests||[]).length?`💬 ${custom.interests.join(", ")}`:""].filter(Boolean).join("\n"),inline:false});
   return e;
 }
 
