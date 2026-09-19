@@ -27,8 +27,6 @@ export const commandData = [
   new SlashCommandBuilder().setName("thanks").setDescription("Thank a helpful member")
     .addUserOption(o => o.setName("member").setDescription("Member").setRequired(true))
     .addStringOption(o => o.setName("reason").setDescription("What did they help with?").setMaxLength(200)),
-  new SlashCommandBuilder().setName("profile").setDescription("View a server trading/community profile")
-    .addUserOption(o => o.setName("member").setDescription("Member (defaults to you)")),
   new SlashCommandBuilder().setName("suggest").setDescription("Make a server suggestion")
     .addStringOption(o => o.setName("suggestion").setDescription("Your suggestion").setRequired(true).setMaxLength(1000)),
   new SlashCommandBuilder().setName("wl").setDescription("Post a W/L vote")
@@ -100,22 +98,6 @@ export async function handleCommand(client: Client, i: ChatInputCommandInteracti
     return i.reply(`💚 ${i.user} thanked ${member}${reason ? ` — ${reason}` : ""}`);
   }
 
-  if (i.commandName === "profile") {
-    const user = i.options.getUser("member") || i.user;
-    const stats = await one<any>(`SELECT * FROM member_stats WHERE guild_id=$1 AND user_id=$2`, [guildId,user.id]);
-    const calls = await one<{ total:string; wins:string }>(
-      `SELECT count(*)::text total, count(*) FILTER(WHERE status='HIT')::text wins FROM trade_calls WHERE guild_id=$1 AND user_id=$2`, [guildId,user.id]
-    );
-    const total = Number(calls?.total || 0), wins = Number(calls?.wins || 0);
-    const embed = new EmbedBuilder().setTitle(`${user.username}'s FC27 profile`).setThumbnail(user.displayAvatarURL())
-      .addFields(
-        {name:"XP",value:String(stats?.xp || 0),inline:true},
-        {name:"Thanks",value:String(stats?.thanks_received || 0),inline:true},
-        {name:"Trade calls",value:String(total),inline:true},
-        {name:"Hit rate",value:total ? `${((wins/total)*100).toFixed(0)}%` : "—",inline:true}
-      );
-    return i.reply({ embeds:[embed] });
-  }
 
   if (i.commandName === "call") {
     const feature = await getFeature(guildId, "trade_calls", { channelId:"", allowedRoleIds:[], autoThread:true });
