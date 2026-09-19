@@ -19,6 +19,12 @@ export const client = new Client({
   partials: [Partials.Channel, Partials.Message, Partials.User, Partials.GuildMember, Partials.Reaction]
 });
 
+function assertUniqueCommands(commands:any[]){
+  const seen=new Set<string>(),duplicates=new Set<string>();
+  for(const command of commands){const name=String(command?.name||"");if(seen.has(name))duplicates.add(name);seen.add(name);}
+  if(duplicates.size)throw new Error(`Duplicate Discord command names: ${[...duplicates].join(", ")}`);
+}
+
 function normalizeCommandOptions(command:any):any {
   const clone={...command};
   if(!Array.isArray(command?.options)) return clone;
@@ -38,6 +44,7 @@ function normalizeCommandOptions(command:any):any {
 export async function startBot() {
   const rest=new REST({version:"10"}).setToken(config.discordToken);
   const commands=[...commandData,...billingCommandData,...economyCommandData,...featureCommandData,...ticketOpsCommandData].map(normalizeCommandOptions);
+  assertUniqueCommands(commands);
   await rest.put(Routes.applicationGuildCommands(config.clientId,config.targetGuildId),{body:commands});
   client.once(Events.ClientReady, async ready => {console.log(`Discord ready as ${ready.user.tag}`);const guild=await ready.guilds.fetch(config.targetGuildId).catch(()=>null);if(guild){await query(`INSERT INTO guild_settings(guild_id,guild_name) VALUES($1,$2) ON CONFLICT(guild_id) DO UPDATE SET guild_name=$2,updated_at=now()`,[guild.id,guild.name]);await ensureEconomyDefaults(guild.id);}});
   client.on(Events.InteractionCreate, async interaction => {try{
