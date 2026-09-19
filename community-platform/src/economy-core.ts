@@ -46,7 +46,7 @@ async function applyLedger(client:any,input:{guildId:string;userId:string;curren
     ])).rows[0];
   if(!inserted)return false;
   if(input.currency==="xp"){
-    await client.query(`UPDATE member_economy SET xp_total=xp_total+$3,updated_at=now() WHERE guild_id=$1 AND user_id=$2`,[input.guildId,input.userId,Math.trunc(input.amount)]);
+    await client.query(`UPDATE member_economy SET xp_total=GREATEST(0,xp_total+$3),updated_at=now() WHERE guild_id=$1 AND user_id=$2`,[input.guildId,input.userId,Math.trunc(input.amount)]);
     await client.query(`UPDATE member_stats SET xp=GREATEST(0,xp+$3) WHERE guild_id=$1 AND user_id=$2`,[input.guildId,input.userId,Math.trunc(input.amount)]);
   }else{
     await client.query(`UPDATE member_economy SET coins_balance=coins_balance+$3,lifetime_coins_earned=lifetime_coins_earned+CASE WHEN $3>0 THEN $3 ELSE 0 END,lifetime_coins_spent=lifetime_coins_spent+CASE WHEN $3<0 THEN -$3 ELSE 0 END,updated_at=now() WHERE guild_id=$1 AND user_id=$2`,[input.guildId,input.userId,Math.trunc(input.amount)]);
