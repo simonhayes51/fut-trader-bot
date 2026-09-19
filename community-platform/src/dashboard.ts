@@ -33,15 +33,21 @@ app.use(session({
   cookie:{httpOnly:true,sameSite:"lax",secure:process.env.NODE_ENV==="production",maxAge:7*24*60*60*1000}
 }));
 
-function dashboardSidebar(pathname:string) {
-  const items:[string,string][]=[
-    ["/dashboard","Overview"],["/setup","Setup"],["/members","Members"],["/economy","Economy"],["/analytics","Analytics"],
-    ["/commands","Commands"],["/automation","Automation"],["/discord","Discord"],["/trading","Trade calls"],
-    ["/tickets","Tickets"],["/social","Social feeds"],["/billing","Premium"],["/moderation","Moderation"],["/audit","Audit log"]
-  ];
+function dashboardSidebar(pathname:string,user?:{username?:string;avatar?:string}) {
+  const groups=[
+    {label:"Workspace",items:[["/dashboard","⌂","Overview"],["/analytics","⌁","Analytics"],["/members","◎","Members"]]},
+    {label:"Growth",items:[["/economy","◈","Economy"],["/billing","◆","Premium"],["/automation","↻","Automation"]]},
+    {label:"Community",items:[["/trading","↗","Trade calls"],["/social","◉","Social feeds"],["/tickets","◇","Tickets"],["/discord","♢","Discord"]]},
+    {label:"System",items:[["/commands","⌘","Commands"],["/moderation","⊘","Moderation"],["/setup","⚙","Setup"],["/audit","≡","Audit log"]]}
+  ] as const;
   const activeFor=(href:string)=>href==="/dashboard" ? pathname==="/dashboard" || pathname.startsWith("/modules/") : pathname===href || pathname.startsWith(`${href}/`);
-  const links=items.map(([href,label])=>`<a class="${activeFor(href)?"active":""}" href="${href}">${label}</a>`).join("");
-  return `<aside class="sidebar"><a class="brand" href="/dashboard"><span>EAFC.Live</span> Control</a><nav>${links}</nav><form method="post" action="/logout"><button class="ghost full">Log out</button></form></aside>`;
+  const nav=groups.map(group=>`<div class="nav-group"><div class="nav-label">${group.label}</div>${group.items.map(([href,icon,label])=>`<a class="${activeFor(href)?"active":""}" href="${href}"><span class="nav-icon">${icon}</span><span>${label}</span></a>`).join("")}</div>`).join("");
+  const initial=(user?.username||"A").slice(0,1).toUpperCase();
+  return `<aside class="sidebar">
+    <a class="brand" href="/dashboard"><span class="brand-mark">E</span><span class="brand-copy"><b>EAFC.Live</b><small>Community OS</small></span></a>
+    <nav>${nav}</nav>
+    <div class="sidebar-footer"><div class="admin-chip"><span class="admin-avatar">${initial}</span><span><b>${user?.username||"Administrator"}</b><small>Administrator</small></span></div><form method="post" action="/logout"><button class="icon-button" title="Log out">↪</button></form></div>
+  </aside>`;
 }
 
 app.use((req:any,res:any,next:any)=>{
@@ -52,7 +58,7 @@ app.use((req:any,res:any,next:any)=>{
       if(err){if(callback)return callback(err);return next(err);}
       let output=html;
       if(output.includes('<aside class="sidebar">')){
-        output=output.replace(/<aside class="sidebar">[\s\S]*?<\/aside>/,dashboardSidebar(req.path));
+        output=output.replace(/<aside class="sidebar">[\\s\\S]*?<\\/aside>/,dashboardSidebar(req.path,options?.user||req.session?.user));
         if(!output.includes('/polish.css')) output=output.replace("</head>",'<link rel="stylesheet" href="/polish.css"></head>');
       }
       if(callback)return callback(null,output);
