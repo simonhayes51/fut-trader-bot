@@ -226,6 +226,16 @@ CREATE TABLE IF NOT EXISTS entitlement_grants (
 CREATE INDEX IF NOT EXISTS entitlement_grants_active_idx
   ON entitlement_grants(guild_id,discord_user_id,entitlement_key,active,expires_at);
 
+-- Preserve all pre-v3 Premium access as an independent legacy grant.
+INSERT INTO entitlement_grants(guild_id,discord_user_id,entitlement_key,source,source_ref,active,expires_at,metadata)
+SELECT guild_id,discord_user_id,entitlement_key,
+       CASE WHEN source='aggregate' THEN 'legacy' ELSE COALESCE(source,'legacy') END,
+       'legacy:'||COALESCE(source_ref,id::text),active,expires_at,
+       jsonb_build_object('migrated_from_entitlements',true)
+FROM entitlements
+WHERE source<>'aggregate' OR source IS NULL
+ON CONFLICT(guild_id,discord_user_id,entitlement_key,source,source_ref) DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS economy_event_queue (
   id BIGSERIAL PRIMARY KEY,
   guild_id TEXT NOT NULL,
