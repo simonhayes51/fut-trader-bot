@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { client } from "./bot.js";
 import { config } from "./config.js";
 import { audit, one, query } from "./db.js";
+import { rewardReferralConversion } from "./economy-core.js";
 
 export const stripe = config.stripeSecretKey ? new Stripe(config.stripeSecretKey) : null;
 
@@ -151,7 +152,10 @@ export async function handleStripeWebhook(rawBody:Buffer,signature:string) {
         await processSubscription(sub);
       }
       const ref=s.metadata?.referralCode;
-      if(ref) await query(`UPDATE referral_codes SET conversions=conversions+1 WHERE guild_id=$1 AND lower(code)=lower($2)`,[guildId,ref]);
+      if(ref) {
+        await query(`UPDATE referral_codes SET conversions=conversions+1 WHERE guild_id=$1 AND lower(code)=lower($2)`,[guildId,ref]);
+        if(userId) await rewardReferralConversion(guildId,ref,userId,s.id).catch(err=>console.error("Referral economy reward failed",err));
+      }
     }
     if(["customer.subscription.created","customer.subscription.updated","customer.subscription.deleted"].includes(event.type)) await processSubscription(event.data.object as Stripe.Subscription);
     if(event.type==="invoice.payment_failed") {
