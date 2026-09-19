@@ -15,7 +15,7 @@ Keep Stripe secrets in Railway/environment secrets. Never commit them.
 
 ## 2. Stripe products and prices
 
-Create recurring Stripe Prices for each membership tier (for example monthly and annual Premium). Copy each `price_...` ID into **FC27 Control → Premium & billing → Membership plans** and map it to the Discord role that should be granted.
+Create recurring Stripe Prices for each membership tier (for example monthly and annual Premium). Copy each `price_...` ID into **EAFC.Live Control → Premium & billing → Membership plans** and map it to the Discord role that should be granted.
 
 The dashboard can configure:
 - plan name and slug
