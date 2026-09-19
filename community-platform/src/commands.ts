@@ -4,6 +4,7 @@ import {
 } from "discord.js";
 import { audit, getFeature, one, query } from "./db.js";
 import { brandEmbed, BRAND } from "./brand.js";
+import { recordEconomyEvent } from "./economy-core.js";
 
 export const commandData=[
   new SlashCommandBuilder().setName("kudos").setDescription("Give kudos to a member")
@@ -61,6 +62,7 @@ export async function handleCommand(client:Client,i:ChatInputCommandInteraction)
     const reason=note?`${type}: ${note}`:type;
     try{
       await giveKudos(guildId,i.user.id,member.id,reason,Number(feature.config.dailyLimit||5));
+      await recordEconomyEvent(guildId,i.user.id,"kudos_given",{sourceType:"kudos",sourceId:`${i.id}:${member.id}`,idempotencyBase:`kudos-given:${i.id}:${i.user.id}`});
       await audit(guildId,i.user.id,"reputation.kudos",{receiverId:member.id,type,note});
       return i.reply({embeds:[brandEmbed("👏 Kudos given",`${i.user} recognised ${member} for **${type.toLowerCase()}**${note?`\n“${note}”`:""}`,BRAND.colours.success)]});
     }catch(err:any){return i.reply({content:String(err?.message||err),ephemeral:true});}
