@@ -206,13 +206,13 @@ export async function ensureEconomyDefaults(guildId:string){
   const quests=[
     ["daily_chat","Warm up","Earn rewards from 10 qualifying messages.","daily","message",10,60,30,10,false],
     ["daily_help","Help somebody","Have one message marked helpful.","daily","helpful_received",1,75,50,20,false],
-    ["daily_trade","Log a trade","Add one completed trade to your journal.","daily","trade_logged",1,50,25,30,false],
+    ["daily_kudos","Give kudos","Recognise another member for a useful contribution.","daily","kudos_given",1,50,25,30,false],
     ["daily_checkin","Daily check-in","Claim today's Live Coins.","daily","daily_claim",1,25,10,40,false],
     ["weekly_active","Community regular","Earn rewards from 50 qualifying messages this week.","weekly","message",50,250,150,100,false],
     ["weekly_help","Community MVP","Have five messages marked helpful this week.","weekly","helpful_received",5,350,250,110,false],
-    ["weekly_trader","Active trader","Log five completed trades this week.","weekly","trade_logged",5,250,150,120,false],
+    ["weekly_kudos","Community champion","Give kudos to five useful contributions this week.","weekly","kudos_given",5,250,150,120,false],
     ["weekly_referral","Bring a mate","Generate one converted Premium referral this week.","weekly","referral_conversion",1,500,500,130,false],
-    ["weekly_investor","Track the market","Join three community investments this week.","weekly","investment_join",3,100,75,140,false]
+    ["weekly_streak","Stay consistent","Claim your daily reward five times this week.","weekly","daily_claim",5,150,100,140,false]
   ];
   for(const [key,name,description,cadence,eventType,target,xp,coins,sort,premium] of quests){
     await query(`INSERT INTO quest_definitions(guild_id,quest_key,name,description,cadence,event_type,target,xp_reward,coin_reward,sort_order,premium_only)
@@ -228,7 +228,7 @@ export async function ensureEconomyDefaults(guildId:string){
     ["streak_7","On a roll","Claimed rewards seven days running.","🔥",100,150,50],
     ["streak_30","Unstoppable","Claimed rewards thirty days running.","💎",500,750,60],
     ["helpful_10","Trusted helper","Had ten messages marked helpful.","💚",200,250,70],
-    ["trader_10","Trader track record","Logged ten completed trades.","📊",200,250,80]
+    ["kudos_10","Recognised member","Received ten kudos from the community.","👏",200,250,80]
   ];
   for(const [key,name,description,icon,xp,coins,sort] of achievements){
     await query(`INSERT INTO achievement_definitions(guild_id,achievement_key,name,description,icon,xp_reward,coin_reward,sort_order)
