@@ -89,6 +89,8 @@ export async function handleCommand(client: Client, i: ChatInputCommandInteracti
       [guildId, i.user.id]
     );
     if (Number(count?.count || 0) >= Number(feature.config.dailyLimit || 3)) return i.reply({ content: "You've reached today's thanks limit.", ephemeral: true });
+    const repeat=await one<any>(`SELECT 1 FROM reputation_events WHERE guild_id=$1 AND giver_id=$2 AND receiver_id=$3 AND created_at>now()-interval '24 hours' LIMIT 1`,[guildId,i.user.id,member.id]);
+    if(repeat) return i.reply({content:"You've already thanked that member in the last 24 hours. Spread the love around.",ephemeral:true});
     const reason = i.options.getString("reason") || "";
     await query(`INSERT INTO reputation_events(guild_id,giver_id,receiver_id,reason) VALUES($1,$2,$3,$4)`, [guildId,i.user.id,member.id,reason]);
     await query(`INSERT INTO member_stats(guild_id,user_id,thanks_received) VALUES($1,$2,1)
