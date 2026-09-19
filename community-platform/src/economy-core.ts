@@ -35,26 +35,32 @@ async function ensureMember(client:any,guildId:string,userId:string){
 async function applyLedger(client:any,input:{guildId:string;userId:string;currency:"xp"|"coins";amount:number;reason:string;sourceType?:string;sourceId?:string;idempotencyKey?:string;metadata?:any}){
   await ensureMember(client,input.guildId,input.userId);
   if(!Number.isFinite(input.amount)||input.amount===0)return false;
-  if(input.currency==="coins"&&input.amount<0){
+  let appliedAmount=Math.trunc(input.amount);
+  if(input.currency==="coins"&&appliedAmount<0){
     const wallet=(await client.query(`SELECT coins_balance FROM member_economy WHERE guild_id=$1 AND user_id=$2 FOR UPDATE`,[input.guildId,input.userId])).rows[0];
-    if(Number(wallet?.coins_balance||0)<Math.abs(input.amount))throw new Error("Not enough Live Coins.");
+    if(Number(wallet?.coins_balance||0)<Math.abs(appliedAmount))throw new Error("Not enough Live Coins.");
+  }
+  if(input.currency==="xp"&&appliedAmount<0){
+    const wallet=(await client.query(`SELECT xp_total FROM member_economy WHERE guild_id=$1 AND user_id=$2 FOR UPDATE`,[input.guildId,input.userId])).rows[0];
+    appliedAmount=-Math.min(Math.abs(appliedAmount),Number(wallet?.xp_total||0));
+    if(appliedAmount===0)return false;
   }
   const inserted=(await client.query(`INSERT INTO economy_ledger(guild_id,user_id,currency,amount,reason,source_type,source_id,idempotency_key,metadata)
     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)
     ON CONFLICT(guild_id,idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING RETURNING id`,[
-      input.guildId,input.userId,input.currency,Math.trunc(input.amount),input.reason,input.sourceType||null,input.sourceId||null,input.idempotencyKey||null,JSON.stringify(input.metadata||{})
+      input.guildId,input.userId,input.currency,appliedAmount,input.reason,input.sourceType||null,input.sourceId||null,input.idempotencyKey||null,JSON.stringify(input.metadata||{})
     ])).rows[0];
   if(!inserted)return false;
   if(input.currency==="xp"){
-    await client.query(`UPDATE member_economy SET xp_total=GREATEST(0,xp_total+$3),updated_at=now() WHERE guild_id=$1 AND user_id=$2`,[input.guildId,input.userId,Math.trunc(input.amount)]);
-    await client.query(`UPDATE member_stats SET xp=GREATEST(0,xp+$3) WHERE guild_id=$1 AND user_id=$2`,[input.guildId,input.userId,Math.trunc(input.amount)]);
+    await client.query(`UPDATE member_economy SET xp_total=GREATEST(0,xp_total+$3),updated_at=now() WHERE guild_id=$1 AND user_id=$2`,[input.guildId,input.userId,appliedAmount]);
+    await client.query(`UPDATE member_stats SET xp=GREATEST(0,xp+$3) WHERE guild_id=$1 AND user_id=$2`,[input.guildId,input.userId,appliedAmount]);
   }else{
     await client.query(`UPDATE member_economy SET coins_balance=coins_balance+$3,lifetime_coins_earned=lifetime_coins_earned+CASE WHEN $3>0 THEN $3 ELSE 0 END,lifetime_coins_spent=lifetime_coins_spent+CASE WHEN $3<0 THEN -$3 ELSE 0 END,updated_at=now() WHERE guild_id=$1 AND user_id=$2`,[input.guildId,input.userId,Math.trunc(input.amount)]);
   }
   const season=await currentSeason(client,input.guildId);
   await client.query(`INSERT INTO season_member_stats(season_id,guild_id,user_id,xp_earned,coins_earned) VALUES($1,$2,$3,$4,$5)
     ON CONFLICT(season_id,user_id) DO UPDATE SET xp_earned=season_member_stats.xp_earned+$4,coins_earned=season_member_stats.coins_earned+$5`,[
-      season.id,input.guildId,input.userId,input.currency==="xp"&&input.amount>0?Math.trunc(input.amount):0,input.currency==="coins"&&input.amount>0?Math.trunc(input.amount):0
+      season.id,input.guildId,input.userId,input.currency==="xp"&&input.amount>0?appliedAmount:0,input.currency==="coins"&&appliedAmount>0?appliedAmount:0
     ]);
   return true;
 }
