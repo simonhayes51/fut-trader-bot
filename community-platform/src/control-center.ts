@@ -43,7 +43,7 @@ controlRouter.get("/control",async(req:any,res)=>{
     query<any>(`SELECT feature_key,enabled FROM feature_settings WHERE guild_id=$1`,[gid])
   ]);
   const names=new Map(ui.members.map(m=>[m.id,m.name]));
-  res.render("control-home",{user:req.session.user,...ui,metrics:metrics||{},recent,kudos:kudos.map(k=>({...k,name:names.get(k.user_id)||k.user_id})),season,features:new Map(features.map(f=>[f.feature_key,f.enabled]))});
+  res.render("control-home",{user:req.session.user,...ui,metrics:metrics||{},recent,kudos:kudos.map(k=>({...k,name:names.get(k.user_id)||k.user_id})),season,features:new Map<string,boolean>(features.map(f=>[String(f.feature_key),Boolean(f.enabled)] as [string,boolean]))});
 });
 
 controlRouter.get("/control/members",async(req:any,res)=>{
@@ -73,7 +73,7 @@ controlRouter.get("/control/engagement",async(req:any,res)=>{
     one<any>(`SELECT count(*) total FROM achievements WHERE guild_id=$1`,[gid])
   ]);
   const names=new Map(ui.members.map(m=>[m.id,m.name]));
-  res.render("control-engagement",{user:req.session.user,...ui,settings:new Map(settings.map(s=>[s.feature_key,s])),season,quests,store,topKudos:topKudos.map(k=>({...k,name:names.get(k.user_id)||k.user_id})),achievements:Number(achievements?.total||0)});
+  res.render("control-engagement",{user:req.session.user,...ui,settings:new Map<string,any>(settings.map(s=>[String(s.feature_key),s] as [string,any])),season,quests,store,topKudos:topKudos.map(k=>({...k,name:names.get(k.user_id)||k.user_id})),achievements:Number(achievements?.total||0)});
 });
 
 controlRouter.get("/control/community",async(req:any,res)=>{
@@ -84,7 +84,7 @@ controlRouter.get("/control/community",async(req:any,res)=>{
     query<any>(`SELECT * FROM sticky_messages WHERE guild_id=$1 ORDER BY enabled DESC,id DESC`,[gid]),
     query<any>(`SELECT feature_key,enabled,config FROM feature_settings WHERE guild_id=$1 AND feature_key=ANY($2::text[])`,[gid,["welcome","role_menus","suggestions","tickets","starboard"]])
   ]);
-  res.render("control-community",{user:req.session.user,...ui,responses,stickies,settings:new Map(settings.map(s=>[s.feature_key,s])),saved:req.query.saved==="1"});
+  res.render("control-community",{user:req.session.user,...ui,responses,stickies,settings:new Map<string,any>(settings.map(s=>[String(s.feature_key),s] as [string,any])),saved:req.query.saved==="1"});
 });
 
 controlRouter.post("/control/community/responses",async(req:any,res)=>{
@@ -124,7 +124,7 @@ controlRouter.get("/control/safety",async(req:any,res)=>{
     query<any>(`SELECT * FROM tickets WHERE guild_id=$1 ORDER BY created_at DESC LIMIT 50`,[config.targetGuildId]),
     query<any>(`SELECT feature_key,enabled,config FROM feature_settings WHERE guild_id=$1 AND feature_key=ANY($2::text[])`,[config.targetGuildId,["automod","mod_tools","join_security","tickets"]])
   ]);
-  res.render("control-safety",{user:req.session.user,...ui,warnings,reports,tickets,settings:new Map(settings.map(s=>[s.feature_key,s]))});
+  res.render("control-safety",{user:req.session.user,...ui,warnings,reports,tickets,settings:new Map<string,any>(settings.map(s=>[String(s.feature_key),s] as [string,any]))});
 });
 
 controlRouter.get("/control/settings",async(req:any,res)=>{
