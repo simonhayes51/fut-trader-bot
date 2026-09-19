@@ -42,7 +42,7 @@ controlRouter.get("/control",async(req:any,res)=>{
     one<any>(`SELECT * FROM economy_seasons WHERE guild_id=$1 AND active=true ORDER BY starts_at DESC LIMIT 1`,[gid]),
     query<any>(`SELECT feature_key,enabled FROM feature_settings WHERE guild_id=$1`,[gid])
   ]);
-  const names=new Map(ui.members.map(m=>[m.id,m.name]));
+  const names=new Map<string,string>(ui.members.map(m=>[String(m.id),String(m.name)] as [string,string]));
   res.render("control-home",{user:req.session.user,...ui,metrics:metrics||{},recent,kudos:kudos.map(k=>({...k,name:names.get(k.user_id)||k.user_id})),season,features:new Map<string,boolean>(features.map(f=>[String(f.feature_key),Boolean(f.enabled)] as [string,boolean]))});
 });
 
@@ -72,7 +72,7 @@ controlRouter.get("/control/engagement",async(req:any,res)=>{
     query<any>(`SELECT user_id,thanks_received FROM member_stats WHERE guild_id=$1 ORDER BY thanks_received DESC LIMIT 10`,[gid]),
     one<any>(`SELECT count(*) total FROM achievements WHERE guild_id=$1`,[gid])
   ]);
-  const names=new Map(ui.members.map(m=>[m.id,m.name]));
+  const names=new Map<string,string>(ui.members.map(m=>[String(m.id),String(m.name)] as [string,string]));
   res.render("control-engagement",{user:req.session.user,...ui,settings:new Map<string,any>(settings.map(s=>[String(s.feature_key),s] as [string,any])),season,quests,store,topKudos:topKudos.map(k=>({...k,name:names.get(k.user_id)||k.user_id})),achievements:Number(achievements?.total||0)});
 });
 
