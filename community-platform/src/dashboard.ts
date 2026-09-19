@@ -35,13 +35,13 @@ app.use(session({
 
 function dashboardSidebar(pathname:string) {
   const items:[string,string][]=[
-    ["/dashboard","Overview"],["/setup","Setup"],["/members","Members"],["/analytics","Analytics"],
+    ["/dashboard","Overview"],["/setup","Setup"],["/members","Members"],["/economy","Economy"],["/analytics","Analytics"],
     ["/commands","Commands"],["/automation","Automation"],["/discord","Discord"],["/trading","Trade calls"],
     ["/tickets","Tickets"],["/social","Social feeds"],["/billing","Premium"],["/moderation","Moderation"],["/audit","Audit log"]
   ];
   const activeFor=(href:string)=>href==="/dashboard" ? pathname==="/dashboard" || pathname.startsWith("/modules/") : pathname===href || pathname.startsWith(`${href}/`);
   const links=items.map(([href,label])=>`<a class="${activeFor(href)?"active":""}" href="${href}">${label}</a>`).join("");
-  return `<aside class="sidebar"><a class="brand" href="/dashboard"><span>FC27</span> Control</a><nav>${links}</nav><form method="post" action="/logout"><button class="ghost full">Log out</button></form></aside>`;
+  return `<aside class="sidebar"><a class="brand" href="/dashboard"><span>EAFC.Live</span> Control</a><nav>${links}</nav><form method="post" action="/logout"><button class="ghost full">Log out</button></form></aside>`;
 }
 
 app.use((req:any,res:any,next:any)=>{
