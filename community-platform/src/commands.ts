@@ -3,6 +3,7 @@ import {
   SlashCommandBuilder, TextChannel, ChannelType
 } from "discord.js";
 import { audit, getFeature, one, query } from "./db.js";
+import { brandEmbed, BRAND } from "./brand.js";
 
 export const commandData = [
   new SlashCommandBuilder().setName("tax").setDescription("Calculate EA tax")
@@ -75,7 +76,7 @@ export async function handleCommand(client: Client, i: ChatInputCommandInteracti
     if (i.commandName === "profit") text = `Buy: **${money(buy)}** • Sell: **${money(sell)}** • Qty: **${qty}** • Profit after tax: **${money((net(sell,tax)-buy)*qty)}**`;
     if (i.commandName === "roi") text = `ROI after tax: **${(((net(sell,tax)-buy)/buy)*100).toFixed(2)}%**`;
     if (i.commandName === "breakeven") text = `Minimum break-even sale: **${money(Math.ceil(buy/(1-tax/100)))}**`;
-    return i.reply({ content: text, ephemeral: Boolean(feature.config.ephemeralCalculators) });
+    return i.reply({ embeds:[brandEmbed("🧮 Trading calculator",text,BRAND.colours.neutral)], ephemeral: Boolean(feature.config.ephemeralCalculators) });
   }
 
   if (i.commandName === "thanks") {
@@ -108,9 +109,9 @@ export async function handleCommand(client: Client, i: ChatInputCommandInteracti
     const player = i.options.getString("player",true), buy=i.options.getInteger("buy",true), target=i.options.getInteger("target",true), reason=i.options.getString("reason",true);
     const rows = await query<{id:number}>(`INSERT INTO trade_calls(guild_id,user_id,player,buy_price,target_price,reason) VALUES($1,$2,$3,$4,$5,$6) RETURNING id`, [guildId,i.user.id,player,buy,target,reason]);
     const id = rows[0]!.id;
-    const embed = new EmbedBuilder().setTitle(`📈 Trade Call #${id}: ${player}`).setDescription(reason)
+    const embed = brandEmbed(`📈 Trade Call #${id} • ${player}`,reason,BRAND.colours.success)
       .addFields({name:"Buy",value:money(buy),inline:true},{name:"Target",value:money(target),inline:true},{name:"Potential ROI",value:`${(((target*.95-buy)/buy)*100).toFixed(1)}%`,inline:true})
-      .setFooter({text:`Posted by ${i.user.username}`}).setTimestamp();
+      .setAuthor({name:i.user.username,iconURL:i.user.displayAvatarURL()});
     await i.reply({ embeds:[embed] });
     const msg = await i.fetchReply();
     await query(`UPDATE trade_calls SET discord_message_id=$1 WHERE id=$2`, [msg.id,id]);
@@ -124,7 +125,7 @@ export async function handleCommand(client: Client, i: ChatInputCommandInteracti
     if (!call || (call.user_id !== i.user.id && !i.memberPermissions?.has(PermissionFlagsBits.ModerateMembers))) return i.reply({content:"Call not found or not yours.",ephemeral:true});
     const status = sale >= Number(call.target_price || Infinity) ? "HIT" : sale > Number(call.buy_price) ? "PROFIT" : "MISS";
     await query(`UPDATE trade_calls SET status=$1,result_price=$2,closed_at=now() WHERE id=$3`,[status,sale,id]);
-    return i.reply(`Trade #${id} closed at **${money(sale)}** — **${status}**.`);
+    return i.reply({embeds:[brandEmbed(`Trade #${id} • ${status}`,`Closed at **${money(sale)}** coins.`,status==="MISS"?BRAND.colours.danger:status==="HIT"?BRAND.colours.success:BRAND.colours.warning)]});
   }
 
   if (i.commandName === "suggest") {
@@ -132,7 +133,7 @@ export async function handleCommand(client: Client, i: ChatInputCommandInteracti
     if(!feature.enabled) return i.reply({content:"Suggestions are disabled.",ephemeral:true});
     const body=i.options.getString("suggestion",true);
     const rows=await query<{id:number}>(`INSERT INTO suggestions(guild_id,user_id,body) VALUES($1,$2,$3) RETURNING id`,[guildId,i.user.id,body]);
-    const embed=new EmbedBuilder().setTitle(`💡 Suggestion #${rows[0]!.id}`).setDescription(body).setFooter({text:`From ${i.user.username}`});
+    const embed=brandEmbed(`💡 Suggestion #${rows[0]!.id}`,body,BRAND.colours.primary).setAuthor({name:i.user.username,iconURL:i.user.displayAvatarURL()});
     const channel = feature.config.channelId ? await client.channels.fetch(String(feature.config.channelId)).catch(()=>null) : i.channel;
     if (channel?.isTextBased()) {
       const msg=await (channel as TextChannel).send({embeds:[embed]});
@@ -147,7 +148,7 @@ export async function handleCommand(client: Client, i: ChatInputCommandInteracti
     const feature=await getFeature(guildId,"wl_votes",{channelId:""});
     if(!feature.enabled) return i.reply({content:"W/L voting is disabled.",ephemeral:true});
     const item=i.options.getString("item",true), price=i.options.getInteger("price",true), image=i.options.getAttachment("image");
-    const embed=new EmbedBuilder().setTitle(`⚖️ W or L? • ${item}`).setDescription(`Bought for **${money(price)}** coins`).setFooter({text:`Posted by ${i.user.username}`});
+    const embed=brandEmbed(`⚖️ W or L? • ${item}`,`Bought for **${money(price)}** coins`,BRAND.colours.warning).setAuthor({name:i.user.username,iconURL:i.user.displayAvatarURL()});
     if(image?.contentType?.startsWith("image/")) embed.setImage(image.url);
     const channel=feature.config.channelId ? await client.channels.fetch(String(feature.config.channelId)).catch(()=>null) : i.channel;
     if(!channel?.isTextBased()) return i.reply({content:"W/L channel is not configured.",ephemeral:true});
@@ -187,7 +188,7 @@ export async function handleCommand(client: Client, i: ChatInputCommandInteracti
       permissionOverwrites:overwrites
     });
     await query(`UPDATE tickets SET channel_id=$1 WHERE id=$2`,[channel.id,row.id]);
-    await channel.send(`🎫 **${type} ticket #${row.id}**\n${i.user}, describe what you need help with. Staff can close this from the dashboard.`);
+    await channel.send({content:`${i.user}`,embeds:[brandEmbed(`🎫 ${type} ticket #${row.id}`,"Describe what you need help with below. A staff member will pick this up.",BRAND.colours.primary)]});
     return i.reply({content:`Ticket created: ${channel}`,ephemeral:true});
   }
 }
