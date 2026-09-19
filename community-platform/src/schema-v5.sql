@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS onboarding_configs (
   platform_roles JSONB NOT NULL DEFAULT '{}'::jsonb,
   interest_roles JSONB NOT NULL DEFAULT '{}'::jsonb,
   notification_roles JSONB NOT NULL DEFAULT '{}'::jsonb,
+  questions JSONB NOT NULL DEFAULT '[]'::jsonb,
   min_account_age_hours INTEGER NOT NULL DEFAULT 24,
   panel_message_id TEXT,
   welcome_title TEXT NOT NULL DEFAULT 'Welcome to EAFC.Live',
@@ -62,6 +63,7 @@ CREATE TABLE IF NOT EXISTS onboarding_answers (
   platform TEXT,
   interests TEXT[] NOT NULL DEFAULT '{}',
   notification_roles TEXT[] NOT NULL DEFAULT '{}',
+  answers JSONB NOT NULL DEFAULT '{}'::jsonb,
   completed_at TIMESTAMPTZ,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY(guild_id,user_id)
