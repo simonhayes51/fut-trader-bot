@@ -210,6 +210,14 @@ CREATE TABLE IF NOT EXISTS level_workflows (
   UNIQUE(guild_id,level)
 );
 
+CREATE TABLE IF NOT EXISTS level_workflow_awards (
+  guild_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  workflow_id BIGINT NOT NULL REFERENCES level_workflows(id) ON DELETE CASCADE,
+  awarded_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY(guild_id,user_id,workflow_id)
+);
+
 CREATE TABLE IF NOT EXISTS kudos_milestones (
   id BIGSERIAL PRIMARY KEY,
   guild_id TEXT NOT NULL,
@@ -389,6 +397,18 @@ CREATE TABLE IF NOT EXISTS health_findings (
   resolved_at TIMESTAMPTZ,
   UNIQUE(guild_id,finding_key)
 );
+
+CREATE TABLE IF NOT EXISTS temporary_role_grants (
+  guild_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  role_id TEXT NOT NULL,
+  source TEXT NOT NULL,
+  source_ref TEXT NOT NULL,
+  expires_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY(guild_id,user_id,role_id,source,source_ref)
+);
+CREATE INDEX IF NOT EXISTS temporary_role_grants_due_idx ON temporary_role_grants(expires_at) WHERE expires_at IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS profile_cosmetics (
   guild_id TEXT NOT NULL,
