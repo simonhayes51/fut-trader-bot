@@ -126,7 +126,7 @@ v5ControlRouter.get("/control/kudos",async(req:any,res)=>{
     query<any>(`SELECT category,count(*)::int value FROM reputation_events WHERE guild_id=$1 AND created_at>=now()-interval '30 days' GROUP BY category ORDER BY value DESC`,[gid]),
     one<any>(`SELECT * FROM recognition_role_settings WHERE guild_id=$1`,[gid]),one<any>(`SELECT * FROM recap_settings WHERE guild_id=$1`,[gid]),query<any>(`SELECT * FROM level_workflows WHERE guild_id=$1 ORDER BY level`,[gid])
   ]);
-  const names=new Map(base.members.map(m=>[m.id,m.name]));
+  const names=new Map<string,string>(base.members.map(m=>[String(m.id),String(m.name)] as [string,string]));
   res.render("control-kudos",{user:req.session.user,...base,milestones,leaders:leaders.map(x=>({...x,name:names.get(x.user_id)||x.user_id})),categories,recognition:recognition||{},recaps:recaps||{},workflows,saved:req.query.saved==="1"});
 });
 v5ControlRouter.post("/control/kudos/milestones",async(req:any,res)=>{
@@ -148,7 +148,7 @@ v5ControlRouter.get("/control/growth",async(req:any,res)=>{
     query<any>(`SELECT * FROM invite_milestones WHERE guild_id=$1 ORDER BY retained_invites`,[gid]),query<any>(`SELECT p.*,(SELECT count(*) FROM invite_joins i WHERE i.guild_id=p.guild_id AND i.invite_code=p.invite_code) joins,(SELECT count(*) FROM invite_joins i WHERE i.guild_id=p.guild_id AND i.invite_code=p.invite_code AND i.retained_7d) retained FROM partnerships p WHERE p.guild_id=$1 ORDER BY p.status,p.partner_name`,[gid]),
     query<any>(`SELECT * FROM booster_milestones WHERE guild_id=$1 ORDER BY months`,[gid])
   ]);
-  const names=new Map(base.members.map(m=>[m.id,m.name]));
+  const names=new Map<string,string>(base.members.map(m=>[String(m.id),String(m.name)] as [string,string]));
   res.render("control-growth",{user:req.session.user,...base,inviteLeaders:inviteLeaders.map(x=>({...x,name:names.get(x.user_id)||x.user_id})),inviteMilestones,partners,boosterMilestones,saved:req.query.saved==="1"});
 });
 v5ControlRouter.post("/control/growth/partners",async(req:any,res)=>{
