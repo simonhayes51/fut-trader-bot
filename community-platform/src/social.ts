@@ -1,9 +1,10 @@
 import crypto from "node:crypto";
 import { XMLParser } from "fast-xml-parser";
-import { EmbedBuilder, TextChannel } from "discord.js";
+import { TextChannel } from "discord.js";
 import { client } from "./bot.js";
 import { config } from "./config.js";
 import { one, query } from "./db.js";
+import { brandEmbed, BRAND } from "./brand.js";
 
 type Feed = {
   id:number; guild_id:string; name:string; provider:string; source:string; channel_id:string;
@@ -24,7 +25,7 @@ async function post(feed:Feed,item:{id:string;title:string;url?:string;descripti
   if(!allowed(feed,`${item.title} ${item.description||""}`)) return;
   const ch=await client.channels.fetch(feed.channel_id).catch(()=>null);
   if(!ch?.isTextBased()) return;
-  const embed=new EmbedBuilder().setAuthor({name:item.author||feed.name}).setTitle(item.title.slice(0,256)).setTimestamp();
+  const embed=brandEmbed(item.title.slice(0,256),undefined,BRAND.colours.primary).setAuthor({name:item.author||feed.name});
   if(item.url) embed.setURL(item.url);
   if(item.description) embed.setDescription(item.description.slice(0,3900));
   if(item.image) embed.setImage(item.image);
@@ -34,7 +35,7 @@ async function post(feed:Feed,item:{id:string;title:string;url?:string;descripti
 }
 
 async function pollRss(feed:Feed) {
-  const res=await fetch(feed.source,{headers:{"user-agent":"FC27CommunityBot/1.0"}});
+  const res=await fetch(feed.source,{headers:{"user-agent":"EAFCLiveCommunityBot/1.0"}});
   if(!res.ok) throw new Error(`${feed.name}: HTTP ${res.status}`);
   const xml=parser.parse(await res.text());
   const raw=arr(xml?.rss?.channel?.item ?? xml?.feed?.entry);
