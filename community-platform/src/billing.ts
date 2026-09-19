@@ -113,6 +113,19 @@ export async function refreshExpiredEntitlements() {
   }
 }
 
+export async function reconcileActiveEntitlementRoles(guildId:string) {
+  const rows=await query<any>(`SELECT e.discord_user_id,p.role_id,p.name
+    FROM entitlements e
+    JOIN billing_plans p ON p.guild_id=e.guild_id AND e.entitlement_key=('plan:'||p.slug)
+    WHERE e.guild_id=$1 AND e.active=true AND (e.expires_at IS NULL OR e.expires_at>now()) AND p.role_id<>''
+    ORDER BY e.updated_at DESC`,[guildId]);
+  const guild=client.guilds.cache.get(guildId);if(!guild)return;
+  for(const row of rows){
+    const member=await guild.members.fetch(row.discord_user_id).catch(()=>null);
+    if(member&&!member.roles.cache.has(row.role_id))await member.roles.add(row.role_id,`EAFC.Live entitlement reconciliation • ${row.name}`).catch(console.error);
+  }
+}
+
 export async function processSubscription(sub:Stripe.Subscription) {
   const meta=sub.metadata||{};
   const guildId=meta.guildId||config.targetGuildId;
