@@ -234,7 +234,7 @@ export async function handleComponent(client:Client,i:any){
 }
 
 export async function onMemberActivity(message:any){
-  if(!message.guildId||message.author?.bot||message.deleted)return;
+  if(!message.guildId||message.author?.bot)return;
   await query(`INSERT INTO member_stats(guild_id,user_id,messages,last_message_at,last_active_date) VALUES($1,$2,1,now(),current_date)
     ON CONFLICT(guild_id,user_id) DO UPDATE SET messages=member_stats.messages+1,last_message_at=now(),last_active_date=current_date`,[message.guildId,message.author.id]);
   await query(`INSERT INTO activity_daily(guild_id,user_id,activity_date,messages) VALUES($1,$2,current_date,1) ON CONFLICT(guild_id,user_id,activity_date) DO UPDATE SET messages=activity_daily.messages+1`,[message.guildId,message.author.id]);
