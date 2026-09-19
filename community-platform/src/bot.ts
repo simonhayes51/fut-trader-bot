@@ -12,6 +12,7 @@ import {
 } from "./feature-suite.js";
 import { handleTicketOps, ticketOpsCommandData } from "./ticket-ops.js";
 import { economyCommandData, handleEconomyAutocomplete, handleEconomyCommand, handleEconomyComponent, onEconomyJoin, onEconomyMessage } from "./economy.js";
+import { ensureEconomyDefaults } from "./economy-core.js";
 
 export const client = new Client({
   intents: [GatewayIntentBits.Guilds,GatewayIntentBits.GuildMembers,GatewayIntentBits.GuildMessages,GatewayIntentBits.MessageContent,GatewayIntentBits.GuildModeration,GatewayIntentBits.GuildMessageReactions],
@@ -38,7 +39,7 @@ export async function startBot() {
   const rest=new REST({version:"10"}).setToken(config.discordToken);
   const commands=[...commandData,...billingCommandData,...economyCommandData,...featureCommandData,...ticketOpsCommandData].map(normalizeCommandOptions);
   await rest.put(Routes.applicationGuildCommands(config.clientId,config.targetGuildId),{body:commands});
-  client.once(Events.ClientReady, async ready => {console.log(`Discord ready as ${ready.user.tag}`);const guild=await ready.guilds.fetch(config.targetGuildId).catch(()=>null);if(guild)await query(`INSERT INTO guild_settings(guild_id,guild_name) VALUES($1,$2) ON CONFLICT(guild_id) DO UPDATE SET guild_name=$2,updated_at=now()`,[guild.id,guild.name]);});
+  client.once(Events.ClientReady, async ready => {console.log(`Discord ready as ${ready.user.tag}`);const guild=await ready.guilds.fetch(config.targetGuildId).catch(()=>null);if(guild){await query(`INSERT INTO guild_settings(guild_id,guild_name) VALUES($1,$2) ON CONFLICT(guild_id) DO UPDATE SET guild_name=$2,updated_at=now()`,[guild.id,guild.name]);await ensureEconomyDefaults(guild.id);}});
   client.on(Events.InteractionCreate, async interaction => {try{
     if(interaction.isAutocomplete()){if(await handleBillingAutocomplete(interaction))return;if(await handleEconomyAutocomplete(interaction))return;if(await handleFeatureAutocomplete(interaction))return;await interaction.respond([]).catch(()=>{});return;}
     if(interaction.isButton()&&await handleEconomyComponent(client,interaction))return;
