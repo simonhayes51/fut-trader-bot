@@ -73,7 +73,7 @@ billingRouter.get("/",auth,async(req:any,res)=>{
   }));
   const metrics={
     active:subs.filter(s=>["active","trialing","comped","gifted","past_due"].includes(s.status)).length,
-    trialing:subs.filter(s=>s.status==="trialing").length,
+    complimentary:subs.filter(s=>["comped","gifted"].includes(s.status)).length,
     pastDue:subs.filter(s=>s.status==="past_due").length,
     cancelling:subs.filter(s=>s.cancel_at_period_end).length
   };
