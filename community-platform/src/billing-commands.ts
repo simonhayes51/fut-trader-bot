@@ -1,6 +1,7 @@
-import { ActionRowBuilder, AutocompleteInteraction, ButtonBuilder, ButtonStyle, ChatInputCommandInteraction, Client, EmbedBuilder, SlashCommandBuilder } from "discord.js";
+import { ActionRowBuilder, AutocompleteInteraction, ButtonBuilder, ButtonStyle, ChatInputCommandInteraction, Client, SlashCommandBuilder } from "discord.js";
 import { createCheckout, createPortal, getMemberBilling, listPlans, reconcileMemberBilling } from "./billing.js";
 import { getFeature, query } from "./db.js";
+import { brandEmbed, BRAND } from "./brand.js";
 
 export const billingCommandData = [
   new SlashCommandBuilder().setName("premium").setDescription("View premium plans or subscribe")
@@ -31,7 +32,7 @@ export async function handleBillingAutocomplete(i:AutocompleteInteraction) {
     const choices=plans
       .filter(p=>!search || p.name.toLowerCase().includes(search) || p.slug.toLowerCase().includes(search))
       .slice(0,25)
-      .map(p=>({name:`${p.name}${p.trial_days?` • ${p.trial_days}-day trial`:""}`.slice(0,100),value:p.slug}));
+      .map(p=>({name:p.name.slice(0,100),value:p.slug}));
     await i.respond(choices);
     return true;
   }
@@ -69,10 +70,7 @@ export async function handleBillingCommand(_client:Client,i:ChatInputCommandInte
       try { portal=await createPortal(i.guildId,i.user.id); } catch {}
       const row=new ActionRowBuilder<ButtonBuilder>();
       if(portal) row.addComponents(new ButtonBuilder().setLabel("Manage subscription").setStyle(ButtonStyle.Link).setURL(portal));
-      await i.reply({
-        content:`💎 You already have **${existing.plan_name||"Premium"}**. Status: **${existing.status}**.`,
-        components:row.components.length?[row]:[],ephemeral:true
-      });
+      await i.reply({embeds:[brandEmbed("💎 Premium active",`**${existing.plan_name||"Premium"}**\nStatus: **${existing.status}**`,BRAND.colours.premium)],components:row.components.length?[row]:[],ephemeral:true});
       return true;
     }
 
@@ -94,17 +92,17 @@ export async function handleBillingCommand(_client:Client,i:ChatInputCommandInte
         const row=new ActionRowBuilder<ButtonBuilder>().addComponents(
           new ButtonBuilder().setLabel(`Subscribe to ${plan.name}`).setStyle(ButtonStyle.Link).setURL(url)
         );
-        await i.reply({content:`💎 **${plan.name}**\n${plan.description||"Premium server access"}${plan.trial_days?`\n🎁 ${plan.trial_days}-day free trial`:""}`,components:[row],ephemeral:true});
+        await i.reply({embeds:[brandEmbed(`💎 ${plan.name}`,plan.description||"Premium server access",BRAND.colours.premium)],components:[row],ephemeral:true});
       } catch(err:any) {
         await i.reply({content:String(err?.message||"Unable to start checkout."),ephemeral:true});
       }
       return true;
     }
 
-    const embed=new EmbedBuilder().setTitle("💎 Premium memberships").setDescription("Choose a plan below. Payment is handled securely by Stripe.");
+    const embed=brandEmbed("💎 EAFC.Live Premium","Choose your membership below. Secure checkout is handled by Stripe.",BRAND.colours.premium);
     const buttons:ButtonBuilder[]=[];
     for(const p of plans) {
-      embed.addFields({name:p.name,value:`${p.description||"Premium access"}${p.trial_days?`\n🎁 ${p.trial_days}-day free trial`:""}`});
+      embed.addFields({name:p.name,value:p.description||"Premium access"});
       try {
         const url=await createCheckout({guildId:i.guildId,discordUserId:i.user.id,planId:p.id,referralCode:referral});
         buttons.push(new ButtonBuilder().setLabel(p.name.replace(/^FC27\s*/i,"").slice(0,80)).setStyle(ButtonStyle.Link).setURL(url));
@@ -126,9 +124,6 @@ export async function handleBillingCommand(_client:Client,i:ChatInputCommandInte
   const renew=sub.current_period_end?new Date(sub.current_period_end).toLocaleDateString("en-GB"):"—";
   const row=new ActionRowBuilder<ButtonBuilder>();
   if(portal) row.addComponents(new ButtonBuilder().setLabel("Manage billing").setStyle(ButtonStyle.Link).setURL(portal));
-  await i.reply({
-    content:`💎 **${sub.plan_name||"Premium"}**\nStatus: **${sub.status}**\n${sub.cancel_at_period_end?"Ends":"Current period ends"}: **${renew}**`,
-    components:row.components.length?[row]:[],ephemeral:true
-  });
+  await i.reply({embeds:[brandEmbed("💎 Your Premium membership",`**${sub.plan_name||"Premium"}**\nStatus: **${sub.status}**\n${sub.cancel_at_period_end?"Ends":"Current period ends"}: **${renew}**`,BRAND.colours.premium)],components:row.components.length?[row]:[],ephemeral:true});
   return true;
 }
