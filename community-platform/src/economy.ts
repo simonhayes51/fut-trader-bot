@@ -12,7 +12,11 @@ export const economyCommandData=[
   new SlashCommandBuilder().setName("quests").setDescription("View your daily and weekly quests"),
   new SlashCommandBuilder().setName("shop").setDescription("Browse the EAFC.Live rewards store"),
   new SlashCommandBuilder().setName("redeem").setDescription("Spend Live Coins on a store reward").addStringOption(o=>o.setName("item").setDescription("Store item key").setRequired(true).setAutocomplete(true)),
-  new SlashCommandBuilder().setName("season").setDescription("View the current FC27 community season")
+  new SlashCommandBuilder().setName("season").setDescription("View the current FC27 community season"),
+  new SlashCommandBuilder().setName("showcase").setDescription("Choose achievements shown on your public profile")
+    .addSubcommand(sc=>sc.setName("add").setDescription("Add an achievement to your showcase").addStringOption(o=>o.setName("achievement").setDescription("Achievement").setRequired(true).setAutocomplete(true)))
+    .addSubcommand(sc=>sc.setName("remove").setDescription("Remove an achievement from your showcase").addStringOption(o=>o.setName("achievement").setDescription("Achievement").setRequired(true).setAutocomplete(true)))
+    .addSubcommand(sc=>sc.setName("clear").setDescription("Clear your achievement showcase"))
 ].map(c=>c.toJSON());
 
 function questPeriodKey(cadence:string,seasonId?:number){
@@ -32,10 +36,17 @@ async function economyCommandAllowed(i:any){
 }
 
 export async function handleEconomyAutocomplete(i:any){
-  if(i.commandName!=="redeem"||!i.guildId)return false;
+  if(!i.guildId)return false;
   const q=String(i.options.getFocused()||"").toLowerCase();
-  const rows=await query<any>(`SELECT item_key,name,cost_coins FROM store_items WHERE guild_id=$1 AND active=true AND (stock IS NULL OR stock>0) AND (available_from IS NULL OR available_from<=now()) AND (available_until IS NULL OR available_until>now()) AND (season_id IS NULL OR season_id=(SELECT id FROM economy_seasons WHERE guild_id=$1 AND active=true ORDER BY starts_at DESC LIMIT 1)) AND (lower(item_key) LIKE $2 OR lower(name) LIKE $2) ORDER BY sort_order,name LIMIT 25`,[i.guildId,`%${q}%`]);
-  await i.respond(rows.map(r=>({name:`${r.name} • ${compactNumber(r.cost_coins)} Live Coins`.slice(0,100),value:r.item_key})));return true;
+  if(i.commandName==="redeem"){
+    const rows=await query<any>(`SELECT item_key,name,cost_coins FROM store_items WHERE guild_id=$1 AND active=true AND (stock IS NULL OR stock>0) AND (available_from IS NULL OR available_from<=now()) AND (available_until IS NULL OR available_until>now()) AND (season_id IS NULL OR season_id=(SELECT id FROM economy_seasons WHERE guild_id=$1 AND active=true ORDER BY starts_at DESC LIMIT 1)) AND (lower(item_key) LIKE $2 OR lower(name) LIKE $2) ORDER BY sort_order,name LIMIT 25`,[i.guildId,`%${q}%`]);
+    await i.respond(rows.map(r=>({name:`${r.name} • ${compactNumber(r.cost_coins)} Live Coins`.slice(0,100),value:r.item_key})));return true;
+  }
+  if(i.commandName==="showcase"){
+    const rows=await query<any>(`SELECT a.achievement_key,COALESCE(d.name,a.achievement_key) name FROM achievements a LEFT JOIN achievement_definitions d ON d.guild_id=a.guild_id AND d.achievement_key=a.achievement_key WHERE a.guild_id=$1 AND a.user_id=$2 AND lower(COALESCE(d.name,a.achievement_key)) LIKE $3 ORDER BY a.awarded_at DESC LIMIT 25`,[i.guildId,i.user.id,`%${q}%`]);
+    await i.respond(rows.map(r=>({name:String(r.name).slice(0,100),value:String(r.achievement_key).slice(0,100)})));return true;
+  }
+  return false;
 }
 
 async function profileEmbed(guildId:string,user:any){
@@ -138,7 +149,7 @@ async function redeemItem(client:Client,guildId:string,userId:string,itemKey:str
 }
 
 export async function handleEconomyCommand(client:Client,i:ChatInputCommandInteraction){
-  if(!i.guildId||!["profile","wallet","daily","quests","shop","redeem","season"].includes(i.commandName))return false;
+  if(!i.guildId||!["profile","wallet","daily","quests","shop","redeem","season","showcase"].includes(i.commandName))return false;
   if(!await economyCommandAllowed(i))return true;
   const gid=i.guildId,uid=i.user.id;
   if(i.commandName==="profile"){const u=i.options.getUser("member")||i.user;await i.reply({embeds:[await profileEmbed(gid,u)]});return true;}
@@ -148,6 +159,14 @@ export async function handleEconomyCommand(client:Client,i:ChatInputCommandInter
   if(i.commandName==="shop"){const p=await getEconomyProfile(gid,uid),items=await query<any>(`SELECT * FROM store_items WHERE guild_id=$1 AND active=true AND (stock IS NULL OR stock>0) AND (available_from IS NULL OR available_from<=now()) AND (available_until IS NULL OR available_until>now()) AND (season_id IS NULL OR season_id=(SELECT id FROM economy_seasons WHERE guild_id=$1 AND active=true ORDER BY starts_at DESC LIMIT 1)) ORDER BY sort_order,name`,[gid]);const e=brandEmbed("🛍️ EAFC.Live Rewards Store",`Balance: **${compactNumber(p.eco.coins_balance)} 🪙**\nEarn Live Coins by contributing, completing quests and keeping your streak.`,BRAND.colours.coins);for(const x of items.slice(0,12))e.addFields({name:`${x.emoji||"🎁"} ${x.name} • ${compactNumber(x.cost_coins)} 🪙`,value:`${x.description}${x.stock!==null?` • ${x.stock} left`:""}`,inline:false});const components:any[]=[];if(items.length){const menu=new StringSelectMenuBuilder().setCustomId("economy:shop-select").setPlaceholder("Choose a reward to redeem").addOptions(...items.slice(0,25).map(x=>new StringSelectMenuOptionBuilder().setLabel(String(x.name).slice(0,100)).setDescription(`${compactNumber(x.cost_coins)} Live Coins`.slice(0,100)).setValue(String(x.item_key)).setEmoji(String(x.emoji||"🎁"))));components.push(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu));}components.push(new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId("economy:shop-refresh").setLabel("Refresh balance").setStyle(ButtonStyle.Secondary)));await i.reply({embeds:[e],components,ephemeral:true});return true;}
   if(i.commandName==="redeem"){const key=i.options.getString("item",true);await i.deferReply({ephemeral:true});try{const r=await redeemItem(client,gid,uid,key,i.id);const msg=r.status==="FULFILLED"?`**${r.item_name}** is active now.`:`**${r.item_name}** has been queued for fulfilment.\nClaim code: \`${r.claim_code}\``;await i.editReply({embeds:[brandEmbed("✅ Reward redeemed",msg,BRAND.colours.success)]});}catch(err:any){await i.editReply({embeds:[brandEmbed("Couldn't redeem reward",String(err?.message||err),BRAND.colours.danger)]});}return true;}
   if(i.commandName==="season"){const season=await one<any>(`SELECT * FROM economy_seasons WHERE guild_id=$1 AND active=true ORDER BY starts_at DESC LIMIT 1`,[gid]);const top=season?await query<any>(`SELECT user_id,xp_earned,quests_completed FROM season_member_stats WHERE season_id=$1 ORDER BY xp_earned DESC LIMIT 10`,[season.id]):[];const p=await getEconomyProfile(gid,uid);const e=brandEmbed(`🏆 ${season?.name||"FC27 Season"}`,season?`Ends <t:${Math.floor(new Date(season.ends_at).getTime()/1000)}:R>\nYour season XP: **${compactNumber(p.season?.xp_earned||0)}**`:"Season data is being prepared.",BRAND.colours.premium);if(top.length)e.addFields({name:"Leaderboard",value:top.map((r,n)=>`${n+1}. <@${r.user_id}> • **${compactNumber(r.xp_earned)} XP** • ${r.quests_completed} quests`).join("\n")});await i.reply({embeds:[e]});return true;}
+  if(i.commandName==="showcase"){
+    const sub=i.options.getSubcommand(),profile=await one<any>(`SELECT featured_achievements FROM member_profiles WHERE guild_id=$1 AND user_id=$2`,[gid,uid]),current:string[]=(profile?.featured_achievements||[]).map(String);
+    if(sub==="clear"){await query(`INSERT INTO member_profiles(guild_id,user_id,featured_achievements) VALUES($1,$2,'{}') ON CONFLICT(guild_id,user_id) DO UPDATE SET featured_achievements='{}',updated_at=now()`,[gid,uid]);await i.reply({content:"Achievement showcase cleared.",ephemeral:true});return true;}
+    const key=i.options.getString("achievement",true),owned=await one<any>(`SELECT 1 FROM achievements WHERE guild_id=$1 AND user_id=$2 AND achievement_key=$3`,[gid,uid,key]);if(!owned){await i.reply({content:"You haven't unlocked that achievement.",ephemeral:true});return true;}
+    const next=sub==="add"?[...new Set([...current,key])].slice(0,6):current.filter(x=>x!==key);
+    await query(`INSERT INTO member_profiles(guild_id,user_id,featured_achievements) VALUES($1,$2,$3) ON CONFLICT(guild_id,user_id) DO UPDATE SET featured_achievements=$3,updated_at=now()`,[gid,uid,next]);
+    await i.reply({content:sub==="add"?"Added to your public showcase.":"Removed from your public showcase.",ephemeral:true});return true;
+  }
   return false;
 }
 
