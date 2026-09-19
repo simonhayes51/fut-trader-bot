@@ -64,7 +64,7 @@ export async function startBot() {
   client.on(Events.InteractionCreate, async interaction => {try{
     if(interaction.isAutocomplete()){if(await handleBillingAutocomplete(interaction))return;if(await handleEconomyAutocomplete(interaction))return;if(await handleFeatureAutocomplete(interaction))return;await interaction.respond([]).catch(()=>{});return;}
     if(interaction.guildId){if(interaction.isChatInputCommand()){void recordUsage(interaction.guildId,interaction.user.id,"command",interaction.commandName,interaction.channelId||undefined);const mapped=commandFeatureMap[interaction.commandName];if(mapped)void recordUsage(interaction.guildId,interaction.user.id,"feature",mapped,interaction.channelId||undefined,{command:interaction.commandName});}else if(interaction.isButton()||interaction.isStringSelectMenu())void recordUsage(interaction.guildId,interaction.user.id,"component",String(interaction.customId||"component").split(":").slice(0,2).join(":"),interaction.channelId||undefined);}
-    if((interaction.isButton()||interaction.isStringSelectMenu())&&await handleV5Component(client,interaction))return;
+    if((interaction.isButton()||interaction.isStringSelectMenu()||interaction.isModalSubmit())&&await handleV5Component(client,interaction))return;
     if(interaction.isButton()&&await handleEconomyComponent(client,interaction))return;
     if(interaction.isButton()&&await handleComponent(client,interaction))return;
     if((interaction.isUserContextMenuCommand()||interaction.isMessageContextMenuCommand())&&await handleV5Context(client,interaction))return;
