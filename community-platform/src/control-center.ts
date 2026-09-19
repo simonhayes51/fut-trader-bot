@@ -4,6 +4,7 @@ import { config } from "./config.js";
 import { audit, one, query } from "./db.js";
 import { modules } from "./modules.js";
 import { levelFromXp } from "./economy-core.js";
+import { createWebhookSecret } from "./social.js";
 
 export const controlRouter=Router();
 const auth=(req:any,res:any,next:any)=>req.session?.user?next():res.redirect("/login");
@@ -115,6 +116,28 @@ controlRouter.get("/control/automation",async(req:any,res)=>{
   ]);
   res.render("control-automation",{user:req.session.user,...ui,scheduled,feeds,giveaways});
 });
+
+controlRouter.post("/control/automation/scheduled",async(req:any,res)=>{
+  const days=Array.isArray(req.body.days)?req.body.days:req.body.days?[req.body.days]:[];
+  const dow=days.length?days.join(","):"*",hour=Math.max(0,Math.min(23,Number(req.body.hour||0))),minute=Math.max(0,Math.min(59,Number(req.body.minute||0)));
+  await query(`INSERT INTO scheduled_messages(guild_id,name,channel_id,cron_expression,content,enabled) VALUES($1,$2,$3,$4,$5,true)`,[config.targetGuildId,String(req.body.name||"Scheduled post"),String(req.body.channelId||""),`${minute} ${hour} * * ${dow}`,String(req.body.content||"").slice(0,2000)]);
+  await audit(config.targetGuildId,req.session.user.id,"automation.schedule.create",{name:req.body.name,channelId:req.body.channelId});res.redirect("/control/automation");
+});
+controlRouter.post("/control/automation/scheduled/:id/toggle",async(req:any,res)=>{await query(`UPDATE scheduled_messages SET enabled=NOT enabled WHERE id=$1 AND guild_id=$2`,[req.params.id,config.targetGuildId]);res.redirect("/control/automation");});
+controlRouter.post("/control/automation/scheduled/:id/delete",async(req:any,res)=>{await query(`DELETE FROM scheduled_messages WHERE id=$1 AND guild_id=$2`,[req.params.id,config.targetGuildId]);res.redirect("/control/automation");});
+
+controlRouter.post("/control/automation/feeds",async(req:any,res)=>{
+  const provider=String(req.body.provider||"rss"),secret=provider==="webhook"?createWebhookSecret():null;
+  await query(`INSERT INTO social_feeds(guild_id,name,provider,source,channel_id,enabled,include_keywords,exclude_keywords,mention_role_id,secret_key) VALUES($1,$2,$3,$4,$5,true,$6,$7,$8,$9)`,[
+    config.targetGuildId,String(req.body.name||"Feed"),provider,String(req.body.source||""),String(req.body.channelId||""),
+    String(req.body.includeKeywords||"").split(",").map((x:string)=>x.trim()).filter(Boolean),
+    String(req.body.excludeKeywords||"").split(",").map((x:string)=>x.trim()).filter(Boolean),
+    req.body.mentionRoleId||null,secret
+  ]);
+  await audit(config.targetGuildId,req.session.user.id,"social.create",{name:req.body.name,provider});res.redirect("/control/automation");
+});
+controlRouter.post("/control/automation/feeds/:id/toggle",async(req:any,res)=>{await query(`UPDATE social_feeds SET enabled=NOT enabled,updated_at=now() WHERE id=$1 AND guild_id=$2`,[req.params.id,config.targetGuildId]);res.redirect("/control/automation");});
+controlRouter.post("/control/automation/feeds/:id/delete",async(req:any,res)=>{await query(`DELETE FROM social_feeds WHERE id=$1 AND guild_id=$2`,[req.params.id,config.targetGuildId]);res.redirect("/control/automation");});
 
 controlRouter.get("/control/safety",async(req:any,res)=>{
   const [ui,warnings,reports,tickets,settings]=await Promise.all([
