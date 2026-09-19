@@ -30,7 +30,7 @@ billingRouter.get("/success",async(req,res)=>{
     tone:"success",icon:"✓",badge:synced?"Premium access synced":"Payment received",
     title:"You're in.",
     message:synced
-      ?"Your FC27 Premium membership has been linked to Discord and your Premium role has been synced."
+      ?"Your EAFC.Live Premium membership has been linked to Discord and your Premium role has been synced."
       :"Your checkout completed successfully. Discord access will sync automatically in a moment.",
     showDashboard:Boolean((req as any).session?.user)
   });
@@ -84,9 +84,9 @@ billingRouter.post("/plans",auth,async(req:any,res)=>{
   const name=String(req.body.name||"").trim();
   const slug=String(req.body.slug||name).trim().toLowerCase().replace(/[^a-z0-9_-]+/g,"-").replace(/^-+|-+$/g,"");
   if(!slug||!name||!req.body.stripePriceId||!req.body.roleId) return res.status(400).send("Plan name, Stripe price and Discord role are required.");
-  await query(`INSERT INTO billing_plans(guild_id,name,slug,description,stripe_price_id,role_id,trial_days,sort_order) VALUES($1,$2,$3,$4,$5,$6,$7,$8)
-    ON CONFLICT(guild_id,slug) DO UPDATE SET name=$2,description=$4,stripe_price_id=$5,role_id=$6,trial_days=$7,sort_order=$8,updated_at=now()`,[
-    config.targetGuildId,name,slug,String(req.body.description||""),String(req.body.stripePriceId),String(req.body.roleId),Math.max(0,Number(req.body.trialDays||0)),Number(req.body.sortOrder||0)
+  await query(`INSERT INTO billing_plans(guild_id,name,slug,description,stripe_price_id,role_id,trial_days,sort_order) VALUES($1,$2,$3,$4,$5,$6,0,$7)
+    ON CONFLICT(guild_id,slug) DO UPDATE SET name=$2,description=$4,stripe_price_id=$5,role_id=$6,trial_days=0,sort_order=$7,updated_at=now()`,[
+    config.targetGuildId,name,slug,String(req.body.description||""),String(req.body.stripePriceId),String(req.body.roleId),Number(req.body.sortOrder||0)
   ]);
   await audit(config.targetGuildId,req.session.user.id,"billing.plan.saved",{slug,name});
   res.redirect("/billing");
