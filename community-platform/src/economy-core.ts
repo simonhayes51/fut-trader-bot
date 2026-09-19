@@ -185,3 +185,57 @@ export async function getEconomyProfile(guildId:string,userId:string){
   const xp=Number(eco?.xp_total||0),level=levelFromXp(xp),floor=xpForLevel(level),next=xpForLevel(Math.min(100,level+1));
   return {eco:eco||{xp_total:0,coins_balance:0,lifetime_coins_earned:0,lifetime_coins_spent:0},streak:streak||{current_streak:0,longest_streak:0},rank:Number(rank?.rank||1),achievements,season,level,levelFloor:floor,nextLevelXp:next};
 }
+
+
+export async function ensureEconomyDefaults(guildId:string){
+  await query(`INSERT INTO economy_settings(guild_id) VALUES($1) ON CONFLICT DO NOTHING`,[guildId]);
+  const active=await one<any>(`SELECT id FROM economy_seasons WHERE guild_id=$1 AND active=true AND ends_at>now()`,[guildId]);
+  if(!active){
+    const n=Number((await one<any>(`SELECT count(*) c FROM economy_seasons WHERE guild_id=$1`,[guildId]))?.c||0)+1;
+    await query(`INSERT INTO economy_seasons(guild_id,name,starts_at,ends_at) VALUES($1,$2,now(),now()+interval '30 days') ON CONFLICT DO NOTHING`,[guildId,`FC27 Season ${n}`]);
+  }
+
+  const quests=[
+    ["daily_chat","Warm up","Earn rewards from 10 qualifying messages.","daily","message",10,60,30,10,false],
+    ["daily_help","Help somebody","Have one message marked helpful.","daily","helpful_received",1,75,50,20,false],
+    ["daily_trade","Log a trade","Add one completed trade to your journal.","daily","trade_logged",1,50,25,30,false],
+    ["daily_checkin","Daily check-in","Claim today's Live Coins.","daily","daily_claim",1,25,10,40,false],
+    ["weekly_active","Community regular","Earn rewards from 50 qualifying messages this week.","weekly","message",50,250,150,100,false],
+    ["weekly_help","Community MVP","Have five messages marked helpful this week.","weekly","helpful_received",5,350,250,110,false],
+    ["weekly_trader","Active trader","Log five completed trades this week.","weekly","trade_logged",5,250,150,120,false],
+    ["weekly_referral","Bring a mate","Generate one converted Premium referral this week.","weekly","referral_conversion",1,500,500,130,false],
+    ["weekly_investor","Track the market","Join three community investments this week.","weekly","investment_join",3,100,75,140,false]
+  ];
+  for(const [key,name,description,cadence,eventType,target,xp,coins,sort,premium] of quests){
+    await query(`INSERT INTO quest_definitions(guild_id,quest_key,name,description,cadence,event_type,target,xp_reward,coin_reward,sort_order,premium_only)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(guild_id,quest_key) DO NOTHING`,
+      [guildId,key,name,description,cadence,eventType,target,xp,coins,sort,premium]);
+  }
+
+  const achievements=[
+    ["welcome_aboard","Welcome aboard","Joined the EAFC.Live community.","👋",25,25,10],
+    ["level_5","Getting noticed","Reached level 5.","⚡",100,100,20],
+    ["level_10","Market regular","Reached level 10.","📈",250,250,30],
+    ["level_25","Community elite","Reached level 25.","👑",750,1000,40],
+    ["streak_7","On a roll","Claimed rewards seven days running.","🔥",100,150,50],
+    ["streak_30","Unstoppable","Claimed rewards thirty days running.","💎",500,750,60],
+    ["helpful_10","Trusted helper","Had ten messages marked helpful.","💚",200,250,70],
+    ["trader_10","Trader track record","Logged ten completed trades.","📊",200,250,80]
+  ];
+  for(const [key,name,description,icon,xp,coins,sort] of achievements){
+    await query(`INSERT INTO achievement_definitions(guild_id,achievement_key,name,description,icon,xp_reward,coin_reward,sort_order)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(guild_id,achievement_key) DO NOTHING`,
+      [guildId,key,name,description,icon,xp,coins,sort]);
+  }
+
+  const store=[
+    ["premium-7d","7 days Premium","Unlock the Premium Discord role and channels for 7 days.","💎",2000,"discord_premium",7,"premium-monthly",10],
+    ["premium-30d","1 month Premium","Unlock the Premium Discord role and channels for 30 days.","👑",6000,"discord_premium",30,"premium-monthly",20],
+    ["eafclive-30d","1 month EAFC.Live","Redeem 30 days of EAFC.Live access. Staff fulfil this after account verification.","⚡",8000,"eafc_live",30,null,30]
+  ];
+  for(const [key,name,description,emoji,cost,type,days,plan,sort] of store){
+    await query(`INSERT INTO store_items(guild_id,item_key,name,description,emoji,cost_coins,fulfillment_type,duration_days,billing_plan_slug,sort_order)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(guild_id,item_key) DO NOTHING`,
+      [guildId,key,name,description,emoji,cost,type,days,plan,sort]);
+  }
+}
