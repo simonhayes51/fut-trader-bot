@@ -126,17 +126,16 @@ async function awardAchievement(client:any,guildId:string,userId:string,key:stri
 }
 
 async function evaluateAchievements(client:any,guildId:string,userId:string){
-  const [eco,streak,stats,trades]=await Promise.all([
+  const [eco,streak,stats]=await Promise.all([
     client.query(`SELECT * FROM member_economy WHERE guild_id=$1 AND user_id=$2`,[guildId,userId]),
     client.query(`SELECT * FROM member_streaks WHERE guild_id=$1 AND user_id=$2`,[guildId,userId]),
-    client.query(`SELECT * FROM member_stats WHERE guild_id=$1 AND user_id=$2`,[guildId,userId]),
-    client.query(`SELECT count(*) total FROM trade_journal WHERE guild_id=$1 AND user_id=$2 AND status='CLOSED'`,[guildId,userId])
+    client.query(`SELECT * FROM member_stats WHERE guild_id=$1 AND user_id=$2`,[guildId,userId])
   ]);
-  const e=eco.rows[0]||{},s=streak.rows[0]||{},m=stats.rows[0]||{},t=Number(trades.rows[0]?.total||0),level=levelFromXp(Number(e.xp_total||0));
+  const e=eco.rows[0]||{},s=streak.rows[0]||{},m=stats.rows[0]||{},level=levelFromXp(Number(e.xp_total||0));
   const keys:string[]=[];
   if(level>=5)keys.push("level_5");if(level>=10)keys.push("level_10");if(level>=25)keys.push("level_25");
   if(Number(s.current_streak||0)>=7)keys.push("streak_7");if(Number(s.current_streak||0)>=30)keys.push("streak_30");
-  if(Number(m.thanks_received||0)>=10)keys.push("helpful_10");if(t>=10)keys.push("trader_10");
+  if(Number(m.thanks_received||0)>=10)keys.push("helpful_10","kudos_10");
   for(const key of keys)await awardAchievement(client,guildId,userId,key);
 }
 
@@ -145,15 +144,13 @@ export async function recordEconomyEvent(guildId:string,userId:string,eventType:
   const qty=Math.max(1,Number(options.quantity||1));
   const rewards:{xp:number;coins:number}={xp:0,coins:0};
   if(eventType==="helpful_received"){rewards.xp=settings.helpful_xp;rewards.coins=settings.helpful_coins;}
-  if(eventType==="trade_logged"){rewards.xp=settings.trade_xp;rewards.coins=settings.trade_coins;}
-  if(eventType==="referral_conversion"){rewards.xp=settings.referral_xp;rewards.coins=settings.referral_coins;}
+    if(eventType==="referral_conversion"){rewards.xp=settings.referral_xp;rewards.coins=settings.referral_coins;}
   if(eventType==="join"){rewards.xp=settings.join_xp;rewards.coins=settings.join_coins;}
-  if(eventType==="investment_join"){rewards.xp=5;rewards.coins=2;}
-  const client=await db.connect();
+    const client=await db.connect();
   try{
     await client.query("BEGIN");await ensureMember(client,guildId,userId);
     const base=options.idempotencyBase||`${eventType}:${options.sourceType||"event"}:${options.sourceId||Date.now()}:${userId}`;
-    const dailyLimits:Record<string,number>={helpful_received:5,trade_logged:5,investment_join:10};
+    const dailyLimits:Record<string,number>={helpful_received:5};
     let rewardedQty=qty;
     if(dailyLimits[eventType]){
       const already=Number((await client.query(`SELECT count(*) c FROM economy_ledger WHERE guild_id=$1 AND user_id=$2 AND currency='xp' AND reason=$3 AND created_at>=current_date`,[guildId,userId,eventType.replaceAll("_"," ")])).rows[0]?.c||0);
@@ -165,9 +162,6 @@ export async function recordEconomyEvent(guildId:string,userId:string,eventType:
     const season=await currentSeason(client,guildId);
     if(eventType==="helpful_received"){
       await client.query(`UPDATE season_member_stats SET helpful_actions=helpful_actions+$3 WHERE season_id=$1 AND user_id=$2`,[season.id,userId,qty]);
-    }
-    if(eventType==="trade_logged"){
-      await client.query(`UPDATE season_member_stats SET trades_logged=trades_logged+$3 WHERE season_id=$1 AND user_id=$2`,[season.id,userId,qty]);
     }
     const completed=await progressQuests(client,guildId,userId,eventType,qty);
     await evaluateAchievements(client,guildId,userId);
@@ -223,7 +217,7 @@ export async function ensureEconomyDefaults(guildId:string){
   const achievements=[
     ["welcome_aboard","Welcome aboard","Joined the EAFC.Live community.","👋",25,25,10],
     ["level_5","Getting noticed","Reached level 5.","⚡",100,100,20],
-    ["level_10","Market regular","Reached level 10.","📈",250,250,30],
+    ["level_10","Community regular","Reached level 10.","📈",250,250,30],
     ["level_25","Community elite","Reached level 25.","👑",750,1000,40],
     ["streak_7","On a roll","Claimed rewards seven days running.","🔥",100,150,50],
     ["streak_30","Unstoppable","Claimed rewards thirty days running.","💎",500,750,60],
