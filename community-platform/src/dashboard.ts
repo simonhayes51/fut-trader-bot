@@ -58,7 +58,7 @@ app.use((req:any,res:any,next:any)=>{
       if(err){if(callback)return callback(err);return next(err);}
       let output=html;
       if(output.includes('<aside class="sidebar">')){
-        output=output.replace(/<aside class="sidebar">[\\s\\S]*?<\\/aside>/,dashboardSidebar(req.path,options?.user||req.session?.user));
+        output=output.replace(/<aside class="sidebar">[\s\S]*?<\/aside>/,dashboardSidebar(req.path,options?.user||req.session?.user));
         if(!output.includes('/polish.css')) output=output.replace("</head>",'<link rel="stylesheet" href="/polish.css"></head>');
       }
       if(callback)return callback(null,output);
