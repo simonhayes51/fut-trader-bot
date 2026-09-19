@@ -41,23 +41,18 @@ export async function handleEconomyAutocomplete(i:any){
 async function profileEmbed(guildId:string,user:any){
   const p=await getEconomyProfile(guildId,user.id),xp=Number(p.eco.xp_total||0),level=p.level;
   const next=level>=100?xp:Number(p.nextLevelXp),into=xp-Number(p.levelFloor),span=Math.max(1,next-Number(p.levelFloor));
-  const [premium,calls,trades,stats]=await Promise.all([
+  const [premium,stats]=await Promise.all([
     one<any>(`SELECT 1 FROM entitlements WHERE guild_id=$1 AND discord_user_id=$2 AND active=true AND (expires_at IS NULL OR expires_at>now())`,[guildId,user.id]),
-    one<any>(`SELECT count(*) FILTER(WHERE status<>'LIVE') total,count(*) FILTER(WHERE status IN ('HIT','PROFIT')) wins FROM trade_calls WHERE guild_id=$1 AND user_id=$2`,[guildId,user.id]),
-    one<any>(`SELECT count(*) total,COALESCE(sum(profit),0) profit FROM trade_journal WHERE guild_id=$1 AND user_id=$2 AND status='CLOSED'`,[guildId,user.id]),
-    one<any>(`SELECT thanks_received,messages FROM member_stats WHERE guild_id=$1 AND user_id=$2`,[guildId,user.id])
+    one<any>(`SELECT thanks_received,thanks_given,messages FROM member_stats WHERE guild_id=$1 AND user_id=$2`,[guildId,user.id])
   ]);
-  const callTotal=Number(calls?.total||0),callWins=Number(calls?.wins||0),thanks=Number(stats?.thanks_received||0),journal=Number(trades?.total||0);
-  const accuracy=callTotal?callWins/callTotal:0;
-  const rep=Math.min(100,Math.round(Math.min(30,callTotal*3)+Math.min(30,accuracy*30)+Math.min(20,thanks*2)+Math.min(10,journal)+Math.min(10,Number(stats?.messages||0)/100)));
-  const repTier=rep>=80?"Elite":rep>=60?"Trusted":rep>=40?"Established":rep>=20?"Contributor":"Newcomer";
   const e=brandEmbed(`${user.username} • Community profile`,undefined,premium?BRAND.colours.premium:BRAND.colours.primary).setThumbnail(user.displayAvatarURL());
   e.addFields(
     {name:`Level ${level}`,value:`${progressBar(into,span)}\n${compactNumber(xp)} XP • #${p.rank} server rank`,inline:false},
     {name:"🪙 Live Coins",value:compactNumber(p.eco.coins_balance||0),inline:true},
     {name:"🔥 Streak",value:`${compactNumber(p.streak.current_streak||0)} days`,inline:true},
     {name:"💎 Access",value:premium?"Premium":"Standard",inline:true},
-    {name:"📊 Trader reputation",value:`**${rep}/100 • ${repTier}**\n${callTotal} verified calls • ${callTotal?Math.round(accuracy*100):0}% hit rate • ${thanks} helpful votes`,inline:false}
+    {name:"👏 Kudos",value:`${compactNumber(stats?.thanks_received||0)} received • ${compactNumber(stats?.thanks_given||0)} given`,inline:true},
+    {name:"💬 Community activity",value:`${compactNumber(stats?.messages||0)} messages`,inline:true}
   );
   if(p.season)e.addFields({name:`🏆 ${p.season.name}`,value:`${compactNumber(p.season.xp_earned||0)} season XP • ends <t:${Math.floor(new Date(p.season.ends_at).getTime()/1000)}:R>`,inline:false});
   if(p.achievements.length)e.addFields({name:"Latest achievements",value:p.achievements.slice(0,6).map((a:any)=>`${a.icon||"🏅"} ${a.name||String(a.achievement_key).replaceAll("_"," ")}`).join(" • "),inline:false});
