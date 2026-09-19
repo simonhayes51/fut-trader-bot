@@ -43,8 +43,7 @@ export async function createCheckout(input:{guildId:string;discordUserId:string;
     client_reference_id:input.discordUserId,
     metadata:{guildId:input.guildId,discordUserId:input.discordUserId,planId:String(plan.id),referralCode:referral?.code||""},
     subscription_data:{
-      metadata:{guildId:input.guildId,discordUserId:input.discordUserId,planId:String(plan.id),referralCode:referral?.code||""},
-      ...(plan.trial_days>0?{trial_period_days:plan.trial_days}:{})
+      metadata:{guildId:input.guildId,discordUserId:input.discordUserId,planId:String(plan.id),referralCode:referral?.code||""}
     }
   };
   if(existing?.stripe_customer_id) params.customer=existing.stripe_customer_id;
