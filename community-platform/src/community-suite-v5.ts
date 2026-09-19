@@ -7,6 +7,7 @@ import { audit, getFeature, one, query } from "./db.js";
 import { config } from "./config.js";
 import { awardCurrency, getEconomyProfile, levelFromXp, recordEconomyEvent } from "./economy-core.js";
 import { brandEmbed, BRAND } from "./brand.js";
+import { grantComp, listPlans } from "./billing.js";
 import { claimDaily } from "./economy.js";
 
 const joinWindows=new Map<string,number[]>();
@@ -414,6 +415,7 @@ async function processInviteMilestones(client:Client,guildId:string){
     if(Number(r.xp_reward)>0)await awardCurrency({guildId,userId:r.inviter_id,currency:"xp",amount:Number(r.xp_reward),reason:`Invite milestone: ${r.retained_invites}`,sourceType:"invite_milestone",sourceId:String(r.id),idempotencyKey:`invite:${r.id}:${r.inviter_id}:xp`});
     if(Number(r.coin_reward)>0)await awardCurrency({guildId,userId:r.inviter_id,currency:"coins",amount:Number(r.coin_reward),reason:`Invite milestone: ${r.retained_invites}`,sourceType:"invite_milestone",sourceId:String(r.id),idempotencyKey:`invite:${r.id}:${r.inviter_id}:coins`});
     const member=guild?await guild.members.fetch(r.inviter_id).catch(()=>null):null;if(member&&r.role_id)await member.roles.add(r.role_id,"Invite milestone").catch(()=>{});
+    if(Number(r.premium_days||0)>0){const plans=await listPlans(guildId,true),plan=plans[0];if(plan)await grantComp(guildId,r.inviter_id,plan.id,Number(r.premium_days),"invite-milestone").catch(()=>{});}
   }
 }
 
