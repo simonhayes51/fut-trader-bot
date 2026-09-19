@@ -228,6 +228,21 @@ export async function handleV5Component(client:Client,i:any){
     else {await member.roles.add(roleId);await i.reply({content:`Added @${role.name}.`,ephemeral:true});}
     return true;
   }
+  if(id.startsWith("v5:panel:")&&i.isStringSelectMenu()){
+    const panelId=Number(id.split(":")[2]),panel=await one<any>(`SELECT * FROM role_panels WHERE id=$1 AND guild_id=$2 AND enabled=true`,[panelId,i.guildId]);
+    if(!panel){await i.reply({content:"That role panel is no longer active.",ephemeral:true});return true;}
+    const allowed=new Set<string>((panel.roles||[]).map((x:any)=>String(x.roleId))),selected=new Set<string>((i.values||[]).filter((x:string)=>allowed.has(x))),member=await i.guild.members.fetch(i.user.id);
+    for(const roleId of allowed){if(selected.has(roleId)&&!member.roles.cache.has(roleId))await member.roles.add(roleId,"Role panel selection").catch(()=>{});if(!selected.has(roleId)&&member.roles.cache.has(roleId))await member.roles.remove(roleId,"Role panel selection").catch(()=>{});}
+    await i.reply({content:"Your roles have been updated.",ephemeral:true});return true;
+  }
+  if(id.startsWith("v5:template-select:")&&i.isStringSelectMenu()){
+    const templateId=Number(id.split(":")[2]),t=await one<any>(`SELECT select_config FROM message_templates WHERE id=$1 AND guild_id=$2`,[templateId,i.guildId]);
+    const opt=(t?.select_config?.options||[]).find((x:any)=>String(x.value)===String(i.values?.[0]));
+    if(!opt){await i.reply({content:"That option is no longer available.",ephemeral:true});return true;}
+    if(opt.roleId){const member=await i.guild.members.fetch(i.user.id),role=i.guild.roles.cache.get(String(opt.roleId));if(role){if(member.roles.cache.has(role.id))await member.roles.remove(role.id).catch(()=>{});else await member.roles.add(role.id).catch(()=>{});}}
+    await i.reply({content:String(opt.response||"Done."),ephemeral:true});return true;
+  }
+  if(id.startsWith("v5:noop:")){await i.reply({content:"This button has no action configured yet.",ephemeral:true});return true;}
   return false;
 }
 
@@ -518,6 +533,7 @@ export async function publishTemplate(client:Client,guildId:string,templateId:nu
   const rows:any[]=[];
   const buttons=Array.isArray(t.button_config)?t.button_config:[];
   if(buttons.length){const row=new ActionRowBuilder<ButtonBuilder>();for(const b of buttons.slice(0,5)){const btn=new ButtonBuilder().setLabel(String(b.label||"Open").slice(0,80));if(b.url)btn.setStyle(ButtonStyle.Link).setURL(String(b.url));else if(b.roleId)btn.setStyle(ButtonStyle.Secondary).setCustomId(`v5:role:${b.roleId}`);else btn.setStyle(ButtonStyle.Secondary).setCustomId(`v5:noop:${templateId}`);row.addComponents(btn);}rows.push(row);}
+  const select=t.select_config||{};if(Array.isArray(select.options)&&select.options.length&&rows.length<5){const menu=new StringSelectMenuBuilder().setCustomId(`v5:template-select:${templateId}`).setPlaceholder(String(select.placeholder||"Choose an option").slice(0,100));for(const o of select.options.slice(0,25))menu.addOptions(new StringSelectMenuOptionBuilder().setLabel(String(o.label||o.value).slice(0,100)).setValue(String(o.value).slice(0,100)));rows.push(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu));}
   const mention=t.mention_role_id?`<@&${t.mention_role_id}>`:undefined;
   const msg=await (ch as TextChannel).send({content:mention,embeds:[embed],components:rows,allowedMentions:t.mention_role_id?{roles:[t.mention_role_id]}:{parse:[]}});
   await query(`INSERT INTO published_messages(guild_id,template_id,channel_id,message_id,purpose) VALUES($1,$2,$3,$4,$5)`,[guildId,templateId,channelId,t.template_type]);
