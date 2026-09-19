@@ -362,9 +362,8 @@ async function processLevelWorkflows(client:Client,guildId:string){
   const guild=client.guilds.cache.get(guildId);if(!guild)return;
   for(const r of rows){
     if(levelFromXp(Number(r.xp_total||0))<Number(r.level))continue;
-    const key=`level-workflow:${r.id}:${r.user_id}`,seen=await one<any>(`SELECT 1 FROM economy_ledger WHERE guild_id=$1 AND user_id=$2 AND idempotency_key=$3 LIMIT 1`,[guildId,r.user_id,key+":marker"]);
-    if(seen)continue;
-    await awardCurrency({guildId,userId:r.user_id,currency:"xp",amount:1,reason:`Level ${r.level} workflow marker`,sourceType:"level_workflow",sourceId:String(r.id),idempotencyKey:key+":marker"});
+    const key=`level-workflow:${r.id}:${r.user_id}`,ins=await query<any>(`INSERT INTO level_workflow_awards(guild_id,user_id,workflow_id) VALUES($1,$2,$3) ON CONFLICT DO NOTHING RETURNING workflow_id`,[guildId,r.user_id,r.id]);
+    if(!ins.length)continue;
     if(Number(r.coin_reward)>0)await awardCurrency({guildId,userId:r.user_id,currency:"coins",amount:Number(r.coin_reward),reason:`Level ${r.level} reward`,sourceType:"level_workflow",sourceId:String(r.id),idempotencyKey:key+":coins"});
     const member=await guild.members.fetch(r.user_id).catch(()=>null);if(member&&r.role_id)await member.roles.add(r.role_id,`Reached level ${r.level}`).catch(()=>{});
     if(r.message){if(r.announce_channel_id){const ch=await client.channels.fetch(r.announce_channel_id).catch(()=>null);if(ch?.isTextBased())await (ch as TextChannel).send(String(r.message).replaceAll("{user}",`<@${r.user_id}>`).replaceAll("{level}",String(r.level))).catch(()=>{});}else if(member)await member.send(String(r.message).replaceAll("{level}",String(r.level))).catch(()=>{});}
@@ -573,6 +572,8 @@ export async function runV5Tick(client:Client){
     if(Date.now()-(healthLastRun.get(g.guild_id)||0)>10*60_000){healthLastRun.set(g.guild_id,Date.now());await scanHealth(client,g.guild_id).catch(console.error);}
   }
   await query(`UPDATE flash_drops SET status='ENDED' WHERE status='LIVE' AND ends_at<=now()`);
+  const expired=await query<any>(`DELETE FROM temporary_role_grants WHERE expires_at IS NOT NULL AND expires_at<=now() RETURNING *`);
+  for(const x of expired){const guild=client.guilds.cache.get(x.guild_id),member=guild?await guild.members.fetch(x.user_id).catch(()=>null):null;if(member)await member.roles.remove(x.role_id,"EAFC.Live temporary role expired").catch(()=>{});}
 }
 
 export function attachV5Client(client:Client){globalClient=client;}
