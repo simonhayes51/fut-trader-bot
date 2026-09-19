@@ -6,6 +6,7 @@ import { audit, getFeature, one, query } from "./db.js";
 import { config } from "./config.js";
 import { grantComp, listPlans, refreshExpiredEntitlements, reconcileActiveEntitlementRoles } from "./billing.js";
 import { brandEmbed, BRAND } from "./brand.js";
+import { getEconomyProfile } from "./economy-core.js";
 
 const tax=(sell:number)=>Math.floor(sell*.95);
 const coins=(n:number)=>Math.round(n).toLocaleString("en-GB");
@@ -67,13 +68,24 @@ async function commandAllowed(i:any) {
 }
 
 async function profileEmbed(guildId:string,user:any) {
- const stats=await one<any>(`SELECT * FROM member_stats WHERE guild_id=$1 AND user_id=$2`,[guildId,user.id]);
- const trades=await one<any>(`SELECT count(*) total,COALESCE(sum(profit),0) profit FROM trade_journal WHERE guild_id=$1 AND user_id=$2 AND status='CLOSED'`,[guildId,user.id]);
- const calls=await one<any>(`SELECT count(*) total,count(*) FILTER(WHERE status IN ('HIT','PROFIT')) wins FROM trade_calls WHERE guild_id=$1 AND user_id=$2 AND status<>'LIVE'`,[guildId,user.id]);
+ const [profile,stats,trades,calls,premium]=await Promise.all([
+  getEconomyProfile(guildId,user.id),
+  one<any>(`SELECT * FROM member_stats WHERE guild_id=$1 AND user_id=$2`,[guildId,user.id]),
+  one<any>(`SELECT count(*) total,COALESCE(sum(profit),0) profit FROM trade_journal WHERE guild_id=$1 AND user_id=$2 AND status='CLOSED'`,[guildId,user.id]),
+  one<any>(`SELECT count(*) FILTER(WHERE status<>'LIVE') total,count(*) FILTER(WHERE status IN ('HIT','PROFIT')) wins FROM trade_calls WHERE guild_id=$1 AND user_id=$2`,[guildId,user.id]),
+  one<any>(`SELECT 1 FROM entitlements WHERE guild_id=$1 AND discord_user_id=$2 AND active=true AND (expires_at IS NULL OR expires_at>now())`,[guildId,user.id])
+ ]);
  const total=Number(calls?.total||0),wins=Number(calls?.wins||0);
- return new EmbedBuilder().setTitle(`${user.username} • Trader profile`).setThumbnail(user.displayAvatarURL()).addFields(
-  {name:"XP",value:coins(Number(stats?.xp||0)),inline:true},{name:"Thanks",value:coins(Number(stats?.thanks_received||0)),inline:true},{name:"Journal profit",value:`${coins(Number(trades?.profit||0))} coins`,inline:true},
-  {name:"Trade calls",value:String(total),inline:true},{name:"Call success",value:total?`${Math.round(wins/total*100)}%`:"—",inline:true},{name:"Completed trades",value:String(trades?.total||0),inline:true}
+ return brandEmbed(`${user.username} • Trader profile`,undefined,premium?BRAND.colours.premium:BRAND.colours.primary).setThumbnail(user.displayAvatarURL()).addFields(
+  {name:"Level",value:`${profile.level} • ${coins(Number(profile.eco.xp_total||0))} XP`,inline:true},
+  {name:"Live Coins",value:`${coins(Number(profile.eco.coins_balance||0))} 🪙`,inline:true},
+  {name:"Server rank",value:`#${profile.rank}`,inline:true},
+  {name:"Helpful votes",value:coins(Number(stats?.thanks_received||0)),inline:true},
+  {name:"Journal profit",value:`${coins(Number(trades?.profit||0))} coins`,inline:true},
+  {name:"Completed trades",value:String(trades?.total||0),inline:true},
+  {name:"Trade calls",value:String(total),inline:true},
+  {name:"Call success",value:total?`${Math.round(wins/total*100)}%`:"—",inline:true},
+  {name:"Streak",value:`${Number(profile.streak.current_streak||0)} days`,inline:true}
  );
 }
 
