@@ -57,11 +57,13 @@ async function applyLedger(client:any,input:{guildId:string;userId:string;curren
   }else{
     await client.query(`UPDATE member_economy SET coins_balance=coins_balance+$3,lifetime_coins_earned=lifetime_coins_earned+CASE WHEN $3>0 THEN $3 ELSE 0 END,lifetime_coins_spent=lifetime_coins_spent+CASE WHEN $3<0 THEN -$3 ELSE 0 END,updated_at=now() WHERE guild_id=$1 AND user_id=$2`,[input.guildId,input.userId,Math.trunc(input.amount)]);
   }
-  const season=await currentSeason(client,input.guildId);
-  await client.query(`INSERT INTO season_member_stats(season_id,guild_id,user_id,xp_earned,coins_earned) VALUES($1,$2,$3,$4,$5)
-    ON CONFLICT(season_id,user_id) DO UPDATE SET xp_earned=season_member_stats.xp_earned+$4,coins_earned=season_member_stats.coins_earned+$5`,[
-      season.id,input.guildId,input.userId,input.currency==="xp"&&input.amount>0?appliedAmount:0,input.currency==="coins"&&appliedAmount>0?appliedAmount:0
-    ]);
+  if(input.sourceType!=="season_reward"){
+    const season=await currentSeason(client,input.guildId);
+    await client.query(`INSERT INTO season_member_stats(season_id,guild_id,user_id,xp_earned,coins_earned) VALUES($1,$2,$3,$4,$5)
+      ON CONFLICT(season_id,user_id) DO UPDATE SET xp_earned=season_member_stats.xp_earned+$4,coins_earned=season_member_stats.coins_earned+$5`,[
+        season.id,input.guildId,input.userId,input.currency==="xp"&&appliedAmount>0?appliedAmount:0,input.currency==="coins"&&appliedAmount>0?appliedAmount:0
+      ]);
+  }
   return true;
 }
 
