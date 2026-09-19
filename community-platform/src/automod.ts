@@ -15,9 +15,11 @@ export async function handleMessage(message: Message) {
     const now=Date.now(),statKey=`xp:${message.guildId}:${message.author.id}`,hit=recent.get(statKey);
     if(!hit || !hit.times[0] || now-hit.times[0] > Number(levels.config.cooldownSeconds||60)*1000) {
       recent.set(statKey,{content:"",times:[now]});
-      await query(`INSERT INTO member_stats(guild_id,user_id,xp,messages,last_message_at) VALUES($1,$2,$3,1,now()) ON CONFLICT(guild_id,user_id) DO UPDATE SET xp=member_stats.xp+$3,messages=member_stats.messages+1,last_message_at=now()`,[message.guildId,message.author.id,Number(levels.config.messageXp||2)]);
+      const economy=await one<any>(`SELECT enabled FROM economy_settings WHERE guild_id=$1`,[message.guildId]);
+      const legacyXp=economy?.enabled===false?Number(levels.config.messageXp||2):0;
+      await query(`INSERT INTO member_stats(guild_id,user_id,xp,messages,last_message_at) VALUES($1,$2,$3,1,now()) ON CONFLICT(guild_id,user_id) DO UPDATE SET xp=member_stats.xp+$3,messages=member_stats.messages+1,last_message_at=now()`,[message.guildId,message.author.id,legacyXp]);
       const stat=await one<any>(`SELECT xp FROM member_stats WHERE guild_id=$1 AND user_id=$2`,[message.guildId,message.author.id]);
-      for(const reward of (levels.config.rewards||[]) as any[]) if(reward.roleId&&Number(stat?.xp||0)>=Number(reward.xp||0)&&!message.member.roles.cache.has(reward.roleId)) await message.member.roles.add(reward.roleId,"FC27 XP reward").catch(()=>{});
+      for(const reward of (levels.config.rewards||[]) as any[]) if(reward.roleId&&Number(stat?.xp||0)>=Number(reward.xp||0)&&!message.member.roles.cache.has(reward.roleId)) await message.member.roles.add(reward.roleId,"EAFC.Live level reward").catch(()=>{});
     }
   }
 
