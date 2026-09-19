@@ -35,16 +35,16 @@ app.use(session({
 
 function dashboardSidebar(pathname:string,user?:{username?:string;avatar?:string}) {
   const groups:Array<{label:string;items:Array<[string,string,string]>}>=[
-    {label:"Workspace",items:[["/dashboard","⌂","Overview"],["/analytics","⌁","Analytics"],["/members","◎","Members"]]},
-    {label:"Growth",items:[["/economy","◈","Economy"],["/billing","◆","Premium"],["/automation","↻","Automation"]]},
-    {label:"Community",items:[["/trading","↗","Trade calls"],["/social","◉","Social feeds"],["/tickets","◇","Tickets"],["/discord","♢","Discord"]]},
-    {label:"System",items:[["/commands","⌘","Commands"],["/moderation","⊘","Moderation"],["/setup","⚙","Setup"],["/audit","≡","Audit log"]]}
+    {label:"Overview",items:[["/control","⌂","Home"],["/control/members","◎","Members"],["/control/engagement","◈","Engagement"]]},
+    {label:"Community",items:[["/control/community","◇","Community"],["/control/automation","↻","Automation"],["/discord","♢","Discord tools"]]},
+    {label:"Operations",items:[["/control/safety","⊘","Safety & support"],["/billing","◆","Premium"],["/economy","¤","Rewards economy"]]},
+    {label:"Configuration",items:[["/control/settings","⚙","Features"],["/commands","⌘","Command access"],["/audit","≡","Audit log"]]}
   ];
-  const activeFor=(href:string)=>href==="/dashboard" ? pathname==="/dashboard" || pathname.startsWith("/modules/") : pathname===href || pathname.startsWith(`${href}/`);
+  const activeFor=(href:string)=>href==="/control"?pathname==="/control":pathname===href||pathname.startsWith(`${href}/`);
   const nav=groups.map(group=>`<div class="nav-group"><div class="nav-label">${group.label}</div>${group.items.map(([href,icon,label])=>`<a class="${activeFor(href)?"active":""}" href="${href}"><span class="nav-icon">${icon}</span><span>${label}</span></a>`).join("")}</div>`).join("");
   const initial=(user?.username||"A").slice(0,1).toUpperCase();
   return `<aside class="sidebar">
-    <a class="brand" href="/dashboard"><span class="brand-mark">E</span><span class="brand-copy"><b>EAFC.Live</b><small>Community OS</small></span></a>
+    <a class="brand" href="/control"><span class="brand-mark">E</span><span class="brand-copy"><b>EAFC.Live</b><small>Discord Control</small></span></a>
     <nav>${nav}</nav>
     <div class="sidebar-footer"><div class="admin-chip"><span class="admin-avatar">${initial}</span><span><b>${user?.username||"Administrator"}</b><small>Administrator</small></span></div><form method="post" action="/logout"><button class="icon-button" title="Log out">↪</button></form></div>
   </aside>`;
@@ -129,7 +129,7 @@ async function publishRoleMenus(cfg:any) {
   }
 }
 
-app.get("/",(req,res)=>res.redirect(req.session.user?"/dashboard":"/login"));
+app.get("/",(req,res)=>res.redirect(req.session.user?"/control":"/login"));
 app.get("/health",async(_req,res)=>{
   let economy:any={ready:false};
   try{
@@ -169,40 +169,14 @@ app.get("/auth/discord/callback",async(req,res)=>{
     await audit(config.targetGuildId,user.id,"dashboard.login",{username:user.username});
     req.session.save(err=>{
       if(err) return res.status(500).send("Unable to save dashboard session.");
-      res.redirect("/dashboard");
+      res.redirect("/control");
     });
   } catch(err) { console.error(err); res.status(500).send("Discord login failed."); }
 });
 
 app.post("/logout",(req,res)=>req.session.destroy(()=>res.redirect("/login")));
 
-app.get("/dashboard",requireAuth,async(req,res)=>{
-  const settings=await query<any>(`SELECT feature_key,enabled,config,updated_at FROM feature_settings WHERE guild_id=$1`,[config.targetGuildId]);
-  const byKey=new Map(settings.map(s=>[s.feature_key,s]));
-  const [stats,season,recentAudit,topMembers,queue]=await Promise.all([
-    one<any>(`SELECT
-      (SELECT count(*) FROM member_stats WHERE guild_id=$1) members_tracked,
-      (SELECT count(*) FROM member_stats WHERE guild_id=$1 AND last_message_at>now()-interval '7 days') active_7d,
-      (SELECT count(*) FROM trade_calls WHERE guild_id=$1) trade_calls,
-      (SELECT count(*) FROM trade_calls WHERE guild_id=$1 AND status='LIVE') live_calls,
-      (SELECT count(*) FROM tickets WHERE guild_id=$1 AND status='OPEN') open_tickets,
-      (SELECT count(*) FROM social_feeds WHERE guild_id=$1 AND enabled=true) active_feeds,
-      (SELECT count(*) FROM warnings WHERE guild_id=$1) warnings,
-      (SELECT count(DISTINCT discord_user_id) FROM entitlements WHERE guild_id=$1 AND active=true AND (expires_at IS NULL OR expires_at>now())) premium_members,
-      (SELECT COALESCE(sum(coins_balance),0) FROM member_economy WHERE guild_id=$1) coins_circulating,
-      (SELECT COALESCE(sum(lifetime_coins_earned),0) FROM member_economy WHERE guild_id=$1) coins_earned,
-      (SELECT count(*) FROM member_quest_progress WHERE guild_id=$1 AND rewarded_at>now()-interval '7 days') quests_7d,
-      (SELECT count(*) FROM store_redemptions WHERE guild_id=$1 AND status='PENDING') pending_rewards`,[config.targetGuildId]),
-    one<any>(`SELECT s.*,COALESCE((SELECT count(*) FROM season_member_stats m WHERE m.season_id=s.id),0) participants FROM economy_seasons s WHERE s.guild_id=$1 AND s.active=true ORDER BY s.starts_at DESC LIMIT 1`,[config.targetGuildId]),
-    query<any>(`SELECT action,actor_id,details,created_at FROM audit_log WHERE guild_id=$1 ORDER BY created_at DESC LIMIT 8`,[config.targetGuildId]),
-    query<any>(`SELECT e.user_id,e.xp_total,e.coins_balance,COALESCE(s.current_streak,0) current_streak FROM member_economy e LEFT JOIN member_streaks s ON s.guild_id=e.guild_id AND s.user_id=e.user_id WHERE e.guild_id=$1 ORDER BY e.xp_total DESC LIMIT 5`,[config.targetGuildId]),
-    one<any>(`SELECT count(*) FILTER(WHERE status IN ('PENDING','PROCESSING')) waiting,count(*) FILTER(WHERE status='FAILED') failed FROM economy_event_queue WHERE guild_id=$1`,[config.targetGuildId])
-  ]);
-  const guild=client.guilds.cache.get(config.targetGuildId);
-  const names=new Map<string,string>();
-  if(guild){for(const row of topMembers){const m=await guild.members.fetch(row.user_id).catch(()=>null);if(m)names.set(row.user_id,m.displayName);}}
-  res.render("dashboard",{user:req.session.user,modules,moduleSettings:byKey,stats:stats||{},season,recentAudit,topMembers:topMembers.map(m=>({...m,name:names.get(m.user_id)||m.user_id})),queue:queue||{},guild});
-});
+app.get("/dashboard",requireAuth,(_req,res)=>res.redirect("/control"));
 
 app.get("/modules/:key",requireAuth,async(req,res)=>{
   const def=moduleMap.get(req.params.key);if(!def) return res.status(404).send("Unknown module");
@@ -235,7 +209,7 @@ app.post("/social/:id/delete",requireAuth,async(req,res)=>{await query(`DELETE F
 app.post("/hooks/social/:secret",async(req,res)=>{const ok=await deliverWebhook(req.params.secret,req.body);res.status(ok?202:404).json({ok});});
 
 app.get("/moderation",requireAuth,async(req,res)=>{const warnings=await query<any>(`SELECT * FROM warnings WHERE guild_id=$1 ORDER BY created_at DESC LIMIT 100`,[config.targetGuildId]);const auditRows=await query<any>(`SELECT * FROM audit_log WHERE guild_id=$1 ORDER BY created_at DESC LIMIT 100`,[config.targetGuildId]);res.render("moderation",{user:req.session.user,warnings,auditRows});});
-app.get("/trading",requireAuth,async(req,res)=>{const calls=await query<any>(`SELECT * FROM trade_calls WHERE guild_id=$1 ORDER BY created_at DESC LIMIT 100`,[config.targetGuildId]);res.render("trading",{user:req.session.user,calls});});
+app.get("/trading",requireAuth,(_req,res)=>res.redirect("/control/engagement"));
 app.post("/trading/:id/status",requireAuth,async(req,res)=>{const status=String(req.body.status||"LIVE");if(!["LIVE","HIT","PROFIT","MISS","EXPIRED"].includes(status)) return res.status(400).send("Invalid status");await query(`UPDATE trade_calls SET status=$1,closed_at=CASE WHEN $1='LIVE' THEN NULL ELSE now() END WHERE id=$2 AND guild_id=$3`,[status,req.params.id,config.targetGuildId]);await audit(config.targetGuildId,req.session.user!.id,"trade.status",{id:req.params.id,status});res.redirect("/trading");});
 app.get("/tickets",requireAuth,async(req,res)=>{const tickets=await query<any>(`SELECT * FROM tickets WHERE guild_id=$1 ORDER BY created_at DESC LIMIT 100`,[config.targetGuildId]);res.render("tickets",{user:req.session.user,tickets});});
 app.post("/tickets/:id/close",requireAuth,async(req,res)=>{const ticket=await one<any>(`SELECT * FROM tickets WHERE id=$1 AND guild_id=$2`,[req.params.id,config.targetGuildId]);if(ticket?.channel_id){const ch=await client.channels.fetch(ticket.channel_id).catch(()=>null);if(ch) await (ch as any).delete(`Ticket closed from dashboard by ${req.session.user!.username}`).catch(()=>{});}await query(`UPDATE tickets SET status='CLOSED',closed_at=now() WHERE id=$1 AND guild_id=$2`,[req.params.id,config.targetGuildId]);await audit(config.targetGuildId,req.session.user!.id,"ticket.close",{id:req.params.id});res.redirect("/tickets");});
