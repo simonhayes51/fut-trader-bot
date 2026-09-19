@@ -20,6 +20,14 @@ import {
   refreshInviteSnapshot, v5CommandData, v5ContextCommandData
 } from "./community-suite-v5.js";
 
+const commandFeatureMap:Record<string,string>={
+  kudos:"reputation",kudosboard:"reputation",rank:"levels",leaderboard:"levels",profile:"levels",wallet:"levels",daily:"levels",quests:"levels",season:"levels",
+  shop:"rewards",redeem:"rewards",giveaway:"giveaways",suggest:"suggestions",ticket:"tickets",ticketstaff:"tickets",verify:"onboarding",birthday:"birthdays",afk:"afk",
+  referral:"premium_billing",premium:"premium_billing",subscription:"premium_billing",giftpremium:"premium_billing",
+  warn:"mod_tools",history:"mod_tools",note:"mod_tools",timeout:"mod_tools",kick:"mod_tools",ban:"mod_tools",purge:"mod_tools",slowmode:"mod_tools",lock:"mod_tools",unlock:"mod_tools",nick:"mod_tools",role:"mod_tools",
+  event:"scheduled_messages",achievements:"levels"
+};
+
 export const client = new Client({
   intents: [GatewayIntentBits.Guilds,GatewayIntentBits.GuildMembers,GatewayIntentBits.GuildMessages,GatewayIntentBits.MessageContent,GatewayIntentBits.GuildModeration,GatewayIntentBits.GuildMessageReactions,GatewayIntentBits.GuildInvites],
   partials: [Partials.Channel, Partials.Message, Partials.User, Partials.GuildMember, Partials.Reaction]
@@ -55,7 +63,7 @@ export async function startBot() {
   client.once(Events.ClientReady, async ready => {console.log(`Discord ready as ${ready.user.tag}`);attachV5Client(client);const guild=await ready.guilds.fetch(config.targetGuildId).catch(()=>null);if(guild){await query(`INSERT INTO guild_settings(guild_id,guild_name) VALUES($1,$2) ON CONFLICT(guild_id) DO UPDATE SET guild_name=$2,updated_at=now()`,[guild.id,guild.name]);await ensureEconomyDefaults(guild.id);await ensureV5Defaults(guild.id);await refreshInviteSnapshot(guild).catch(()=>{});}});
   client.on(Events.InteractionCreate, async interaction => {try{
     if(interaction.isAutocomplete()){if(await handleBillingAutocomplete(interaction))return;if(await handleEconomyAutocomplete(interaction))return;if(await handleFeatureAutocomplete(interaction))return;await interaction.respond([]).catch(()=>{});return;}
-    if(interaction.guildId){if(interaction.isChatInputCommand())void recordUsage(interaction.guildId,interaction.user.id,"command",interaction.commandName,interaction.channelId||undefined);else if(interaction.isButton()||interaction.isStringSelectMenu())void recordUsage(interaction.guildId,interaction.user.id,"component",String(interaction.customId||"component").split(":").slice(0,2).join(":"),interaction.channelId||undefined);}
+    if(interaction.guildId){if(interaction.isChatInputCommand()){void recordUsage(interaction.guildId,interaction.user.id,"command",interaction.commandName,interaction.channelId||undefined);const mapped=commandFeatureMap[interaction.commandName];if(mapped)void recordUsage(interaction.guildId,interaction.user.id,"feature",mapped,interaction.channelId||undefined,{command:interaction.commandName});}else if(interaction.isButton()||interaction.isStringSelectMenu())void recordUsage(interaction.guildId,interaction.user.id,"component",String(interaction.customId||"component").split(":").slice(0,2).join(":"),interaction.channelId||undefined);}
     if((interaction.isButton()||interaction.isStringSelectMenu())&&await handleV5Component(client,interaction))return;
     if(interaction.isButton()&&await handleEconomyComponent(client,interaction))return;
     if(interaction.isButton()&&await handleComponent(client,interaction))return;
