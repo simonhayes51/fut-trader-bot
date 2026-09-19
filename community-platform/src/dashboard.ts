@@ -34,7 +34,7 @@ app.use(session({
 }));
 
 function dashboardSidebar(pathname:string,user?:{username?:string;avatar?:string}) {
-  const groups=[
+  const groups:Array<{label:string;items:Array<[string,string,string]>}>=[
     {label:"Workspace",items:[["/dashboard","⌂","Overview"],["/analytics","⌁","Analytics"],["/members","◎","Members"]]},
     {label:"Growth",items:[["/economy","◈","Economy"],["/billing","◆","Premium"],["/automation","↻","Automation"]]},
     {label:"Community",items:[["/trading","↗","Trade calls"],["/social","◉","Social feeds"],["/tickets","◇","Tickets"],["/discord","♢","Discord"]]},
