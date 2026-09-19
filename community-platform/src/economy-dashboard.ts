@@ -94,10 +94,11 @@ economyRouter.post("/economy/redemptions/:id/refund",async(req:any,res)=>{try{aw
 
 economyRouter.post("/economy/season",async(req:any,res)=>{
   const gid=config.targetGuildId,name=String(req.body.name||"").trim()||"FC27 Season",days=int(req.body.days,1,365);
+  const rewards={"1":int(req.body.first_reward,0,10_000_000),"2":int(req.body.second_reward,0,10_000_000),"3":int(req.body.third_reward,0,10_000_000)};
   const current=await one<any>(`SELECT id,name FROM economy_seasons WHERE guild_id=$1 AND active=true ORDER BY starts_at DESC LIMIT 1`,[gid]);
   if(current){await query(`UPDATE economy_seasons SET ends_at=now() WHERE id=$1`,[current.id]);await runEconomyTick(client);}
   const next=await one<any>(`SELECT id FROM economy_seasons WHERE guild_id=$1 AND active=true ORDER BY starts_at DESC LIMIT 1`,[gid]);
-  if(next)await query(`UPDATE economy_seasons SET name=$2,starts_at=now(),ends_at=now()+($3||' days')::interval WHERE id=$1`,[next.id,name,String(days)]);
-  else await query(`INSERT INTO economy_seasons(guild_id,name,starts_at,ends_at) VALUES($1,$2,now(),now()+($3||' days')::interval)`,[gid,name,String(days)]);
-  await audit(gid,req.session.user.id,"economy.season.start",{name,days,closedSeasonId:current?.id||null});res.redirect("/economy?saved=1");
+  if(next)await query(`UPDATE economy_seasons SET name=$2,starts_at=now(),ends_at=now()+($3||' days')::interval,rewards=$4::jsonb WHERE id=$1`,[next.id,name,String(days),JSON.stringify(rewards)]);
+  else await query(`INSERT INTO economy_seasons(guild_id,name,starts_at,ends_at,rewards) VALUES($1,$2,now(),now()+($3||' days')::interval,$4::jsonb)`,[gid,name,String(days),JSON.stringify(rewards)]);
+  await audit(gid,req.session.user.id,"economy.season.start",{name,days,rewards,closedSeasonId:current?.id||null});res.redirect("/economy?saved=1");
 });
