@@ -202,7 +202,7 @@ export async function handleContextCommand(i:any){
     if(duplicate){await i.reply({content:"You've already given kudos for that message.",ephemeral:true});return true;}
     const count=await one<any>(`SELECT count(*) c FROM reputation_events WHERE guild_id=$1 AND giver_id=$2 AND created_at>now()-interval '24 hours'`,[i.guildId,i.user.id]);
     if(Number(count?.c||0)>=Number(feature.config.dailyLimit||5)){await i.reply({content:"You've reached today's kudos limit.",ephemeral:true});return true;}
-    await query(`INSERT INTO reputation_events(guild_id,giver_id,receiver_id,reason,source_message_id) VALUES($1,$2,$3,'Message kudos',$4)`,[i.guildId,i.user.id,i.targetMessage.author.id,i.targetMessage.id]);
+    await query(`INSERT INTO reputation_events(guild_id,giver_id,receiver_id,reason,category,comment,source_message_id) VALUES($1,$2,$3,'Message kudos','Helpful',NULL,$4)`,[i.guildId,i.user.id,i.targetMessage.author.id,i.targetMessage.id]);
     await query(`INSERT INTO member_stats(guild_id,user_id,thanks_received,helpful_actions) VALUES($1,$2,1,1) ON CONFLICT(guild_id,user_id) DO UPDATE SET thanks_received=member_stats.thanks_received+1,helpful_actions=member_stats.helpful_actions+1`,[i.guildId,i.targetMessage.author.id]);
     await recordEconomyEvent(i.guildId,i.user.id,"kudos_given",{sourceType:"message_kudos",sourceId:i.targetMessage.id,idempotencyBase:`message-kudos:${i.targetMessage.id}:${i.user.id}`});
     await i.reply({content:`👏 Kudos given to ${i.targetMessage.author}.`,ephemeral:true});return true;
