@@ -12,8 +12,7 @@ ENV NODE_ENV=production
 COPY package*.json ./
 RUN npm install --omit=dev
 COPY --from=build /app/dist ./dist
-COPY src/schema.sql ./dist/schema.sql
-COPY src/schema-v2.sql ./dist/schema-v2.sql
+COPY src/schema*.sql ./dist/
 COPY views ./views
 COPY public ./public
 EXPOSE 3000
