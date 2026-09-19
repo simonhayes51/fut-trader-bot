@@ -240,3 +240,16 @@ tbody tr:hover{background:rgba(29,53,76,.24)}
 .transcript{max-height:320px;overflow:auto;white-space:pre-wrap;background:#07111b;border:1px solid #1c3043;border-radius:8px;padding:10px;color:#aabaca;font-size:9px}
 .technical-drawer[open]{padding-bottom:8px}
 @media(max-width:980px){.automation-grid,.native-tools-grid{grid-template-columns:1fr}}
+
+
+/* ===== SaaS login & module workspace ===== */
+.module-workspace{max-width:1280px}.module-config-card{padding:20px}.module-config-card .settings-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.saas-login{min-height:100vh;padding:28px;background:
+ radial-gradient(800px 500px at 20% 10%,rgba(34,211,238,.10),transparent 65%),
+ radial-gradient(700px 450px at 85% 90%,rgba(79,124,255,.08),transparent 65%),
+ #061019}
+.login-shell{width:min(1120px,100%);display:grid;grid-template-columns:minmax(0,1.2fr) minmax(360px,.8fr);gap:18px;align-items:stretch}
+.login-brand-panel,.saas-login-card{border:1px solid #1d3348;border-radius:18px;background:linear-gradient(145deg,rgba(12,27,41,.97),rgba(7,17,27,.97));box-shadow:0 35px 100px rgba(0,0,0,.28)}
+.login-brand-panel{padding:44px;display:flex;flex-direction:column;justify-content:center}.brand-mark.xl{width:48px;height:48px;border-radius:14px;font-size:22px;margin-bottom:28px}.login-brand-panel h1{font-size:42px;line-height:1.03;max-width:680px;margin:8px 0 14px}.login-brand-panel>p{color:#7690a7;max-width:640px;line-height:1.6;font-size:13px}.login-feature-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:28px}.login-feature-grid span{padding:10px 11px;border:1px solid #1c3043;border-radius:9px;background:#09141f;color:#92a9bd;font-size:10px;font-weight:750}
+.saas-login-card{max-width:none;padding:32px;display:flex;flex-direction:column;justify-content:center}.saas-login-card h2{font-size:24px;margin:6px 0 7px}.saas-login-card p{font-size:11px;color:#70879e;line-height:1.55}.login-cta{display:flex;justify-content:center;width:100%;margin:22px 0 16px;padding:11px}.login-security{display:flex;gap:9px;align-items:flex-start;padding:11px;border:1px solid #193143;border-radius:9px;background:#09161f}.login-security>span:last-child{display:flex;flex-direction:column}.login-security strong{font-size:9.5px}.login-security small{font-size:8.5px;color:#647b91;margin-top:2px}
+@media(max-width:900px){.login-shell{grid-template-columns:1fr}.login-brand-panel h1{font-size:34px}}@media(max-width:760px){.saas-login{padding:14px}.login-brand-panel,.saas-login-card{padding:24px}.login-feature-grid{grid-template-columns:1fr}.module-config-card .settings-grid{grid-template-columns:1fr}}
