@@ -168,7 +168,9 @@ app.get("/dashboard",requireAuth,async(req,res)=>{
     (SELECT count(*) FROM tickets WHERE guild_id=$1 AND status='OPEN') open_tickets,
     (SELECT count(*) FROM social_feeds WHERE guild_id=$1 AND enabled=true) active_feeds,
     (SELECT count(*) FROM warnings WHERE guild_id=$1) warnings,
-    (SELECT count(*) FROM billing_subscriptions WHERE guild_id=$1 AND status IN ('active','trialing','past_due','comped','gifted')) premium_members`,[config.targetGuildId]);
+    (SELECT count(*) FROM billing_subscriptions WHERE guild_id=$1 AND status IN ('active','trialing','past_due','comped','gifted')) premium_members,
+    (SELECT COALESCE(sum(coins_balance),0) FROM member_economy WHERE guild_id=$1) coins_circulating,
+    (SELECT count(*) FROM store_redemptions WHERE guild_id=$1 AND status='PENDING') pending_rewards`,[config.targetGuildId]);
   res.render("dashboard",{user:req.session.user,modules,moduleSettings:byKey,stats:stats||{},guild:client.guilds.cache.get(config.targetGuildId)});
 });
 
