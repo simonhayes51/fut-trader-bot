@@ -449,3 +449,10 @@ INSERT INTO booster_milestones(guild_id,months,xp_reward,coin_reward)
 SELECT guild_id,6,500,750 FROM guild_settings ON CONFLICT DO NOTHING;
 INSERT INTO booster_milestones(guild_id,months,xp_reward,coin_reward)
 SELECT guild_id,12,1000,1500 FROM guild_settings ON CONFLICT DO NOTHING;
+
+INSERT INTO achievement_definitions(guild_id,achievement_key,name,description,icon,xp_reward,coin_reward,sort_order)
+SELECT guild_id,'kudos_25','Well known','Received 25 kudos from the community.','👏',0,0,81 FROM guild_settings ON CONFLICT DO NOTHING;
+INSERT INTO achievement_definitions(guild_id,achievement_key,name,description,icon,xp_reward,coin_reward,sort_order)
+SELECT guild_id,'kudos_50','Community favourite','Received 50 kudos from the community.','🌟',0,0,82 FROM guild_settings ON CONFLICT DO NOTHING;
+INSERT INTO achievement_definitions(guild_id,achievement_key,name,description,icon,xp_reward,coin_reward,sort_order)
+SELECT guild_id,'kudos_100','Community legend','Received 100 kudos from the community.','🏆',0,0,83 FROM guild_settings ON CONFLICT DO NOTHING;
