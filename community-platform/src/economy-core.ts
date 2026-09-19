@@ -145,9 +145,15 @@ export async function recordEconomyEvent(guildId:string,userId:string,eventType:
   try{
     await client.query("BEGIN");await ensureMember(client,guildId,userId);
     const base=options.idempotencyBase||`${eventType}:${options.sourceType||"event"}:${options.sourceId||Date.now()}:${userId}`;
+    const dailyLimits:Record<string,number>={helpful_received:5,trade_logged:5,investment_join:10};
+    let rewardedQty=qty;
+    if(dailyLimits[eventType]){
+      const already=Number((await client.query(`SELECT count(*) c FROM economy_ledger WHERE guild_id=$1 AND user_id=$2 AND currency='xp' AND reason=$3 AND created_at>=current_date`,[guildId,userId,eventType.replaceAll("_"," ")])).rows[0]?.c||0);
+      rewardedQty=Math.max(0,Math.min(qty,dailyLimits[eventType]-already));
+    }
     let changed=false;
-    if(rewards.xp>0)changed=(await applyLedger(client,{guildId,userId,currency:"xp",amount:rewards.xp*qty,reason:eventType.replaceAll("_"," "),sourceType:options.sourceType||eventType,sourceId:options.sourceId,idempotencyKey:`${base}:xp`,metadata:options.metadata}))||changed;
-    if(rewards.coins>0)changed=(await applyLedger(client,{guildId,userId,currency:"coins",amount:rewards.coins*qty,reason:eventType.replaceAll("_"," "),sourceType:options.sourceType||eventType,sourceId:options.sourceId,idempotencyKey:`${base}:coins`,metadata:options.metadata}))||changed;
+    if(rewards.xp>0&&rewardedQty>0)changed=(await applyLedger(client,{guildId,userId,currency:"xp",amount:rewards.xp*rewardedQty,reason:eventType.replaceAll("_"," "),sourceType:options.sourceType||eventType,sourceId:options.sourceId,idempotencyKey:`${base}:xp`,metadata:options.metadata}))||changed;
+    if(rewards.coins>0&&rewardedQty>0)changed=(await applyLedger(client,{guildId,userId,currency:"coins",amount:rewards.coins*rewardedQty,reason:eventType.replaceAll("_"," "),sourceType:options.sourceType||eventType,sourceId:options.sourceId,idempotencyKey:`${base}:coins`,metadata:options.metadata}))||changed;
     const season=await currentSeason(client,guildId);
     if(eventType==="helpful_received"){
       await client.query(`UPDATE season_member_stats SET helpful_actions=helpful_actions+$3 WHERE season_id=$1 AND user_id=$2`,[season.id,userId,qty]);
