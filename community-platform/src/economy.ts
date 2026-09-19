@@ -202,14 +202,15 @@ export async function onEconomyJoin(guildId:string,userId:string){
   const def=await one<any>(`SELECT * FROM achievement_definitions WHERE guild_id=$1 AND achievement_key='welcome_aboard'`,[guildId]);if(def){const inserted=await query<any>(`INSERT INTO achievements(guild_id,user_id,achievement_key) VALUES($1,$2,'welcome_aboard') ON CONFLICT DO NOTHING RETURNING achievement_key`,[guildId,userId]);if(inserted.length){if(Number(def.xp_reward)>0)await awardCurrency({guildId,userId,currency:"xp",amount:Number(def.xp_reward),reason:`Achievement: ${def.name}`,sourceType:"achievement",sourceId:"welcome_aboard",idempotencyKey:`achievement:welcome_aboard:${userId}:xp`});if(Number(def.coin_reward)>0)await awardCurrency({guildId,userId,currency:"coins",amount:Number(def.coin_reward),reason:`Achievement: ${def.name}`,sourceType:"achievement",sourceId:"welcome_aboard",idempotencyKey:`achievement:welcome_aboard:${userId}:coins`});}}
 }
 
-export async function runEconomyTick(_client:Client){
+export async function runEconomyTick(client:Client){
   const ended=await query<any>(`SELECT * FROM economy_seasons WHERE active=true AND ends_at<=now() ORDER BY ends_at FOR UPDATE SKIP LOCKED`);
   for(const season of ended){
     const leaders=await query<any>(`SELECT user_id,xp_earned FROM season_member_stats WHERE season_id=$1 ORDER BY xp_earned DESC,user_id LIMIT 10`,[season.id]);
     const rewards=season.rewards||{"1":2000,"2":1000,"3":500};
     for(let n=0;n<leaders.length;n++){
       const amount=Number(rewards[String(n+1)]||0);if(amount<=0)continue;
-      await awardCurrency({guildId:season.guild_id,userId:leaders[n].user_id,currency:"coins",amount,reason:`${season.name} • #${n+1} reward`,sourceType:"season_reward",sourceId:String(season.id),idempotencyKey:`season:${season.id}:rank:${n+1}:${leaders[n].user_id}`});
+      const awarded=await awardCurrency({guildId:season.guild_id,userId:leaders[n].user_id,currency:"coins",amount,reason:`${season.name} • #${n+1} reward`,sourceType:"season_reward",sourceId:String(season.id),idempotencyKey:`season:${season.id}:rank:${n+1}:${leaders[n].user_id}`});
+      if(awarded){const user=await client.users.fetch(leaders[n].user_id).catch(()=>null);if(user)await user.send({embeds:[brandEmbed(`🏆 ${season.name} finished`,`You finished **#${n+1}** and earned **${compactNumber(amount)} Live Coins**.\n\nUse \`/shop\` to spend them or \`/season\` to see the new leaderboard.`,BRAND.colours.premium)]}).catch(()=>{});}
     }
     await query(`UPDATE economy_seasons SET active=false,rewards_paid_at=COALESCE(rewards_paid_at,now()) WHERE id=$1`,[season.id]);
   }
