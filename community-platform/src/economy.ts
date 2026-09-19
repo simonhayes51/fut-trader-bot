@@ -128,7 +128,7 @@ export async function handleEconomyComponent(_client:Client,i:any){
 }
 
 export async function onEconomyMessage(message:any){
-  if(!message.guildId||message.author?.bot||!message.content||String(message.content).trim().length<8)return;
+  if(!message.guildId||message.author?.bot||message.deleted||!message.content||String(message.content).trim().length<8)return;
   const settings=await getEconomySettings(message.guildId);if(!settings.enabled)return;
   const client=await db.connect();let xp=0,coins=0;
   try{
