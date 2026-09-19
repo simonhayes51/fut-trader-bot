@@ -147,7 +147,12 @@ v5ControlRouter.post("/control/kudos/level-workflow",async(req:any,res)=>{
 v5ControlRouter.get("/control/growth",async(req:any,res)=>{
   const gid=config.targetGuildId,[base,inviteLeaders,inviteMilestones,partners,boosterMilestones]=await Promise.all([
     ui(),query<any>(`SELECT inviter_id user_id,count(*) FILTER(WHERE retained_7d)::int retained,count(*)::int total FROM invite_joins WHERE guild_id=$1 AND inviter_id IS NOT NULL GROUP BY inviter_id ORDER BY retained DESC,total DESC LIMIT 30`,[gid]),
-    query<any>(`SELECT * FROM invite_milestones WHERE guild_id=$1 ORDER BY retained_invites`,[gid]),query<any>(`SELECT p.*,(SELECT count(*) FROM invite_joins i WHERE i.guild_id=p.guild_id AND i.invite_code=p.invite_code) joins,(SELECT count(*) FROM invite_joins i WHERE i.guild_id=p.guild_id AND i.invite_code=p.invite_code AND i.retained_7d) retained FROM partnerships p WHERE p.guild_id=$1 ORDER BY p.status,p.partner_name`,[gid]),
+    query<any>(`SELECT * FROM invite_milestones WHERE guild_id=$1 ORDER BY retained_invites`,[gid]),query<any>(`SELECT p.*,
+      (SELECT count(*) FROM invite_joins i WHERE i.guild_id=p.guild_id AND i.invite_code=p.invite_code) joins,
+      (SELECT count(*) FROM invite_joins i WHERE i.guild_id=p.guild_id AND i.invite_code=p.invite_code AND i.retained_7d) retained,
+      (SELECT count(*) FROM invite_joins i JOIN member_stats s ON s.guild_id=i.guild_id AND s.user_id=i.user_id WHERE i.guild_id=p.guild_id AND i.invite_code=p.invite_code AND s.last_message_at>now()-interval '7 days') active_7d,
+      (SELECT count(DISTINCT i.user_id) FROM invite_joins i JOIN billing_subscriptions b ON b.guild_id=i.guild_id AND b.discord_user_id=i.user_id WHERE i.guild_id=p.guild_id AND i.invite_code=p.invite_code AND b.status IN ('active','past_due','comped','gifted')) premium
+      FROM partnerships p WHERE p.guild_id=$1 ORDER BY p.status,p.partner_name`,[gid]),
     query<any>(`SELECT * FROM booster_milestones WHERE guild_id=$1 ORDER BY months`,[gid])
   ]);
   const names=new Map<string,string>(base.members.map(m=>[String(m.id),String(m.name)] as [string,string]));
@@ -183,7 +188,7 @@ v5ControlRouter.get("/control/rewards",async(req:any,res)=>{
 });
 v5ControlRouter.post("/control/rewards/store",async(req:any,res)=>{
   const type=String(req.body.fulfillmentType||"role"),key=String(req.body.itemKey||"").trim().toLowerCase().replace(/[^a-z0-9-]+/g,"-")||`reward-${Date.now()}`;
-  const metadata:any={};if(type==="custom"){metadata.cosmetic_key=req.body.cosmeticKey||"title";metadata.value=req.body.cosmeticValue||req.body.name;}
+  const metadata:any={};if(type==="custom"){metadata.cosmetic_key=req.body.cosmeticKey||"title";metadata.value=req.body.cosmeticValue||req.body.name;}if(type==="badge"){metadata.achievement_key=req.body.badgeKey||key;}
   await query(`INSERT INTO store_items(guild_id,item_key,name,description,emoji,cost_coins,active,stock,per_user_limit,fulfillment_type,duration_days,role_id,metadata,sort_order,available_from,available_until,season_id,cosmetic) VALUES($1,$2,$3,$4,$5,$6,true,$7,$8,$9,$10,$11,$12::jsonb,$13,$14,$15,$16,$17) ON CONFLICT(guild_id,item_key) DO UPDATE SET name=$3,description=$4,emoji=$5,cost_coins=$6,active=true,stock=$7,per_user_limit=$8,fulfillment_type=$9,duration_days=$10,role_id=$11,metadata=$12::jsonb,sort_order=$13,available_from=$14,available_until=$15,season_id=$16,cosmetic=$17,updated_at=now()`,
     [config.targetGuildId,key,String(req.body.name||"Reward"),String(req.body.description||""),String(req.body.emoji||"🎁"),Math.max(0,num(req.body.costCoins)),req.body.stock?Math.max(0,num(req.body.stock)):null,req.body.perUserLimit?Math.max(1,num(req.body.perUserLimit)):null,type,req.body.durationDays?Math.max(1,num(req.body.durationDays)):null,req.body.roleId||null,JSON.stringify(metadata),num(req.body.sortOrder),req.body.availableFrom||null,req.body.availableUntil||null,bool(req.body.seasonal)&&req.body.seasonId?num(req.body.seasonId):null,type==="role"||type==="custom"]);
   res.redirect("/control/rewards?saved=1");
