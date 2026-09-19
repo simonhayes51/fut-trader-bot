@@ -25,7 +25,7 @@ async function guildUi(){
 
 controlRouter.get("/control",async(req:any,res)=>{
   const gid=config.targetGuildId;
-  const [ui,metrics,recent,kudos,season,features]=await Promise.all([
+  const [ui,metrics,recent,kudos,season,features,widgets]=await Promise.all([
     guildUi(),
     one<any>(`SELECT
       (SELECT count(*) FROM member_stats WHERE guild_id=$1) tracked_members,
@@ -37,14 +37,19 @@ controlRouter.get("/control",async(req:any,res)=>{
       (SELECT count(*) FROM scheduled_messages WHERE guild_id=$1 AND enabled=true) schedules,
       (SELECT count(*) FROM social_feeds WHERE guild_id=$1 AND enabled=true) feeds,
       (SELECT count(DISTINCT discord_user_id) FROM entitlements WHERE guild_id=$1 AND active=true AND (expires_at IS NULL OR expires_at>now())) premium_members,
-      (SELECT COALESCE(sum(coins_balance),0) FROM member_economy WHERE guild_id=$1) coins_circulating`,[gid]),
+      (SELECT COALESCE(sum(coins_balance),0) FROM member_economy WHERE guild_id=$1) coins_circulating,
+      (SELECT COALESCE(sum(conversions),0) FROM referral_codes WHERE guild_id=$1) referral_conversions,
+      (SELECT count(*) FROM partnerships WHERE guild_id=$1 AND status='active') active_partners,
+      (SELECT count(*) FROM health_findings WHERE guild_id=$1 AND active=true) health_findings,
+      (SELECT count(*) FROM usage_events WHERE guild_id=$1 AND created_at>=now()-interval '7 days') feature_events_7d`,[gid]),
     query<any>(`SELECT action,details,created_at FROM audit_log WHERE guild_id=$1 ORDER BY created_at DESC LIMIT 8`,[gid]),
     query<any>(`SELECT user_id,thanks_received FROM member_stats WHERE guild_id=$1 AND thanks_received>0 ORDER BY thanks_received DESC LIMIT 5`,[gid]),
     one<any>(`SELECT * FROM economy_seasons WHERE guild_id=$1 AND active=true ORDER BY starts_at DESC LIMIT 1`,[gid]),
-    query<any>(`SELECT feature_key,enabled FROM feature_settings WHERE guild_id=$1`,[gid])
+    query<any>(`SELECT feature_key,enabled FROM feature_settings WHERE guild_id=$1`,[gid]),
+    query<any>(`SELECT widget_key FROM dashboard_widgets WHERE guild_id=$1 AND admin_user_id=$2 AND enabled=true ORDER BY sort_order,widget_key`,[gid,req.session.user.id])
   ]);
   const names=new Map<string,string>(ui.members.map(m=>[String(m.id),String(m.name)] as [string,string]));
-  res.render("control-home",{user:req.session.user,...ui,metrics:metrics||{},recent,kudos:kudos.map(k=>({...k,name:names.get(k.user_id)||k.user_id})),season,features:new Map<string,boolean>(features.map(f=>[String(f.feature_key),Boolean(f.enabled)] as [string,boolean]))});
+  res.render("control-home",{user:req.session.user,...ui,metrics:metrics||{},recent,kudos:kudos.map(k=>({...k,name:names.get(k.user_id)||k.user_id})),season,widgets:widgets.map(w=>String(w.widget_key)),features:new Map<string,boolean>(features.map(f=>[String(f.feature_key),Boolean(f.enabled)] as [string,boolean]))});
 });
 
 controlRouter.get("/control/members",async(req:any,res)=>{
