@@ -31,6 +31,7 @@ const slash:any[]=[
       .addIntegerOption(o=>o.setName("min_level").setDescription("Minimum community level").setMinValue(0))
       .addBooleanOption(o=>o.setName("verified_only").setDescription("Require completed verification"))
       .addRoleOption(o=>o.setName("blacklist_role").setDescription("Role excluded from entry"))
+      .addUserOption(o=>o.setName("blacklist_user").setDescription("Member excluded from entry"))
       .addIntegerOption(o=>o.setName("premium_bonus").setDescription("Bonus entries for Premium").setMinValue(0).setMaxValue(20))
       .addIntegerOption(o=>o.setName("booster_bonus").setDescription("Bonus entries for server boosters").setMinValue(0).setMaxValue(20))
       .addIntegerOption(o=>o.setName("level_bonus_at").setDescription("Level needed for bonus entries").setMinValue(1))
@@ -146,11 +147,11 @@ export async function handleFeatureCommand(client:Client,i:any){
     const sub=i.options.getSubcommand();
     if(sub==="start"){
       const feature=await getFeature(gid,"giveaways",{channelId:"",minAccountAgeDays:3});
-      const prize=i.options.getString("prize",true),minutes=i.options.getInteger("minutes",true),winnerCount=i.options.getInteger("winners")||1,required=i.options.getRole("required_role"),blacklist=i.options.getRole("blacklist_role");
+      const prize=i.options.getString("prize",true),minutes=i.options.getInteger("minutes",true),winnerCount=i.options.getInteger("winners")||1,required=i.options.getRole("required_role"),blacklist=i.options.getRole("blacklist_role"),blacklistUser=i.options.getUser("blacklist_user");
       const minMemberDays=i.options.getInteger("min_member_days")||0,minLevel=i.options.getInteger("min_level")||0,verifiedOnly=i.options.getBoolean("verified_only")||false;
       const bonusRules={premium:Number(i.options.getInteger("premium_bonus")||0),booster:Number(i.options.getInteger("booster_bonus")||0),levelAt:Number(i.options.getInteger("level_bonus_at")||0),levelEntries:Number(i.options.getInteger("level_bonus_entries")||0),tenureDays:Number(i.options.getInteger("tenure_bonus_days")||0),tenureEntries:Number(i.options.getInteger("tenure_bonus_entries")||0)};
       const channelId=String(feature.config.channelId||i.channelId),ends=new Date(Date.now()+minutes*60000);
-      const row=(await query<any>(`INSERT INTO giveaways(guild_id,channel_id,prize,winner_count,required_role_id,min_account_age_days,min_member_days,min_level,verified_only,blacklist_role_ids,bonus_rules,reroll_exclude_previous,ends_at,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,true,$12,$13) RETURNING *`,[gid,channelId,prize,winnerCount,required?.id||null,Number(feature.config.minAccountAgeDays||0),minMemberDays,minLevel,verifiedOnly,blacklist?[blacklist.id]:[],JSON.stringify(bonusRules),ends,i.user.id]))[0];
+      const row=(await query<any>(`INSERT INTO giveaways(guild_id,channel_id,prize,winner_count,required_role_id,min_account_age_days,min_member_days,min_level,verified_only,blacklist_user_ids,blacklist_role_ids,bonus_rules,reroll_exclude_previous,ends_at,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,true,$13,$14) RETURNING *`,[gid,channelId,prize,winnerCount,required?.id||null,Number(feature.config.minAccountAgeDays||0),minMemberDays,minLevel,verifiedOnly,blacklistUser?[blacklistUser.id]:[],blacklist?[blacklist.id]:[],JSON.stringify(bonusRules),ends,i.user.id]))[0];
       const button=new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(`giveaway:${row.id}`).setLabel("Enter giveaway").setStyle(ButtonStyle.Success));
       const ch=await client.channels.fetch(channelId).catch(()=>null);if(!ch?.isTextBased()){await i.reply({content:"Giveaway channel isn't available.",ephemeral:true});return true;}
       const requirements=[required?`Role: ${required}`:"",minMemberDays?`${minMemberDays}+ days in server`:"",minLevel?`Level ${minLevel}+`:"",verifiedOnly?"Verified members only":""].filter(Boolean);
