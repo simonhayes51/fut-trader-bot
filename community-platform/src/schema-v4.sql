@@ -45,3 +45,34 @@ CREATE TABLE IF NOT EXISTS response_cooldowns (
   next_at TIMESTAMPTZ NOT NULL,
   PRIMARY KEY(guild_id,response_id,channel_id)
 );
+
+
+-- Retire trading-heavy progression from the Discord community bot.
+UPDATE quest_definitions
+SET active=false,updated_at=now()
+WHERE quest_key IN ('daily_trade','weekly_trader','weekly_investor')
+   OR event_type IN ('trade_logged','investment_join');
+
+UPDATE achievement_definitions
+SET active=false
+WHERE achievement_key='trader_10';
+
+UPDATE achievement_definitions
+SET name='Community regular',description='Reached level 10.'
+WHERE achievement_key='level_10';
+
+INSERT INTO quest_definitions(guild_id,quest_key,name,description,cadence,event_type,target,xp_reward,coin_reward,sort_order)
+SELECT guild_id,'daily_kudos','Give kudos','Recognise another member for a useful contribution.','daily','kudos_given',1,50,25,30
+FROM guild_settings ON CONFLICT(guild_id,quest_key) DO NOTHING;
+
+INSERT INTO quest_definitions(guild_id,quest_key,name,description,cadence,event_type,target,xp_reward,coin_reward,sort_order)
+SELECT guild_id,'weekly_kudos','Community champion','Give kudos to five useful contributions this week.','weekly','kudos_given',5,250,150,120
+FROM guild_settings ON CONFLICT(guild_id,quest_key) DO NOTHING;
+
+INSERT INTO quest_definitions(guild_id,quest_key,name,description,cadence,event_type,target,xp_reward,coin_reward,sort_order)
+SELECT guild_id,'weekly_streak','Stay consistent','Claim your daily reward five times this week.','weekly','daily_claim',5,150,100,140
+FROM guild_settings ON CONFLICT(guild_id,quest_key) DO NOTHING;
+
+INSERT INTO achievement_definitions(guild_id,achievement_key,name,description,icon,xp_reward,coin_reward,sort_order)
+SELECT guild_id,'kudos_10','Recognised member','Received ten kudos from the community.','👏',200,250,80
+FROM guild_settings ON CONFLICT(guild_id,achievement_key) DO NOTHING;
