@@ -66,25 +66,27 @@ async function onboardingConfig(guildId:string){
   return await one<any>(`SELECT * FROM onboarding_configs WHERE guild_id=$1`,[guildId])||{};
 }
 
-function onboardingRows(){
-  const platforms=new StringSelectMenuBuilder().setCustomId("v5:onboard:platform").setPlaceholder("1. Choose your platform").addOptions(
-    new StringSelectMenuOptionBuilder().setLabel("PlayStation").setValue("PlayStation").setEmoji("🎮"),
-    new StringSelectMenuOptionBuilder().setLabel("Xbox").setValue("Xbox").setEmoji("🎮"),
-    new StringSelectMenuOptionBuilder().setLabel("PC").setValue("PC").setEmoji("🖥️")
-  );
-  const interests=new StringSelectMenuBuilder().setCustomId("v5:onboard:interests").setPlaceholder("2. Choose your interests").setMinValues(1).setMaxValues(4).addOptions(
-    new StringSelectMenuOptionBuilder().setLabel("EAFC.Live").setValue("EAFC.Live").setEmoji("⚡"),
-    new StringSelectMenuOptionBuilder().setLabel("Ultimate Team").setValue("Ultimate Team").setEmoji("⚽"),
-    new StringSelectMenuOptionBuilder().setLabel("SBCs & Objectives").setValue("SBCs & Objectives").setEmoji("🧩"),
-    new StringSelectMenuOptionBuilder().setLabel("Gameplay").setValue("Gameplay").setEmoji("🎮"),
-    new StringSelectMenuOptionBuilder().setLabel("Community").setValue("Community").setEmoji("💬")
-  );
-  const finish=new ButtonBuilder().setCustomId("v5:onboard:finish").setLabel("Finish onboarding").setStyle(ButtonStyle.Success);
-  return [
-    new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(platforms),
-    new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(interests),
-    new ActionRowBuilder<ButtonBuilder>().addComponents(finish)
-  ];
+function onboardingStep(step:number){
+  if(step===1){
+    const platforms=new StringSelectMenuBuilder().setCustomId("v5:onboard:platform").setPlaceholder("Choose your platform").addOptions(
+      new StringSelectMenuOptionBuilder().setLabel("PlayStation").setValue("PlayStation").setEmoji("🎮"),
+      new StringSelectMenuOptionBuilder().setLabel("Xbox").setValue("Xbox").setEmoji("🎮"),
+      new StringSelectMenuOptionBuilder().setLabel("PC").setValue("PC").setEmoji("🖥️")
+    );
+    return [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(platforms)];
+  }
+  if(step===2){
+    const interests=new StringSelectMenuBuilder().setCustomId("v5:onboard:interests").setPlaceholder("Choose your interests").setMinValues(1).setMaxValues(4).addOptions(
+      new StringSelectMenuOptionBuilder().setLabel("EAFC.Live").setValue("EAFC.Live").setEmoji("⚡"),
+      new StringSelectMenuOptionBuilder().setLabel("Ultimate Team").setValue("Ultimate Team").setEmoji("⚽"),
+      new StringSelectMenuOptionBuilder().setLabel("SBCs & Objectives").setValue("SBCs & Objectives").setEmoji("🧩"),
+      new StringSelectMenuOptionBuilder().setLabel("Gameplay").setValue("Gameplay").setEmoji("🎮"),
+      new StringSelectMenuOptionBuilder().setLabel("Community").setValue("Community").setEmoji("💬")
+    );
+    return [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(interests)];
+  }
+  const finish=new ButtonBuilder().setCustomId("v5:onboard:finish").setLabel("Finish onboarding").setStyle(ButtonStyle.Success).setEmoji("✅");
+  return [new ActionRowBuilder<ButtonBuilder>().addComponents(finish)];
 }
 
 export async function publishOnboardingPanel(guildId:string,channelId:string){
@@ -157,7 +159,7 @@ export async function handleV5Command(i:any){
     const cfg=await onboardingConfig(i.guildId),ageHours=(Date.now()-i.user.createdTimestamp)/3600000;
     if(ageHours<Number(cfg.min_account_age_hours||0)){await i.reply({content:`Your Discord account must be at least ${cfg.min_account_age_hours} hours old before verification.`,ephemeral:true});return true;}
     await query(`INSERT INTO onboarding_answers(guild_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING`,[i.guildId,i.user.id]);
-    await i.reply({embeds:[brandEmbed("👋 Complete onboarding","Choose your platform and interests, then finish onboarding.",BRAND.colours.primary)],components:onboardingRows(),ephemeral:true});return true;
+    await i.reply({embeds:[brandEmbed("👋 Complete onboarding","Choose your platform and interests, then finish onboarding.",BRAND.colours.primary)],components:onboardingStep(1),ephemeral:true});return true;
   }
   return false;
 }
@@ -193,7 +195,7 @@ export async function handleV5Component(client:Client,i:any){
     const cfg=await onboardingConfig(i.guildId),ageHours=(Date.now()-i.user.createdTimestamp)/3600000;
     if(ageHours<Number(cfg.min_account_age_hours||0)){await i.reply({content:`Your Discord account is too new to verify yet. Try again when it is ${cfg.min_account_age_hours} hours old.`,ephemeral:true});return true;}
     await query(`INSERT INTO onboarding_answers(guild_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING`,[i.guildId,i.user.id]);
-    await i.reply({embeds:[brandEmbed("Set up your EAFC.Live profile","Choose your platform and interests, then finish onboarding.",BRAND.colours.primary)],components:onboardingRows(),ephemeral:true});return true;
+    await i.reply({embeds:[brandEmbed("Set up your EAFC.Live profile","Choose your platform and interests, then finish onboarding.",BRAND.colours.primary)],components:onboardingStep(1),ephemeral:true});return true;
   }
   if(id==="v5:onboard:platform"&&i.isStringSelectMenu()){
     const platform=String(i.values[0]);await query(`INSERT INTO onboarding_answers(guild_id,user_id,platform) VALUES($1,$2,$3) ON CONFLICT(guild_id,user_id) DO UPDATE SET platform=$3,updated_at=now()`,[i.guildId,i.user.id,platform]);
@@ -201,7 +203,7 @@ export async function handleV5Component(client:Client,i:any){
   }
   if(id==="v5:onboard:interests"&&i.isStringSelectMenu()){
     await query(`INSERT INTO onboarding_answers(guild_id,user_id,interests) VALUES($1,$2,$3) ON CONFLICT(guild_id,user_id) DO UPDATE SET interests=$3,updated_at=now()`,[i.guildId,i.user.id,i.values]);
-    await i.reply({content:"Interests saved.",ephemeral:true});return true;
+    await i.update({embeds:[brandEmbed("Step 3 of 3 • Finish",`Interests: **${i.values.join(", ")}**\nFinish to verify your account and apply your roles.`,BRAND.colours.success)],components:onboardingStep(3)});return true;
   }
   if(id==="v5:onboard:finish"){await finishOnboarding(i);return true;}
 
