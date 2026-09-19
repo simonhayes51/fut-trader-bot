@@ -74,6 +74,10 @@ CREATE TABLE IF NOT EXISTS economy_cooldowns (
   PRIMARY KEY(guild_id,user_id,cooldown_key)
 );
 
+ALTER TABLE reputation_events ADD COLUMN IF NOT EXISTS source_message_id TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS reputation_helpful_message_once_idx
+  ON reputation_events(guild_id,giver_id,source_message_id) WHERE source_message_id IS NOT NULL;
+
 CREATE TABLE IF NOT EXISTS member_streaks (
   guild_id TEXT NOT NULL,
   user_id TEXT NOT NULL,
@@ -92,9 +96,12 @@ CREATE TABLE IF NOT EXISTS economy_seasons (
   starts_at TIMESTAMPTZ NOT NULL,
   ends_at TIMESTAMPTZ NOT NULL,
   active BOOLEAN NOT NULL DEFAULT TRUE,
-  rewards JSONB NOT NULL DEFAULT '{}'::jsonb,
+  rewards JSONB NOT NULL DEFAULT '{"1":2000,"2":1000,"3":500}'::jsonb,
+  rewards_paid_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE economy_seasons ADD COLUMN IF NOT EXISTS rewards_paid_at TIMESTAMPTZ;
+ALTER TABLE economy_seasons ALTER COLUMN rewards SET DEFAULT '{"1":2000,"2":1000,"3":500}'::jsonb;
 CREATE UNIQUE INDEX IF NOT EXISTS economy_one_active_season_idx
   ON economy_seasons(guild_id) WHERE active=TRUE;
 
@@ -201,6 +208,23 @@ CREATE TABLE IF NOT EXISTS store_redemptions (
 );
 CREATE INDEX IF NOT EXISTS store_redemptions_queue_idx
   ON store_redemptions(guild_id,status,created_at DESC);
+
+CREATE TABLE IF NOT EXISTS entitlement_grants (
+  id BIGSERIAL PRIMARY KEY,
+  guild_id TEXT NOT NULL,
+  discord_user_id TEXT NOT NULL,
+  entitlement_key TEXT NOT NULL,
+  source TEXT NOT NULL,
+  source_ref TEXT NOT NULL,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  expires_at TIMESTAMPTZ,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(guild_id,discord_user_id,entitlement_key,source,source_ref)
+);
+CREATE INDEX IF NOT EXISTS entitlement_grants_active_idx
+  ON entitlement_grants(guild_id,discord_user_id,entitlement_key,active,expires_at);
 
 CREATE TABLE IF NOT EXISTS economy_event_queue (
   id BIGSERIAL PRIMARY KEY,
