@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChatInputCommandInteraction, Client, EmbedBuilder, SlashCommandBuilder } from "discord.js";
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChatInputCommandInteraction, Client, SlashCommandBuilder, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } from "discord.js";
 import { audit, db, one, query } from "./db.js";
 import { awardCurrency, getEconomyProfile, getEconomySettings, levelFromXp, recordEconomyEvent, xpForLevel } from "./economy-core.js";
 import { brandEmbed, BRAND, compactNumber, progressBar } from "./brand.js";
@@ -137,15 +137,40 @@ export async function handleEconomyCommand(client:Client,i:ChatInputCommandInter
   if(i.commandName==="wallet"){const p=await getEconomyProfile(gid,uid),rows=await query<any>(`SELECT * FROM economy_ledger WHERE guild_id=$1 AND user_id=$2 AND currency='coins' ORDER BY created_at DESC LIMIT 8`,[gid,uid]);const e=brandEmbed("🪙 Your Live Coins",`**${compactNumber(p.eco.coins_balance)}** available\n${compactNumber(p.eco.lifetime_coins_earned)} earned • ${compactNumber(p.eco.lifetime_coins_spent)} spent`,BRAND.colours.coins);if(rows.length)e.addFields({name:"Recent activity",value:rows.map(r=>`${Number(r.amount)>0?"+":""}${compactNumber(r.amount)} • ${r.reason}`).join("\n")});await i.reply({embeds:[e],ephemeral:true});return true;}
   if(i.commandName==="daily"){try{const r=await claimDaily(gid,uid),e=brandEmbed("🔥 Daily reward claimed",`**+${compactNumber(r.coins)} Live Coins**\n${r.streak}-day streak${r.bonus?` • ${compactNumber(r.bonus)} streak bonus`:""}`,BRAND.colours.coins);await i.reply({embeds:[e]});}catch(err:any){await i.reply({embeds:[brandEmbed("Daily reward",String(err?.message||err),BRAND.colours.warning)],ephemeral:true});}return true;}
   if(i.commandName==="quests"){const rows=await questRows(gid,uid);const daily=rows.filter(r=>r.cadence==="daily"),weekly=rows.filter(r=>r.cadence==="weekly");const fmt=(r:any)=>`${r.rewarded?"✅":"▫️"} **${r.name}** • ${Math.min(r.progress,r.target)}/${r.target}\n↳ ${r.xp_reward} XP + ${r.coin_reward} 🪙`;const e=brandEmbed("🎯 Quests","Complete useful activity to earn XP and Live Coins.").addFields({name:"Today",value:daily.map(fmt).join("\n")||"No daily quests.",inline:false},{name:"This week",value:weekly.map(fmt).join("\n")||"No weekly quests.",inline:false});await i.reply({embeds:[e],ephemeral:true});return true;}
-  if(i.commandName==="shop"){const p=await getEconomyProfile(gid,uid),items=await query<any>(`SELECT * FROM store_items WHERE guild_id=$1 AND active=true AND (stock IS NULL OR stock>0) ORDER BY sort_order,name`,[gid]);const e=brandEmbed("🛍️ EAFC.Live Rewards Store",`Balance: **${compactNumber(p.eco.coins_balance)} 🪙**\nEarn Live Coins by contributing, completing quests and keeping your streak.`,BRAND.colours.coins);for(const x of items.slice(0,12))e.addFields({name:`${x.emoji||"🎁"} ${x.name} • ${compactNumber(x.cost_coins)} 🪙`,value:`${x.description}\nKey: \`${x.item_key}\`${x.stock!==null?` • ${x.stock} left`:""}`,inline:false});const row=new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId("economy:shop-refresh").setLabel("Refresh store").setStyle(ButtonStyle.Secondary));await i.reply({embeds:[e],components:[row],ephemeral:true});return true;}
+  if(i.commandName==="shop"){const p=await getEconomyProfile(gid,uid),items=await query<any>(`SELECT * FROM store_items WHERE guild_id=$1 AND active=true AND (stock IS NULL OR stock>0) ORDER BY sort_order,name`,[gid]);const e=brandEmbed("🛍️ EAFC.Live Rewards Store",`Balance: **${compactNumber(p.eco.coins_balance)} 🪙**\nEarn Live Coins by contributing, completing quests and keeping your streak.`,BRAND.colours.coins);for(const x of items.slice(0,12))e.addFields({name:`${x.emoji||"🎁"} ${x.name} • ${compactNumber(x.cost_coins)} 🪙`,value:`${x.description}${x.stock!==null?` • ${x.stock} left`:""}`,inline:false});const components:any[]=[];if(items.length){const menu=new StringSelectMenuBuilder().setCustomId("economy:shop-select").setPlaceholder("Choose a reward to redeem").addOptions(...items.slice(0,25).map(x=>new StringSelectMenuOptionBuilder().setLabel(String(x.name).slice(0,100)).setDescription(`${compactNumber(x.cost_coins)} Live Coins`.slice(0,100)).setValue(String(x.item_key)).setEmoji(String(x.emoji||"🎁"))));components.push(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu));}components.push(new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId("economy:shop-refresh").setLabel("Refresh balance").setStyle(ButtonStyle.Secondary)));await i.reply({embeds:[e],components,ephemeral:true});return true;}
   if(i.commandName==="redeem"){const key=i.options.getString("item",true);await i.deferReply({ephemeral:true});try{const r=await redeemItem(client,gid,uid,key,i.id);const msg=r.status==="FULFILLED"?`**${r.item_name}** is active now.`:`**${r.item_name}** has been queued for fulfilment.\nClaim code: \`${r.claim_code}\``;await i.editReply({embeds:[brandEmbed("✅ Reward redeemed",msg,BRAND.colours.success)]});}catch(err:any){await i.editReply({embeds:[brandEmbed("Couldn't redeem reward",String(err?.message||err),BRAND.colours.danger)]});}return true;}
   if(i.commandName==="season"){const season=await one<any>(`SELECT * FROM economy_seasons WHERE guild_id=$1 AND active=true ORDER BY starts_at DESC LIMIT 1`,[gid]);const top=season?await query<any>(`SELECT user_id,xp_earned,quests_completed FROM season_member_stats WHERE season_id=$1 ORDER BY xp_earned DESC LIMIT 10`,[season.id]):[];const p=await getEconomyProfile(gid,uid);const e=brandEmbed(`🏆 ${season?.name||"FC27 Season"}`,season?`Ends <t:${Math.floor(new Date(season.ends_at).getTime()/1000)}:R>\nYour season XP: **${compactNumber(p.season?.xp_earned||0)}**`:"Season data is being prepared.",BRAND.colours.premium);if(top.length)e.addFields({name:"Leaderboard",value:top.map((r,n)=>`${n+1}. <@${r.user_id}> • **${compactNumber(r.xp_earned)} XP** • ${r.quests_completed} quests`).join("\n")});await i.reply({embeds:[e]});return true;}
   return false;
 }
 
-export async function handleEconomyComponent(_client:Client,i:any){
-  if(!i.guildId||!i.isButton()||!String(i.customId).startsWith("economy:"))return false;
-  if(i.customId==="economy:shop-refresh"){const p=await getEconomyProfile(i.guildId,i.user.id),items=await query<any>(`SELECT * FROM store_items WHERE guild_id=$1 AND active=true AND (stock IS NULL OR stock>0) ORDER BY sort_order,name`,[i.guildId]);const e=brandEmbed("🛍️ EAFC.Live Rewards Store",`Balance: **${compactNumber(p.eco.coins_balance)} 🪙**`,BRAND.colours.coins);for(const x of items.slice(0,12))e.addFields({name:`${x.emoji||"🎁"} ${x.name} • ${compactNumber(x.cost_coins)} 🪙`,value:`${x.description}\nKey: \`${x.item_key}\``,inline:false});await i.update({embeds:[e]});return true;}return false;
+export async function handleEconomyComponent(client:Client,i:any){
+  if(!i.guildId)return false;
+  if(i.isStringSelectMenu()&&i.customId==="economy:shop-select"){
+    const key=String(i.values?.[0]||"");
+    const item=await one<any>(`SELECT * FROM store_items WHERE guild_id=$1 AND item_key=$2 AND active=true AND (stock IS NULL OR stock>0)`,[i.guildId,key]);
+    if(!item){await i.reply({content:"That reward is no longer available.",ephemeral:true});return true;}
+    const p=await getEconomyProfile(i.guildId,i.user.id),canAfford=Number(p.eco.coins_balance||0)>=Number(item.cost_coins);
+    const row=new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId(`economy:redeem:${item.item_key}`).setLabel(`Redeem for ${compactNumber(item.cost_coins)} coins`).setStyle(ButtonStyle.Success).setDisabled(!canAfford),
+      new ButtonBuilder().setCustomId("economy:shop-refresh").setLabel("Cancel").setStyle(ButtonStyle.Secondary)
+    );
+    await i.reply({embeds:[brandEmbed(`${item.emoji||"🎁"} Redeem ${item.name}?`,`${item.description}\n\nYour balance: **${compactNumber(p.eco.coins_balance)} 🪙**\nCost: **${compactNumber(item.cost_coins)} 🪙**${canAfford?"":"\n\nYou don't have enough Live Coins yet."}`,BRAND.colours.coins)],components:[row],ephemeral:true});return true;
+  }
+  if(!i.isButton()||!String(i.customId).startsWith("economy:"))return false;
+  if(i.customId==="economy:shop-refresh"){
+    const p=await getEconomyProfile(i.guildId,i.user.id),items=await query<any>(`SELECT * FROM store_items WHERE guild_id=$1 AND active=true AND (stock IS NULL OR stock>0) ORDER BY sort_order,name`,[i.guildId]);
+    const e=brandEmbed("🛍️ EAFC.Live Rewards Store",`Balance: **${compactNumber(p.eco.coins_balance)} 🪙**`,BRAND.colours.coins);
+    for(const x of items.slice(0,12))e.addFields({name:`${x.emoji||"🎁"} ${x.name} • ${compactNumber(x.cost_coins)} 🪙`,value:x.description,inline:false});
+    const components:any[]=[];if(items.length){const menu=new StringSelectMenuBuilder().setCustomId("economy:shop-select").setPlaceholder("Choose a reward to redeem").addOptions(...items.slice(0,25).map(x=>new StringSelectMenuOptionBuilder().setLabel(String(x.name).slice(0,100)).setDescription(`${compactNumber(x.cost_coins)} Live Coins`.slice(0,100)).setValue(String(x.item_key)).setEmoji(String(x.emoji||"🎁"))));components.push(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu));}
+    await i.update({embeds:[e],components});return true;
+  }
+  if(String(i.customId).startsWith("economy:redeem:")){
+    const key=String(i.customId).slice("economy:redeem:".length);await i.deferUpdate();
+    try{const r=await redeemItem(client,i.guildId,i.user.id,key,i.id);const msg=r.status==="FULFILLED"?`**${r.item_name}** is active now.`:`**${r.item_name}** has been queued for fulfilment.\nClaim code: \`${r.claim_code}\``;await i.editReply({embeds:[brandEmbed("✅ Reward redeemed",msg,BRAND.colours.success)],components:[]});}
+    catch(err:any){await i.editReply({embeds:[brandEmbed("Couldn't redeem reward",String(err?.message||err),BRAND.colours.danger)],components:[]});}
+    return true;
+  }
+  return false;
 }
 
 export async function onEconomyMessage(message:any){
