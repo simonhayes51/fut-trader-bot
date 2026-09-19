@@ -1,12 +1,12 @@
 <!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title><%= def.name %> • EAFC.Live Control</title><link rel="stylesheet" href="/style.css"></head><body>
 <aside class="sidebar"><a class="brand" href="/dashboard"><span>EAFC.Live</span> Control</a><nav><a href="/dashboard">Overview</a><a href="/trading">Trade calls</a><a href="/tickets">Tickets</a><a href="/social">Social feeds</a><a href="/billing">Premium</a><a href="/moderation">Moderation</a><a href="/audit">Audit log</a></nav></aside>
-<main class="content narrow">
-  <a class="back" href="/dashboard">← Overview</a>
-  <header><div><div class="eyebrow"><%= def.category.toUpperCase() %></div><h1><%= def.name %></h1><p class="muted page-summary"><%= def.description %></p></div></header>
+<main class="content saas-page module-workspace">
+  <a class="back" href="/dashboard">← Back to overview</a>
+  <section class="page-hero compact"><div><div class="eyebrow">SYSTEM / <%= def.category.toUpperCase() %></div><h1><%= def.name %></h1><p><%= def.description %></p></div><div class="hero-actions"><span class="pill <%= enabled?'on':'off' %>"><%= enabled?'Active':'Disabled' %></span></div></section>
   <% if (typeof saved !== 'undefined' && saved) { %><div class="notice">✓ <%= def.key==='role_menus' ? 'Saved & published to Discord' : 'Saved' %></div><% } %>
   <% if (typeof publishError !== 'undefined' && publishError) { %><div class="notice error-notice">⚠ <%= publishError %></div><% } %>
 
-  <form method="post" class="panel setup-panel" id="module-form">
+  <form method="post" class="panel setup-panel module-config-card" id="module-form">
     <label class="toggle-row module-master"><div><strong>Enabled</strong><small>Pause this feature without losing its settings.</small></div><input type="checkbox" name="enabled" <%= enabled?'checked':'' %>></label>
     <hr>
     <div class="settings-grid">
