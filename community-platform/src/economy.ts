@@ -21,6 +21,16 @@ function questPeriodKey(cadence:string,seasonId?:number){
   if(cadence==="season")return `season:${seasonId||0}`;return "lifetime";
 }
 
+async function economyCommandAllowed(i:any){
+  const row=await one<any>(`SELECT * FROM command_settings WHERE guild_id=$1 AND command_name=$2`,[i.guildId,i.commandName]);
+  if(!row)return true;
+  if(!row.enabled){await i.reply({content:"That command is currently disabled.",ephemeral:true});return false;}
+  if(row.channel_ids?.length&&!row.channel_ids.includes(i.channelId)){await i.reply({content:"That command isn't enabled in this channel.",ephemeral:true});return false;}
+  if(row.role_ids?.length){const m=await i.guild?.members.fetch(i.user.id);if(!m||!m.roles.cache.some((r:any)=>row.role_ids.includes(r.id))){await i.reply({content:"You don't have a role allowed to use that command.",ephemeral:true});return false;}}
+  if(row.premium_only){const e=await one<any>(`SELECT 1 FROM entitlements WHERE guild_id=$1 AND discord_user_id=$2 AND active=true AND (expires_at IS NULL OR expires_at>now())`,[i.guildId,i.user.id]);if(!e){await i.reply({content:"💎 This command is available to Premium members.",ephemeral:true});return false;}}
+  return true;
+}
+
 export async function handleEconomyAutocomplete(i:any){
   if(i.commandName!=="redeem"||!i.guildId)return false;
   const q=String(i.options.getFocused()||"").toLowerCase();
@@ -121,6 +131,7 @@ async function redeemItem(client:Client,guildId:string,userId:string,itemKey:str
 
 export async function handleEconomyCommand(client:Client,i:ChatInputCommandInteraction){
   if(!i.guildId||!["profile","wallet","daily","quests","shop","redeem","season"].includes(i.commandName))return false;
+  if(!await economyCommandAllowed(i))return true;
   const gid=i.guildId,uid=i.user.id;
   if(i.commandName==="profile"){const u=i.options.getUser("member")||i.user;await i.reply({embeds:[await profileEmbed(gid,u)]});return true;}
   if(i.commandName==="wallet"){const p=await getEconomyProfile(gid,uid),rows=await query<any>(`SELECT * FROM economy_ledger WHERE guild_id=$1 AND user_id=$2 AND currency='coins' ORDER BY created_at DESC LIMIT 8`,[gid,uid]);const e=brandEmbed("🪙 Your Live Coins",`**${compactNumber(p.eco.coins_balance)}** available\n${compactNumber(p.eco.lifetime_coins_earned)} earned • ${compactNumber(p.eco.lifetime_coins_spent)} spent`,BRAND.colours.coins);if(rows.length)e.addFields({name:"Recent activity",value:rows.map(r=>`${Number(r.amount)>0?"+":""}${compactNumber(r.amount)} • ${r.reason}`).join("\n")});await i.reply({embeds:[e],ephemeral:true});return true;}
