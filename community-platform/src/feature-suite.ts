@@ -6,7 +6,7 @@ import { audit, getFeature, one, query } from "./db.js";
 import { config } from "./config.js";
 import { grantComp, listPlans, refreshExpiredEntitlements, reconcileActiveEntitlementRoles } from "./billing.js";
 import { brandEmbed, BRAND } from "./brand.js";
-import { getEconomyProfile, recordEconomyEvent } from "./economy-core.js";
+import { getEconomyProfile, levelFromXp, recordEconomyEvent } from "./economy-core.js";
 
 const fmt=(n:number)=>Math.round(n).toLocaleString("en-GB");
 let lastEntitlementRoleSweep=0;
