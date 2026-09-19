@@ -230,3 +230,13 @@ tbody tr:hover{background:rgba(29,53,76,.24)}
 @media(max-width:1280px){.saas-member-grid{grid-template-columns:repeat(3,1fr)}.analytics-grid{grid-template-columns:repeat(2,1fr)}.billing-grid{grid-template-columns:1fr}.saas-command-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:980px){.profile-layout,.setup-layout{grid-template-columns:1fr}.saas-member-grid{grid-template-columns:repeat(2,1fr)}.profile-primary{grid-row:auto}}
 @media(max-width:760px){.page-hero{align-items:flex-start;flex-direction:column}.page-hero .hero-actions{justify-content:flex-start}.directory-toolbar{align-items:stretch;flex-direction:column}.directory-search{max-width:none}.directory-meta{align-items:flex-start}.saas-member-grid,.analytics-grid,.saas-command-grid{grid-template-columns:1fr}.profile-hero{align-items:flex-start;flex-direction:column}.achievement-grid{grid-template-columns:1fr}}
+
+
+/* ===== Remaining SaaS workspaces ===== */
+.automation-grid{display:grid;grid-template-columns:minmax(0,.95fr) minmax(0,1.05fr);gap:12px}
+.native-tools-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.saas-choice-cards .choice-card{min-height:100px;display:flex;flex-direction:column;justify-content:center;gap:5px}
+.saas-choice-cards .choice-card:hover{border-color:#31516d;background:#102034;transform:translateY(-1px)}
+.transcript{max-height:320px;overflow:auto;white-space:pre-wrap;background:#07111b;border:1px solid #1c3043;border-radius:8px;padding:10px;color:#aabaca;font-size:9px}
+.technical-drawer[open]{padding-bottom:8px}
+@media(max-width:980px){.automation-grid,.native-tools-grid{grid-template-columns:1fr}}
