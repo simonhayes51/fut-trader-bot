@@ -164,7 +164,16 @@ export async function onEconomyJoin(guildId:string,userId:string){
 }
 
 export async function runEconomyTick(_client:Client){
-  await query(`UPDATE economy_seasons SET active=false WHERE active=true AND ends_at<=now()`);
+  const ended=await query<any>(`SELECT * FROM economy_seasons WHERE active=true AND ends_at<=now() ORDER BY ends_at FOR UPDATE SKIP LOCKED`);
+  for(const season of ended){
+    const leaders=await query<any>(`SELECT user_id,xp_earned FROM season_member_stats WHERE season_id=$1 ORDER BY xp_earned DESC,user_id LIMIT 10`,[season.id]);
+    const rewards=season.rewards||{"1":2000,"2":1000,"3":500};
+    for(let n=0;n<leaders.length;n++){
+      const amount=Number(rewards[String(n+1)]||0);if(amount<=0)continue;
+      await awardCurrency({guildId:season.guild_id,userId:leaders[n].user_id,currency:"coins",amount,reason:`${season.name} • #${n+1} reward`,sourceType:"season_reward",sourceId:String(season.id),idempotencyKey:`season:${season.id}:rank:${n+1}:${leaders[n].user_id}`});
+    }
+    await query(`UPDATE economy_seasons SET active=false,rewards_paid_at=COALESCE(rewards_paid_at,now()) WHERE id=$1`,[season.id]);
+  }
   const guilds=await query<any>(`SELECT guild_id FROM guild_settings`);for(const g of guilds){const active=await one<any>(`SELECT id FROM economy_seasons WHERE guild_id=$1 AND active=true AND ends_at>now()`,[g.guild_id]);if(!active){const n=Number((await one<any>(`SELECT count(*) c FROM economy_seasons WHERE guild_id=$1`,[g.guild_id]))?.c||0)+1;await query(`INSERT INTO economy_seasons(guild_id,name,starts_at,ends_at) VALUES($1,$2,now(),now()+interval '30 days')`,[g.guild_id,`FC27 Season ${n}`]);}}
   const due=await query<any>(`UPDATE economy_event_queue SET status='PROCESSING',attempts=attempts+1 WHERE id IN (SELECT id FROM economy_event_queue WHERE status IN ('PENDING','FAILED') AND available_at<=now() ORDER BY id LIMIT 50 FOR UPDATE SKIP LOCKED) RETURNING *`);
   for(const e of due){try{await recordEconomyEvent(e.guild_id,e.user_id,e.event_type,{quantity:e.quantity,sourceType:e.source_type,sourceId:e.source_id,idempotencyBase:`queue:${e.id}`,metadata:e.metadata});await query(`UPDATE economy_event_queue SET status='DONE',processed_at=now(),last_error=NULL WHERE id=$1`,[e.id]);}catch(err:any){await query(`UPDATE economy_event_queue SET status='FAILED',last_error=$2,available_at=now()+interval '5 minutes' WHERE id=$1`,[e.id,String(err?.message||err).slice(0,1000)]);}}
