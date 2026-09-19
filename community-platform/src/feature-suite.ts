@@ -1,6 +1,6 @@
 import {
   ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, Client, ContextMenuCommandBuilder,
-  ApplicationCommandType, EmbedBuilder, PermissionFlagsBits, SlashCommandBuilder, TextChannel
+  ApplicationCommandType, PermissionFlagsBits, SlashCommandBuilder, TextChannel
 } from "discord.js";
 import { audit, getFeature, one, query } from "./db.js";
 import { config } from "./config.js";
@@ -8,153 +8,264 @@ import { grantComp, listPlans, refreshExpiredEntitlements, reconcileActiveEntitl
 import { brandEmbed, BRAND } from "./brand.js";
 import { getEconomyProfile } from "./economy-core.js";
 
-const tax=(sell:number)=>Math.floor(sell*.95);
-const coins=(n:number)=>Math.round(n).toLocaleString("en-GB");
+const fmt=(n:number)=>Math.round(n).toLocaleString("en-GB");
 let lastEntitlementRoleSweep=0;
 
 const slash:any[]=[
- new SlashCommandBuilder().setName("rank").setDescription("View your activity rank").addUserOption(o=>o.setName("member").setDescription("Member")),
- new SlashCommandBuilder().setName("leaderboard").setDescription("View a server leaderboard").addStringOption(o=>o.setName("type").setDescription("Leaderboard").addChoices({name:"XP",value:"xp"},{name:"Season XP",value:"season"},{name:"Live Coins",value:"coins"},{name:"Helpful",value:"thanks"},{name:"Trading profit",value:"profit"}).setRequired(true)),
- new SlashCommandBuilder().setName("trade").setDescription("Personal trade journal")
-  .addSubcommand(s=>s.setName("add").setDescription("Add a completed trade").addStringOption(o=>o.setName("player").setDescription("Player/card").setRequired(true)).addIntegerOption(o=>o.setName("buy").setDescription("Buy price").setRequired(true).setMinValue(1)).addIntegerOption(o=>o.setName("sell").setDescription("Sell price").setRequired(true).setMinValue(1)).addIntegerOption(o=>o.setName("quantity").setDescription("Quantity").setMinValue(1)))
-  .addSubcommand(s=>s.setName("history").setDescription("View your recent trades"))
-  .addSubcommand(s=>s.setName("stats").setDescription("View your trading stats")),
- new SlashCommandBuilder().setName("portfolio").setDescription("Track investments you are holding")
-  .addSubcommand(s=>s.setName("add").setDescription("Add a position").addStringOption(o=>o.setName("item").setDescription("Player/card").setRequired(true)).addIntegerOption(o=>o.setName("buy").setDescription("Buy price").setRequired(true)).addIntegerOption(o=>o.setName("quantity").setDescription("Quantity").setMinValue(1)).addIntegerOption(o=>o.setName("target").setDescription("Target price")))
-  .addSubcommand(s=>s.setName("list").setDescription("Show open positions"))
-  .addSubcommand(s=>s.setName("close").setDescription("Close a position").addIntegerOption(o=>o.setName("id").setDescription("Position ID").setRequired(true)).addIntegerOption(o=>o.setName("sell").setDescription("Sale price").setRequired(true))),
- new SlashCommandBuilder().setName("investment").setDescription("Community investment calls")
-  .addSubcommand(s=>s.setName("post").setDescription("Post an investment").addStringOption(o=>o.setName("title").setDescription("Card/investment").setRequired(true)).addIntegerOption(o=>o.setName("buy").setDescription("Buy around").setRequired(true)).addIntegerOption(o=>o.setName("target").setDescription("Target")).addStringOption(o=>o.setName("reason").setDescription("Why?").setRequired(true)))
-  .addSubcommand(s=>s.setName("close").setDescription("Close your investment").addIntegerOption(o=>o.setName("id").setDescription("Investment ID").setRequired(true)).addIntegerOption(o=>o.setName("result").setDescription("Final price").setRequired(true))),
- new SlashCommandBuilder().setName("pricecheck").setDescription("Ask the community for a price check").addStringOption(o=>o.setName("item").setDescription("Player/card").setRequired(true)).addIntegerOption(o=>o.setName("price").setDescription("Current/quoted price").setRequired(true)).addAttachmentOption(o=>o.setName("image").setDescription("Screenshot")),
- new SlashCommandBuilder().setName("sentiment").setDescription("Start a market sentiment vote").addStringOption(o=>o.setName("topic").setDescription("Fodder, Icons, promo cards etc").setRequired(true)),
- new SlashCommandBuilder().setName("term").setDescription("Look up an FC trading term").addStringOption(o=>o.setName("term").setDescription("Term").setRequired(true).setAutocomplete(true)),
- new SlashCommandBuilder().setName("room").setDescription("Create a temporary trading room").addStringOption(o=>o.setName("name").setDescription("Room name").setRequired(true)).addIntegerOption(o=>o.setName("hours").setDescription("Hours before auto archive").setMinValue(1).setMaxValue(168)),
- new SlashCommandBuilder().setName("referral").setDescription("View or create your Premium referral code"),
- new SlashCommandBuilder().setName("giftpremium").setDescription("Gift Premium access").setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild).addUserOption(o=>o.setName("member").setDescription("Member").setRequired(true)).addIntegerOption(o=>o.setName("days").setDescription("Days").setRequired(true).setMinValue(1).setMaxValue(365)).addStringOption(o=>o.setName("plan").setDescription("Plan slug")),
- new SlashCommandBuilder().setName("giveaway").setDescription("Manage giveaways").setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
-  .addSubcommand(s=>s.setName("start").setDescription("Start a giveaway").addStringOption(o=>o.setName("prize").setDescription("Prize").setRequired(true)).addIntegerOption(o=>o.setName("minutes").setDescription("Duration in minutes").setRequired(true).setMinValue(1)).addIntegerOption(o=>o.setName("winners").setDescription("Number of winners").setMinValue(1).setMaxValue(20)).addRoleOption(o=>o.setName("required_role").setDescription("Required role")))
-  .addSubcommand(s=>s.setName("reroll").setDescription("Reroll a finished giveaway").addIntegerOption(o=>o.setName("id").setDescription("Giveaway ID").setRequired(true))),
- new SlashCommandBuilder().setName("note").setDescription("Add a private staff note").setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers).addUserOption(o=>o.setName("member").setDescription("Member").setRequired(true)).addStringOption(o=>o.setName("note").setDescription("Note").setRequired(true)),
- new SlashCommandBuilder().setName("timeout").setDescription("Timeout a member").setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers).addUserOption(o=>o.setName("member").setDescription("Member").setRequired(true)).addIntegerOption(o=>o.setName("minutes").setDescription("Minutes").setRequired(true).setMinValue(1).setMaxValue(40320)).addStringOption(o=>o.setName("reason").setDescription("Reason")),
- new SlashCommandBuilder().setName("kick").setDescription("Kick a member").setDefaultMemberPermissions(PermissionFlagsBits.KickMembers).addUserOption(o=>o.setName("member").setDescription("Member").setRequired(true)).addStringOption(o=>o.setName("reason").setDescription("Reason")),
- new SlashCommandBuilder().setName("ban").setDescription("Ban a member").setDefaultMemberPermissions(PermissionFlagsBits.BanMembers).addUserOption(o=>o.setName("member").setDescription("Member").setRequired(true)).addStringOption(o=>o.setName("reason").setDescription("Reason")),
- new SlashCommandBuilder().setName("purge").setDescription("Delete recent messages").setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages).addIntegerOption(o=>o.setName("count").setDescription("Messages").setRequired(true).setMinValue(1).setMaxValue(100)),
- new SlashCommandBuilder().setName("slowmode").setDescription("Set channel slowmode").setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels).addIntegerOption(o=>o.setName("seconds").setDescription("Seconds, 0 disables").setRequired(true).setMinValue(0).setMaxValue(21600)),
- new SlashCommandBuilder().setName("lock").setDescription("Lock this channel").setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
- new SlashCommandBuilder().setName("unlock").setDescription("Unlock this channel").setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
- new SlashCommandBuilder().setName("nick").setDescription("Change a member nickname").setDefaultMemberPermissions(PermissionFlagsBits.ManageNicknames).addUserOption(o=>o.setName("member").setDescription("Member").setRequired(true)).addStringOption(o=>o.setName("nickname").setDescription("New nickname")),
- new SlashCommandBuilder().setName("role").setDescription("Add or remove a member role").setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles).addUserOption(o=>o.setName("member").setDescription("Member").setRequired(true)).addRoleOption(o=>o.setName("role").setDescription("Role").setRequired(true)).addStringOption(o=>o.setName("action").setDescription("Action").setRequired(true).addChoices({name:"Add",value:"add"},{name:"Remove",value:"remove"})),
- new SlashCommandBuilder().setName("event").setDescription("Create a Discord scheduled event").setDefaultMemberPermissions(PermissionFlagsBits.ManageEvents).addStringOption(o=>o.setName("name").setDescription("Event name").setRequired(true)).addIntegerOption(o=>o.setName("minutes_from_now").setDescription("Starts in minutes").setRequired(true).setMinValue(1)).addIntegerOption(o=>o.setName("duration_minutes").setDescription("Duration").setMinValue(15)).addStringOption(o=>o.setName("description").setDescription("Description")),
- new SlashCommandBuilder().setName("achievements").setDescription("View a member's achievements").addUserOption(o=>o.setName("member").setDescription("Member"))
+  new SlashCommandBuilder().setName("rank").setDescription("View community rank").addUserOption(o=>o.setName("member").setDescription("Member")),
+  new SlashCommandBuilder().setName("leaderboard").setDescription("View a community leaderboard").addStringOption(o=>o.setName("type").setDescription("Leaderboard").setRequired(true).addChoices(
+    {name:"XP",value:"xp"},{name:"Season XP",value:"season"},{name:"Live Coins",value:"coins"},{name:"Kudos",value:"kudos"}
+  )),
+  new SlashCommandBuilder().setName("referral").setDescription("View or create your Premium referral code"),
+  new SlashCommandBuilder().setName("giftpremium").setDescription("Gift Premium access").setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addUserOption(o=>o.setName("member").setDescription("Member").setRequired(true))
+    .addIntegerOption(o=>o.setName("days").setDescription("Days").setRequired(true).setMinValue(1).setMaxValue(365))
+    .addStringOption(o=>o.setName("plan").setDescription("Plan slug")),
+  new SlashCommandBuilder().setName("giveaway").setDescription("Manage giveaways").setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addSubcommand(s=>s.setName("start").setDescription("Start a giveaway")
+      .addStringOption(o=>o.setName("prize").setDescription("Prize").setRequired(true))
+      .addIntegerOption(o=>o.setName("minutes").setDescription("Duration in minutes").setRequired(true).setMinValue(1))
+      .addIntegerOption(o=>o.setName("winners").setDescription("Number of winners").setMinValue(1).setMaxValue(20))
+      .addRoleOption(o=>o.setName("required_role").setDescription("Required role")))
+    .addSubcommand(s=>s.setName("reroll").setDescription("Reroll a finished giveaway").addIntegerOption(o=>o.setName("id").setDescription("Giveaway ID").setRequired(true))),
+  new SlashCommandBuilder().setName("note").setDescription("Add a private staff note").setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
+    .addUserOption(o=>o.setName("member").setDescription("Member").setRequired(true)).addStringOption(o=>o.setName("note").setDescription("Note").setRequired(true)),
+  new SlashCommandBuilder().setName("timeout").setDescription("Timeout a member").setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
+    .addUserOption(o=>o.setName("member").setDescription("Member").setRequired(true)).addIntegerOption(o=>o.setName("minutes").setDescription("Minutes").setRequired(true).setMinValue(1).setMaxValue(40320)).addStringOption(o=>o.setName("reason").setDescription("Reason")),
+  new SlashCommandBuilder().setName("kick").setDescription("Kick a member").setDefaultMemberPermissions(PermissionFlagsBits.KickMembers)
+    .addUserOption(o=>o.setName("member").setDescription("Member").setRequired(true)).addStringOption(o=>o.setName("reason").setDescription("Reason")),
+  new SlashCommandBuilder().setName("ban").setDescription("Ban a member").setDefaultMemberPermissions(PermissionFlagsBits.BanMembers)
+    .addUserOption(o=>o.setName("member").setDescription("Member").setRequired(true)).addStringOption(o=>o.setName("reason").setDescription("Reason")),
+  new SlashCommandBuilder().setName("purge").setDescription("Delete recent messages").setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
+    .addIntegerOption(o=>o.setName("count").setDescription("Messages").setRequired(true).setMinValue(1).setMaxValue(100)),
+  new SlashCommandBuilder().setName("slowmode").setDescription("Set channel slowmode").setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .addIntegerOption(o=>o.setName("seconds").setDescription("Seconds, 0 disables").setRequired(true).setMinValue(0).setMaxValue(21600)),
+  new SlashCommandBuilder().setName("lock").setDescription("Lock this channel").setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
+  new SlashCommandBuilder().setName("unlock").setDescription("Unlock this channel").setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
+  new SlashCommandBuilder().setName("nick").setDescription("Change a member nickname").setDefaultMemberPermissions(PermissionFlagsBits.ManageNicknames)
+    .addUserOption(o=>o.setName("member").setDescription("Member").setRequired(true)).addStringOption(o=>o.setName("nickname").setDescription("New nickname")),
+  new SlashCommandBuilder().setName("role").setDescription("Add or remove a member role").setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
+    .addUserOption(o=>o.setName("member").setDescription("Member").setRequired(true)).addRoleOption(o=>o.setName("role").setDescription("Role").setRequired(true))
+    .addStringOption(o=>o.setName("action").setDescription("Action").setRequired(true).addChoices({name:"Add",value:"add"},{name:"Remove",value:"remove"})),
+  new SlashCommandBuilder().setName("event").setDescription("Create a Discord scheduled event").setDefaultMemberPermissions(PermissionFlagsBits.ManageEvents)
+    .addStringOption(o=>o.setName("name").setDescription("Event name").setRequired(true))
+    .addIntegerOption(o=>o.setName("minutes_from_now").setDescription("Starts in minutes").setRequired(true).setMinValue(1))
+    .addIntegerOption(o=>o.setName("duration_minutes").setDescription("Duration").setMinValue(15))
+    .addStringOption(o=>o.setName("description").setDescription("Description")),
+  new SlashCommandBuilder().setName("achievements").setDescription("View a member's achievements").addUserOption(o=>o.setName("member").setDescription("Member"))
 ];
 
 const contexts=[
- new ContextMenuCommandBuilder().setName("View trader profile").setType(ApplicationCommandType.User),
- new ContextMenuCommandBuilder().setName("Open staff history").setType(ApplicationCommandType.User).setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
- new ContextMenuCommandBuilder().setName("Mark helpful").setType(ApplicationCommandType.Message),
- new ContextMenuCommandBuilder().setName("Report message").setType(ApplicationCommandType.Message)
+  new ContextMenuCommandBuilder().setName("View member profile").setType(ApplicationCommandType.User),
+  new ContextMenuCommandBuilder().setName("Open staff history").setType(ApplicationCommandType.User).setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
+  new ContextMenuCommandBuilder().setName("Give kudos").setType(ApplicationCommandType.Message),
+  new ContextMenuCommandBuilder().setName("Report message").setType(ApplicationCommandType.Message)
 ];
 export const featureCommandData=[...slash,...contexts].map(c=>c.toJSON());
 
-async function commandAllowed(i:any) {
- const row=await one<any>(`SELECT * FROM command_settings WHERE guild_id=$1 AND command_name=$2`,[i.guildId,i.commandName]);
- if(!row) return true;
- if(!row.enabled) { await i.reply({content:"That command is currently disabled.",ephemeral:true}); return false; }
- if(row.channel_ids?.length && !row.channel_ids.includes(i.channelId)) { await i.reply({content:"That command isn't enabled in this channel.",ephemeral:true}); return false; }
- if(row.role_ids?.length) { const m=await i.guild.members.fetch(i.user.id); if(!m.roles.cache.some((r:any)=>row.role_ids.includes(r.id))){await i.reply({content:"You don't have a role allowed to use that command.",ephemeral:true});return false;} }
- if(row.premium_only) { const e=await one<any>(`SELECT 1 FROM entitlements WHERE guild_id=$1 AND discord_user_id=$2 AND active=true AND (expires_at IS NULL OR expires_at>now())`,[i.guildId,i.user.id]); if(!e){await i.reply({content:"💎 This is a Premium feature. Use `/premium` to see access options.",ephemeral:true});return false;} }
- return true;
+async function commandAllowed(i:any){
+  const row=await one<any>(`SELECT * FROM command_settings WHERE guild_id=$1 AND command_name=$2`,[i.guildId,i.commandName]);
+  if(!row)return true;
+  if(!row.enabled){await i.reply({content:"That command is currently disabled.",ephemeral:true});return false;}
+  if(row.channel_ids?.length&&!row.channel_ids.includes(i.channelId)){await i.reply({content:"That command isn't enabled in this channel.",ephemeral:true});return false;}
+  if(row.role_ids?.length){const m=await i.guild.members.fetch(i.user.id);if(!m.roles.cache.some((r:any)=>row.role_ids.includes(r.id))){await i.reply({content:"You don't have a role allowed to use that command.",ephemeral:true});return false;}}
+  if(row.premium_only){const e=await one<any>(`SELECT 1 FROM entitlements WHERE guild_id=$1 AND discord_user_id=$2 AND active=true AND (expires_at IS NULL OR expires_at>now())`,[i.guildId,i.user.id]);if(!e){await i.reply({content:"💎 This is a Premium feature. Use `/premium` to see access options.",ephemeral:true});return false;}}
+  return true;
 }
 
-async function profileEmbed(guildId:string,user:any) {
- const [profile,stats,trades,calls,premium]=await Promise.all([
-  getEconomyProfile(guildId,user.id),
-  one<any>(`SELECT * FROM member_stats WHERE guild_id=$1 AND user_id=$2`,[guildId,user.id]),
-  one<any>(`SELECT count(*) total,COALESCE(sum(profit),0) profit FROM trade_journal WHERE guild_id=$1 AND user_id=$2 AND status='CLOSED'`,[guildId,user.id]),
-  one<any>(`SELECT count(*) FILTER(WHERE status<>'LIVE') total,count(*) FILTER(WHERE status IN ('HIT','PROFIT')) wins FROM trade_calls WHERE guild_id=$1 AND user_id=$2`,[guildId,user.id]),
-  one<any>(`SELECT 1 FROM entitlements WHERE guild_id=$1 AND discord_user_id=$2 AND active=true AND (expires_at IS NULL OR expires_at>now())`,[guildId,user.id])
- ]);
- const total=Number(calls?.total||0),wins=Number(calls?.wins||0);
- return brandEmbed(`${user.username} • Trader profile`,undefined,premium?BRAND.colours.premium:BRAND.colours.primary).setThumbnail(user.displayAvatarURL()).addFields(
-  {name:"Level",value:`${profile.level} • ${coins(Number(profile.eco.xp_total||0))} XP`,inline:true},
-  {name:"Live Coins",value:`${coins(Number(profile.eco.coins_balance||0))} 🪙`,inline:true},
-  {name:"Server rank",value:`#${profile.rank}`,inline:true},
-  {name:"Helpful votes",value:coins(Number(stats?.thanks_received||0)),inline:true},
-  {name:"Journal profit",value:`${coins(Number(trades?.profit||0))} coins`,inline:true},
-  {name:"Completed trades",value:String(trades?.total||0),inline:true},
-  {name:"Trade calls",value:String(total),inline:true},
-  {name:"Call success",value:total?`${Math.round(wins/total*100)}%`:"—",inline:true},
-  {name:"Streak",value:`${Number(profile.streak.current_streak||0)} days`,inline:true}
- );
+async function memberProfile(guildId:string,user:any){
+  const [profile,stats,premium]=await Promise.all([
+    getEconomyProfile(guildId,user.id),
+    one<any>(`SELECT * FROM member_stats WHERE guild_id=$1 AND user_id=$2`,[guildId,user.id]),
+    one<any>(`SELECT 1 FROM entitlements WHERE guild_id=$1 AND discord_user_id=$2 AND active=true AND (expires_at IS NULL OR expires_at>now())`,[guildId,user.id])
+  ]);
+  return brandEmbed(`${user.username} • Community profile`,undefined,premium?BRAND.colours.premium:BRAND.colours.primary).setThumbnail(user.displayAvatarURL()).addFields(
+    {name:"Level",value:`${profile.level} • ${fmt(Number(profile.eco.xp_total||0))} XP`,inline:true},
+    {name:"Live Coins",value:`${fmt(Number(profile.eco.coins_balance||0))} 🪙`,inline:true},
+    {name:"Server rank",value:`#${profile.rank}`,inline:true},
+    {name:"Kudos",value:fmt(Number(stats?.thanks_received||0)),inline:true},
+    {name:"Streak",value:`${Number(profile.streak.current_streak||0)} days`,inline:true},
+    {name:"Achievements",value:String(profile.achievements.length),inline:true}
+  );
 }
 
-export async function handleFeatureAutocomplete(i:any) {
- if(i.commandName!=="term"||!i.guildId) return false;
- const q=String(i.options.getFocused()||"").toLowerCase();
- const rows=await query<any>(`SELECT term FROM glossary WHERE guild_id=$1 AND lower(term) LIKE $2 ORDER BY term LIMIT 25`,[i.guildId,`%${q}%`]);
- await i.respond(rows.map(r=>({name:r.term,value:r.term}))); return true;
+export async function handleFeatureAutocomplete(_i:any){return false;}
+
+export async function handleFeatureCommand(client:Client,i:any){
+  const names=new Set(slash.map(c=>c.name));if(!names.has(i.commandName)||!i.guildId||!i.guild)return false;
+  if(!await commandAllowed(i))return true;
+  const gid=i.guildId,uid=i.user.id;
+
+  if(i.commandName==="rank"){
+    const u=i.options.getUser("member")||i.user,p=await getEconomyProfile(gid,u.id);
+    const stats=await one<any>(`SELECT thanks_received FROM member_stats WHERE guild_id=$1 AND user_id=$2`,[gid,u.id]);
+    await i.reply({embeds:[brandEmbed(`${u.username}'s community rank`,`**#${p.rank}** • ${fmt(Number(p.eco.xp_total||0))} XP • ${fmt(Number(p.eco.coins_balance||0))} Live Coins • ${fmt(Number(stats?.thanks_received||0))} kudos`,BRAND.colours.primary).setThumbnail(u.displayAvatarURL())]});return true;
+  }
+
+  if(i.commandName==="leaderboard"){
+    const type=i.options.getString("type",true);let rows:any[]=[];
+    if(type==="kudos")rows=await query<any>(`SELECT user_id,thanks_received value FROM member_stats WHERE guild_id=$1 ORDER BY thanks_received DESC LIMIT 10`,[gid]);
+    else if(type==="coins")rows=await query<any>(`SELECT user_id,coins_balance value FROM member_economy WHERE guild_id=$1 ORDER BY coins_balance DESC LIMIT 10`,[gid]);
+    else if(type==="season")rows=await query<any>(`SELECT m.user_id,m.xp_earned value FROM season_member_stats m JOIN economy_seasons s ON s.id=m.season_id WHERE s.guild_id=$1 AND s.active=true ORDER BY m.xp_earned DESC LIMIT 10`,[gid]);
+    else rows=await query<any>(`SELECT user_id,xp_total value FROM member_economy WHERE guild_id=$1 ORDER BY xp_total DESC LIMIT 10`,[gid]);
+    const label=type==="kudos"?"Kudos":type==="coins"?"Live Coins":type==="season"?"Season XP":"XP",suffix=type==="coins"?" 🪙":type==="kudos"?" kudos":" XP";
+    await i.reply({embeds:[brandEmbed(`🏆 ${label} leaderboard`,rows.map((r,n)=>`**${n+1}.** <@${r.user_id}> • ${fmt(Number(r.value||0))}${suffix}`).join("\n")||"No data yet.",BRAND.colours.premium)]});return true;
+  }
+
+  if(i.commandName==="referral"){
+    const enabled=(await getFeature(gid,"premium_billing",{referralsEnabled:true})).config.referralsEnabled!==false;
+    if(!enabled){await i.reply({content:"Referrals are disabled.",ephemeral:true});return true;}
+    let ref=await one<any>(`SELECT * FROM referral_codes WHERE guild_id=$1 AND owner_discord_user_id=$2 AND active=true ORDER BY created_at LIMIT 1`,[gid,uid]);
+    if(!ref){
+      const base=i.user.username.toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,10)||"MEMBER";let code=base,n=1;
+      while(await one(`SELECT 1 FROM referral_codes WHERE guild_id=$1 AND code=$2`,[gid,code]))code=`${base}${++n}`;
+      ref=(await query<any>(`INSERT INTO referral_codes(guild_id,code,owner_discord_user_id,reward_type,reward_value) VALUES($1,$2,$3,'none',0) RETURNING *`,[gid,code,uid]))[0];
+    }
+    await i.reply({embeds:[brandEmbed("🔗 Your referral code",`Code: **${ref.code}**\nCheckout starts: **${ref.clicks||0}**\nConversions: **${ref.conversions||0}**`,BRAND.colours.primary)],ephemeral:true});return true;
+  }
+
+  if(i.commandName==="giftpremium"){
+    const u=i.options.getUser("member",true),days=i.options.getInteger("days",true),slug=i.options.getString("plan");
+    const plans=await listPlans(gid,true),plan=slug?plans.find(p=>p.slug===slug):plans[0];
+    if(!plan){await i.reply({content:"No Premium plan is configured.",ephemeral:true});return true;}
+    await grantComp(gid,u.id,plan.id,days,i.user.id);
+    await i.reply({content:`💎 ${u} has ${days} days of ${plan.name}.`,ephemeral:true});return true;
+  }
+
+  if(i.commandName==="giveaway"){
+    const sub=i.options.getSubcommand();
+    if(sub==="start"){
+      const feature=await getFeature(gid,"giveaways",{channelId:"",minAccountAgeDays:3,boosterBonusEntries:0});
+      const prize=i.options.getString("prize",true),minutes=i.options.getInteger("minutes",true),winnerCount=i.options.getInteger("winners")||1,required=i.options.getRole("required_role");
+      const channelId=String(feature.config.channelId||i.channelId),ends=new Date(Date.now()+minutes*60000);
+      const row=(await query<any>(`INSERT INTO giveaways(guild_id,channel_id,prize,winner_count,required_role_id,min_account_age_days,ends_at,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,[gid,channelId,prize,winnerCount,required?.id||null,Number(feature.config.minAccountAgeDays||0),ends,i.user.id]))[0];
+      const button=new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(`giveaway:${row.id}`).setLabel("Enter giveaway").setStyle(ButtonStyle.Success));
+      const ch=await client.channels.fetch(channelId).catch(()=>null);if(!ch?.isTextBased()){await i.reply({content:"Giveaway channel isn't available.",ephemeral:true});return true;}
+      const msg=await (ch as TextChannel).send({embeds:[brandEmbed(`🎉 ${prize}`,`Ends <t:${Math.floor(ends.getTime()/1000)}:R>\nWinners: **${winnerCount}**${required?`\nRequired role: ${required}`:""}`,BRAND.colours.premium)],components:[button]});
+      await query(`UPDATE giveaways SET message_id=$1 WHERE id=$2`,[msg.id,row.id]);await i.reply({content:`Giveaway posted in ${ch}.`,ephemeral:true});return true;
+    }
+    const id=i.options.getInteger("id",true),g=await one<any>(`SELECT * FROM giveaways WHERE id=$1 AND guild_id=$2`,[id,gid]);
+    if(!g){await i.reply({content:"Giveaway not found.",ephemeral:true});return true;}
+    const entries=await query<any>(`SELECT user_id FROM giveaway_entries WHERE giveaway_id=$1 ORDER BY random()`,[id]);
+    const winners=entries.slice(0,Math.max(1,Number(g.winner_count||1))).map(x=>x.user_id);
+    await i.reply({content:winners.length?`🎉 Reroll: ${winners.map(x=>`<@${x}>`).join(", ")}`:"No eligible entries.",ephemeral:false});return true;
+  }
+
+  if(i.commandName==="note"){
+    const u=i.options.getUser("member",true),note=i.options.getString("note",true);
+    await query(`INSERT INTO staff_notes(guild_id,user_id,staff_id,note) VALUES($1,$2,$3,$4)`,[gid,u.id,uid,note]);await audit(gid,uid,"moderation.note",{userId:u.id,note});await i.reply({content:"Staff note saved.",ephemeral:true});return true;
+  }
+
+  if(i.commandName==="timeout"){
+    const u=i.options.getUser("member",true),minutes=i.options.getInteger("minutes",true),reason=i.options.getString("reason")||"Moderator action";const m=await i.guild.members.fetch(u.id);
+    await m.timeout(minutes*60000,reason);await audit(gid,uid,"moderation.timeout",{userId:u.id,minutes,reason});await i.reply({content:`${u} timed out for ${minutes} minutes.`,ephemeral:true});return true;
+  }
+
+  if(i.commandName==="kick"){const u=i.options.getUser("member",true),reason=i.options.getString("reason")||"Moderator action";const m=await i.guild.members.fetch(u.id);await m.kick(reason);await audit(gid,uid,"moderation.kick",{userId:u.id,reason});await i.reply({content:`${u.username} kicked.`,ephemeral:true});return true;}
+  if(i.commandName==="ban"){const u=i.options.getUser("member",true),reason=i.options.getString("reason")||"Moderator action";await i.guild.members.ban(u.id,{reason});await audit(gid,uid,"moderation.ban",{userId:u.id,reason});await i.reply({content:`${u.username} banned.`,ephemeral:true});return true;}
+
+  if(i.commandName==="purge"){const count=i.options.getInteger("count",true);if(!i.channel||!("bulkDelete" in i.channel)){await i.reply({content:"This channel doesn't support bulk delete.",ephemeral:true});return true;}const deleted=await (i.channel as any).bulkDelete(count,true);await audit(gid,uid,"moderation.purge",{channelId:i.channelId,count:deleted.size});await i.reply({content:`Deleted ${deleted.size} messages.`,ephemeral:true});return true;}
+  if(i.commandName==="slowmode"){const seconds=i.options.getInteger("seconds",true);if(!i.channel||!("setRateLimitPerUser" in i.channel)){await i.reply({content:"This channel doesn't support slowmode.",ephemeral:true});return true;}await (i.channel as any).setRateLimitPerUser(seconds);await audit(gid,uid,"moderation.slowmode",{channelId:i.channelId,seconds});await i.reply({content:`Slowmode set to ${seconds}s.`,ephemeral:true});return true;}
+  if(i.commandName==="lock"||i.commandName==="unlock"){if(!i.channel||!("permissionOverwrites" in i.channel)){await i.reply({content:"This channel can't be locked.",ephemeral:true});return true;}const lock=i.commandName==="lock";await (i.channel as any).permissionOverwrites.edit(i.guild.roles.everyone,{SendMessages:lock?false:null});await audit(gid,uid,`moderation.${i.commandName}`,{channelId:i.channelId});await i.reply({content:lock?"🔒 Channel locked.":"🔓 Channel unlocked.",ephemeral:true});return true;}
+  if(i.commandName==="nick"){const u=i.options.getUser("member",true),nickname=i.options.getString("nickname");const m=await i.guild.members.fetch(u.id);await m.setNickname(nickname||null);await audit(gid,uid,"moderation.nick",{userId:u.id,nickname});await i.reply({content:"Nickname updated.",ephemeral:true});return true;}
+  if(i.commandName==="role"){const u=i.options.getUser("member",true),role=i.options.getRole("role",true),action=i.options.getString("action",true),m=await i.guild.members.fetch(u.id);if(action==="add")await m.roles.add(role.id);else await m.roles.remove(role.id);await audit(gid,uid,"moderation.role",{userId:u.id,roleId:role.id,action});await i.reply({content:`${action==="add"?"Added":"Removed"} @${role.name} ${action==="add"?"to":"from"} ${u.username}.`,ephemeral:true});return true;}
+
+  if(i.commandName==="event"){
+    const name=i.options.getString("name",true),starts=i.options.getInteger("minutes_from_now",true),duration=i.options.getInteger("duration_minutes")||60,description=i.options.getString("description")||"";
+    const start=new Date(Date.now()+starts*60000),end=new Date(start.getTime()+duration*60000);
+    await i.guild.scheduledEvents.create({name,description,scheduledStartTime:start,scheduledEndTime:end,privacyLevel:2,entityType:3,entityMetadata:{location:"Discord"}});
+    await i.reply({content:`📅 Event **${name}** created.`,ephemeral:true});return true;
+  }
+
+  if(i.commandName==="achievements"){
+    const u=i.options.getUser("member")||i.user;
+    const rows=await query<any>(`SELECT a.achievement_key,d.name,d.description,d.icon FROM achievements a LEFT JOIN achievement_definitions d ON d.guild_id=a.guild_id AND d.achievement_key=a.achievement_key WHERE a.guild_id=$1 AND a.user_id=$2 ORDER BY a.awarded_at DESC`,[gid,u.id]);
+    const body=rows.length?rows.slice(0,20).map(x=>`${x.icon||"🏅"} **${x.name||x.achievement_key.replaceAll("_"," ")}**${x.description?`\n↳ ${x.description}`:""}`).join("\n"):`${u.username} hasn't unlocked an achievement yet.`;
+    await i.reply({embeds:[brandEmbed(`${u.username}'s achievements`,body,BRAND.colours.premium).setThumbnail(u.displayAvatarURL())],ephemeral:true});return true;
+  }
+
+  return false;
 }
 
-export async function handleFeatureCommand(client:Client,i:any) {
- const names=new Set(slash.map(c=>c.name)); if(!names.has(i.commandName)||!i.guildId||!i.guild) return false;
- if(!await commandAllowed(i)) return true;
- const gid=i.guildId,uid=i.user.id;
- if(i.commandName==="rank") { const u=i.options.getUser("member")||i.user; const [eco,stats,pos]=await Promise.all([one<any>(`SELECT * FROM member_economy WHERE guild_id=$1 AND user_id=$2`,[gid,u.id]),one<any>(`SELECT * FROM member_stats WHERE guild_id=$1 AND user_id=$2`,[gid,u.id]),one<any>(`SELECT 1+count(*) rank FROM member_economy WHERE guild_id=$1 AND xp_total>(SELECT COALESCE(xp_total,0) FROM member_economy WHERE guild_id=$1 AND user_id=$2)`,[gid,u.id])]); await i.reply({embeds:[brandEmbed(`${u.username}'s community rank`,`**#${pos?.rank||1}** • ${coins(Number(eco?.xp_total||0))} XP • ${coins(Number(eco?.coins_balance||0))} Live Coins • ${coins(Number(stats?.thanks_received||0))} helpful votes`,BRAND.colours.primary).setThumbnail(u.displayAvatarURL())]}); return true; }
- if(i.commandName==="leaderboard") { const type=i.options.getString("type",true); let rows:any[]=[]; if(type==="profit") rows=await query<any>(`SELECT user_id,COALESCE(sum(profit),0) value FROM trade_journal WHERE guild_id=$1 AND status='CLOSED' GROUP BY user_id ORDER BY value DESC LIMIT 10`,[gid]); else if(type==="thanks") rows=await query<any>(`SELECT user_id,thanks_received value FROM member_stats WHERE guild_id=$1 ORDER BY thanks_received DESC LIMIT 10`,[gid]); else if(type==="coins") rows=await query<any>(`SELECT user_id,coins_balance value FROM member_economy WHERE guild_id=$1 ORDER BY coins_balance DESC LIMIT 10`,[gid]); else if(type==="season") rows=await query<any>(`SELECT m.user_id,m.xp_earned value FROM season_member_stats m JOIN economy_seasons s ON s.id=m.season_id WHERE s.guild_id=$1 AND s.active=true ORDER BY m.xp_earned DESC LIMIT 10`,[gid]); else rows=await query<any>(`SELECT user_id,xp_total value FROM member_economy WHERE guild_id=$1 ORDER BY xp_total DESC LIMIT 10`,[gid]); const label=type==="profit"?"Trading profit":type==="thanks"?"Helpful members":type==="coins"?"Live Coins":type==="season"?"Season XP":"XP"; const suffix=type==="profit"?" coins":type==="coins"?" 🪙":type==="xp"||type==="season"?" XP":"";await i.reply({embeds:[brandEmbed(`🏆 ${label} leaderboard`,rows.map((r,n)=>`**${n+1}.** <@${r.user_id}> • ${coins(Number(r.value||0))}${suffix}`).join("\n")||"No data yet.",BRAND.colours.premium)]}); return true; }
- if(i.commandName==="trade") { const sub=i.options.getSubcommand(); if(sub==="add"){const p=i.options.getString("player",true),buy=i.options.getInteger("buy",true),sell=i.options.getInteger("sell",true),q=i.options.getInteger("quantity")||1,profit=(tax(sell)-buy)*q;await query(`INSERT INTO trade_journal(guild_id,user_id,player,buy_price,sell_price,quantity,status,profit,closed_at) VALUES($1,$2,$3,$4,$5,$6,'CLOSED',$7,now())`,[gid,uid,p,buy,sell,q,profit]);await i.reply({content:`📒 Added **${p}** • ${profit>=0?"+":""}${coins(profit)} coins after tax.`,ephemeral:true});} else if(sub==="history"){const r=await query<any>(`SELECT * FROM trade_journal WHERE guild_id=$1 AND user_id=$2 ORDER BY created_at DESC LIMIT 10`,[gid,uid]);await i.reply({content:r.map(x=>`#${x.id} **${x.player}** • ${Number(x.profit)>=0?"+":""}${coins(Number(x.profit||0))}`).join("\n")||"No journal trades yet.",ephemeral:true});} else {const s=await one<any>(`SELECT count(*) total,COALESCE(sum(profit),0) profit,COALESCE(avg(profit),0) average FROM trade_journal WHERE guild_id=$1 AND user_id=$2 AND status='CLOSED'`,[gid,uid]);await i.reply({content:`📊 **${s?.total||0} trades** • ${coins(Number(s?.profit||0))} total profit • ${coins(Number(s?.average||0))} average`,ephemeral:true});} return true; }
- if(i.commandName==="portfolio") { const sub=i.options.getSubcommand(); if(sub==="add"){const r=await query<any>(`INSERT INTO portfolio_positions(guild_id,user_id,item,buy_price,quantity,target_price) VALUES($1,$2,$3,$4,$5,$6) RETURNING id`,[gid,uid,i.options.getString("item",true),i.options.getInteger("buy",true),i.options.getInteger("quantity")||1,i.options.getInteger("target")]);await i.reply({content:`💼 Position #${r[0].id} added.`,ephemeral:true});} else if(sub==="list"){const r=await query<any>(`SELECT * FROM portfolio_positions WHERE guild_id=$1 AND user_id=$2 AND status='OPEN' ORDER BY created_at DESC`,[gid,uid]);await i.reply({content:r.map(x=>`#${x.id} **${x.item}** ×${x.quantity} • buy ${coins(x.buy_price)}${x.target_price?` → target ${coins(x.target_price)}`:""}`).join("\n")||"No open positions.",ephemeral:true});} else {const id=i.options.getInteger("id",true),sell=i.options.getInteger("sell",true);const p=await one<any>(`SELECT * FROM portfolio_positions WHERE id=$1 AND guild_id=$2 AND user_id=$3`,[id,gid,uid]);if(!p){await i.reply({content:"Position not found.",ephemeral:true});return true;}const profit=(tax(sell)-Number(p.buy_price))*Number(p.quantity);await query(`UPDATE portfolio_positions SET status='CLOSED',closed_at=now() WHERE id=$1`,[id]);await query(`INSERT INTO trade_journal(guild_id,user_id,player,buy_price,sell_price,quantity,status,profit,closed_at) VALUES($1,$2,$3,$4,$5,$6,'CLOSED',$7,now())`,[gid,uid,p.item,p.buy_price,sell,p.quantity,profit]);await i.reply({content:`💼 Closed #${id}: ${profit>=0?"+":""}${coins(profit)} coins.`,ephemeral:true});} return true; }
- if(i.commandName==="investment") { const sub=i.options.getSubcommand(); if(sub==="post"){const title=i.options.getString("title",true),buy=i.options.getInteger("buy",true),target=i.options.getInteger("target"),reason=i.options.getString("reason",true);const r=await query<any>(`INSERT INTO investments(guild_id,user_id,title,buy_price,target_price,reason) VALUES($1,$2,$3,$4,$5,$6) RETURNING id`,[gid,uid,title,buy,target,reason]);const id=r[0].id;const row=new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(`invest:${id}`).setLabel("I'm in").setStyle(ButtonStyle.Success));await i.reply({embeds:[new EmbedBuilder().setTitle(`📈 Investment #${id} • ${title}`).setDescription(reason).addFields({name:"Buy around",value:coins(buy),inline:true},{name:"Target",value:target?coins(target):"Open",inline:true})],components:[row]});const m=await i.fetchReply();await query(`UPDATE investments SET discord_message_id=$1 WHERE id=$2`,[m.id,id]);} else {const id=i.options.getInteger("id",true),result=i.options.getInteger("result",true);const inv=await one<any>(`SELECT * FROM investments WHERE id=$1 AND guild_id=$2 AND user_id=$3`,[id,gid,uid]);if(!inv){await i.reply({content:"Investment not found or not yours.",ephemeral:true});return true;}await query(`UPDATE investments SET status='CLOSED',result_price=$1,closed_at=now() WHERE id=$2`,[result,id]);const count=await one<any>(`SELECT count(*) total FROM investment_entries WHERE investment_id=$1`,[id]);await i.reply(`📊 Investment #${id} closed at **${coins(result)}**. ${count?.total||0} members joined it.`);} return true; }
- if(i.commandName==="pricecheck") { const item=i.options.getString("item",true),price=i.options.getInteger("price",true),img=i.options.getAttachment("image");const r=await query<any>(`INSERT INTO price_checks(guild_id,user_id,item,price,image_url) VALUES($1,$2,$3,$4,$5) RETURNING id`,[gid,uid,item,price,img?.url||null]);const e=new EmbedBuilder().setTitle(`💷 Price check #${r[0].id} • ${item}`).setDescription(`Quoted/current price: **${coins(price)}**\nVote below: Buy / Fair / Wait / Sell`);if(img?.url)e.setImage(img.url);await i.reply({embeds:[e]});const m=await i.fetchReply();for(const x of ["🟢","🟡","⏳","🔴"])await m.react(x);await query(`UPDATE price_checks SET discord_message_id=$1 WHERE id=$2`,[m.id,r[0].id]);return true; }
- if(i.commandName==="sentiment") { const topic=i.options.getString("topic",true);const r=await query<any>(`INSERT INTO market_sentiment(guild_id,user_id,topic) VALUES($1,$2,$3) RETURNING id`,[gid,uid,topic]);await i.reply({embeds:[new EmbedBuilder().setTitle(`📊 Market sentiment • ${topic}`).setDescription("🟢 Bullish   ⚪ Flat   🔴 Bearish")]});const m=await i.fetchReply();for(const x of ["🟢","⚪","🔴"])await m.react(x);await query(`UPDATE market_sentiment SET discord_message_id=$1 WHERE id=$2`,[m.id,r[0].id]);return true; }
- if(i.commandName==="term") { const term=i.options.getString("term",true);const r=await one<any>(`SELECT * FROM glossary WHERE guild_id=$1 AND lower(term)=lower($2)`,[gid,term]);await i.reply({content:r?`**${r.term}**\n${r.definition}`:`I don't have **${term}** in the glossary yet.`,ephemeral:true});return true; }
- if(i.commandName==="room") { const name=i.options.getString("name",true).replace(/[^a-z0-9 -]/gi,"").slice(0,80),hours=i.options.getInteger("hours")||24;const ch=await i.guild.channels.create({name:`trade-${name}`.toLowerCase().replace(/\s+/g,"-"),type:ChannelType.GuildText,topic:`Temporary trading room created by ${i.user.tag}`});await query(`INSERT INTO temp_rooms(guild_id,channel_id,owner_id,name,expires_at) VALUES($1,$2,$3,$4,now()+($5||' hours')::interval)`,[gid,ch.id,uid,name,String(hours)]);await i.reply({content:`🧠 Trading room created: ${ch}`,ephemeral:true});return true; }
- if(i.commandName==="referral") { let r=await one<any>(`SELECT * FROM referral_codes WHERE guild_id=$1 AND owner_discord_user_id=$2 AND active=true ORDER BY created_at LIMIT 1`,[gid,uid]);if(!r){const code=`FC${i.user.username.replace(/[^a-z0-9]/gi,"").slice(0,8).toUpperCase()}${Math.floor(Math.random()*900+100)}`;await query(`INSERT INTO referral_codes(guild_id,owner_discord_user_id,code) VALUES($1,$2,$3) ON CONFLICT DO NOTHING`,[gid,uid,code]);r=await one<any>(`SELECT * FROM referral_codes WHERE guild_id=$1 AND owner_discord_user_id=$2 AND active=true ORDER BY created_at LIMIT 1`,[gid,uid]);}await i.reply({content:`🔗 Your referral code: **${r?.code||"Unavailable"}**\nClicks: **${r?.clicks||0}** • Conversions: **${r?.conversions||0}**`,ephemeral:true});return true; }
- if(i.commandName==="giftpremium") { const u=i.options.getUser("member",true),days=i.options.getInteger("days",true),slug=i.options.getString("plan");const plans=await listPlans(gid,true);const plan=slug?plans.find(p=>p.slug===slug):plans[0];if(!plan){await i.reply({content:"No active Premium plan exists.",ephemeral:true});return true;}await grantComp(gid,u.id,plan.id,days,uid);await i.reply({content:`🎁 Gave ${u} **${plan.name}** for ${days} days.`,ephemeral:true});return true; }
- if(i.commandName==="giveaway") { const sub=i.options.getSubcommand();if(sub==="start"){const f=await getFeature(gid,"giveaways",{channelId:"",minAccountAgeDays:3,boosterBonusEntries:0});const prize=i.options.getString("prize",true),mins=i.options.getInteger("minutes",true),wc=i.options.getInteger("winners")||1,role=i.options.getRole("required_role");const channel=f.config.channelId?await client.channels.fetch(String(f.config.channelId)).catch(()=>null):i.channel;if(!channel?.isTextBased()){await i.reply({content:"Configure a giveaway channel first.",ephemeral:true});return true;}const r=await query<any>(`INSERT INTO giveaways(guild_id,channel_id,prize,winner_count,required_role_id,min_account_age_days,ends_at,created_by) VALUES($1,$2,$3,$4,$5,$6,now()+($7||' minutes')::interval,$8) RETURNING id,ends_at`,[gid,channel.id,prize,wc,role?.id||null,Number(f.config.minAccountAgeDays||0),String(mins),uid]);const row=new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(`giveaway:${r[0].id}`).setLabel("Enter giveaway").setStyle(ButtonStyle.Success));const msg=await (channel as TextChannel).send({embeds:[new EmbedBuilder().setTitle(`🎁 ${prize}`).setDescription(`Click below to enter.\nEnds <t:${Math.floor(new Date(r[0].ends_at).getTime()/1000)}:R>\nWinners: **${wc}**${role?`\nRequires: ${role}`:""}`)],components:[row]});await query(`UPDATE giveaways SET message_id=$1 WHERE id=$2`,[msg.id,r[0].id]);await i.reply({content:`Giveaway #${r[0].id} posted in ${channel}.`,ephemeral:true});}else{await rerollGiveaway(client,gid,i.options.getInteger("id",true),i.channel);await i.reply({content:"Giveaway rerolled.",ephemeral:true});}return true; }
- if(i.commandName==="note") { const u=i.options.getUser("member",true),note=i.options.getString("note",true);await query(`INSERT INTO staff_notes(guild_id,user_id,staff_id,note) VALUES($1,$2,$3,$4)`,[gid,u.id,uid,note]);await audit(gid,uid,"moderation.note",{userId:u.id,note});await i.reply({content:`📝 Staff note added for ${u}.`,ephemeral:true});return true; }
- if(i.commandName==="timeout") { const u=i.options.getUser("member",true),m=await i.guild.members.fetch(u.id),mins=i.options.getInteger("minutes",true),reason=i.options.getString("reason")||"Staff timeout";await m.timeout(mins*60000,reason);await audit(gid,uid,"moderation.timeout",{userId:u.id,mins,reason});await i.reply({content:`⏱️ ${u} timed out for ${mins} minutes.`,ephemeral:true});return true; }
- if(i.commandName==="kick"||i.commandName==="ban") { const u=i.options.getUser("member",true),reason=i.options.getString("reason")||`Staff ${i.commandName}`;if(i.commandName==="kick"){const m=await i.guild.members.fetch(u.id);await m.kick(reason);}else await i.guild.members.ban(u.id,{reason});await audit(gid,uid,`moderation.${i.commandName}`,{userId:u.id,reason});await i.reply({content:`${i.commandName==="kick"?"👢":"🔨"} ${u.tag} ${i.commandName}ned.`,ephemeral:true});return true; }
- if(i.commandName==="purge") { const n=i.options.getInteger("count",true);if(i.channel&&"bulkDelete" in i.channel)await (i.channel as any).bulkDelete(n,true);await i.reply({content:`🧹 Deleted up to ${n} messages.`,ephemeral:true});return true; }
- if(i.commandName==="slowmode") { const s=i.options.getInteger("seconds",true);if(i.channel&&"setRateLimitPerUser" in i.channel)await (i.channel as any).setRateLimitPerUser(s);await i.reply({content:`🐢 Slowmode set to ${s}s.`,ephemeral:true});return true; }
- if(i.commandName==="lock"||i.commandName==="unlock") { if(i.channel&&"permissionOverwrites" in i.channel)await (i.channel as any).permissionOverwrites.edit(i.guild.roles.everyone,{SendMessages:i.commandName==="unlock"?null:false});await i.reply({content:i.commandName==="lock"?"🔒 Channel locked.":"🔓 Channel unlocked.",ephemeral:true});return true; }
- if(i.commandName==="nick") { const u=i.options.getUser("member",true),m=await i.guild.members.fetch(u.id);await m.setNickname(i.options.getString("nickname"));await i.reply({content:`Nickname updated for ${u}.`,ephemeral:true});return true; }
- if(i.commandName==="role") { const u=i.options.getUser("member",true),r=i.options.getRole("role",true),a=i.options.getString("action",true),m=await i.guild.members.fetch(u.id);if(a==="add")await m.roles.add(r.id);else await m.roles.remove(r.id);await i.reply({content:`Role ${a==='add'?'added to':'removed from'} ${u}.`,ephemeral:true});return true; }
- if(i.commandName==="event") { const name=i.options.getString("name",true),mins=i.options.getInteger("minutes_from_now",true),dur=i.options.getInteger("duration_minutes")||60,desc=i.options.getString("description")||undefined,start=new Date(Date.now()+mins*60000),end=new Date(start.getTime()+dur*60000);const ev=await i.guild.scheduledEvents.create({name,scheduledStartTime:start,scheduledEndTime:end,privacyLevel:2,entityType:3,entityMetadata:{location:"Discord"},description:desc});await i.reply({content:`📅 Scheduled **${ev.name}** for <t:${Math.floor(start.getTime()/1000)}:F>.`,ephemeral:true});return true; }
- if(i.commandName==="achievements") { const u=i.options.getUser("member")||i.user;const r=await query<any>(`SELECT a.achievement_key,a.awarded_at,d.name,d.description,d.icon FROM achievements a LEFT JOIN achievement_definitions d ON d.guild_id=a.guild_id AND d.achievement_key=a.achievement_key WHERE a.guild_id=$1 AND a.user_id=$2 ORDER BY a.awarded_at DESC`,[gid,u.id]);const body=r.length?r.slice(0,20).map(x=>`${x.icon||"🏅"} **${x.name||x.achievement_key.replaceAll("_"," ")}**${x.description?`\n↳ ${x.description}`:""}`).join("\n"):`${u.username} hasn't unlocked an achievement yet.`;await i.reply({embeds:[brandEmbed(`${u.username}'s achievements`,body,BRAND.colours.premium).setThumbnail(u.displayAvatarURL())],ephemeral:true});return true; }
- return false;
+export async function handleContextCommand(i:any){
+  if(!i.guildId)return false;
+  if(i.commandName==="View member profile"&&i.isUserContextMenuCommand()){await i.reply({embeds:[await memberProfile(i.guildId,i.targetUser)],ephemeral:true});return true;}
+  if(i.commandName==="Open staff history"&&i.isUserContextMenuCommand()){
+    const [warnings,notes]=await Promise.all([query<any>(`SELECT * FROM warnings WHERE guild_id=$1 AND user_id=$2 ORDER BY created_at DESC LIMIT 8`,[i.guildId,i.targetUser.id]),query<any>(`SELECT * FROM staff_notes WHERE guild_id=$1 AND user_id=$2 ORDER BY created_at DESC LIMIT 8`,[i.guildId,i.targetUser.id])]);
+    const body=[...warnings.map(x=>`⚠ ${x.reason}`),...notes.map(x=>`📝 ${x.note}`)].slice(0,12).join("\n")||"No staff history.";
+    await i.reply({embeds:[brandEmbed(`Staff history • ${i.targetUser.username}`,body,BRAND.colours.neutral)],ephemeral:true});return true;
+  }
+  if(i.commandName==="Give kudos"&&i.isMessageContextMenuCommand()){
+    if(i.targetMessage.author.bot||i.targetMessage.author.id===i.user.id){await i.reply({content:"Choose a message from another member.",ephemeral:true});return true;}
+    const feature=await getFeature(i.guildId,"reputation",{dailyLimit:5});if(!feature.enabled){await i.reply({content:"Kudos are disabled.",ephemeral:true});return true;}
+    const duplicate=await one<any>(`SELECT 1 FROM reputation_events WHERE guild_id=$1 AND giver_id=$2 AND source_message_id=$3`,[i.guildId,i.user.id,i.targetMessage.id]);
+    if(duplicate){await i.reply({content:"You've already given kudos for that message.",ephemeral:true});return true;}
+    const count=await one<any>(`SELECT count(*) c FROM reputation_events WHERE guild_id=$1 AND giver_id=$2 AND created_at>now()-interval '24 hours'`,[i.guildId,i.user.id]);
+    if(Number(count?.c||0)>=Number(feature.config.dailyLimit||5)){await i.reply({content:"You've reached today's kudos limit.",ephemeral:true});return true;}
+    await query(`INSERT INTO reputation_events(guild_id,giver_id,receiver_id,reason,source_message_id) VALUES($1,$2,$3,'Message kudos',$4)`,[i.guildId,i.user.id,i.targetMessage.author.id,i.targetMessage.id]);
+    await query(`INSERT INTO member_stats(guild_id,user_id,thanks_received,helpful_actions) VALUES($1,$2,1,1) ON CONFLICT(guild_id,user_id) DO UPDATE SET thanks_received=member_stats.thanks_received+1,helpful_actions=member_stats.helpful_actions+1`,[i.guildId,i.targetMessage.author.id]);
+    await i.reply({content:`👏 Kudos given to ${i.targetMessage.author}.`,ephemeral:true});return true;
+  }
+  if(i.commandName==="Report message"&&i.isMessageContextMenuCommand()){
+    const evidence=`Message by ${i.targetMessage.author.username}: ${i.targetMessage.content.slice(0,800)}\n${i.targetMessage.url}`;
+    await query(`INSERT INTO scam_cases(guild_id,reporter_id,accused_id,evidence) VALUES($1,$2,$3,$4)`,[i.guildId,i.user.id,i.targetMessage.author.id,evidence]);
+    await i.reply({content:"Report sent to staff.",ephemeral:true});return true;
+  }
+  return false;
 }
 
-export async function handleContextCommand(i:any) {
- if(!i.guildId) return false;
- if(i.commandName==="View trader profile"&&i.isUserContextMenuCommand()){await i.reply({embeds:[await profileEmbed(i.guildId,i.targetUser)],ephemeral:true});return true;}
- if(i.commandName==="Open staff history"&&i.isUserContextMenuCommand()){const notes=await query<any>(`SELECT * FROM staff_notes WHERE guild_id=$1 AND user_id=$2 ORDER BY created_at DESC LIMIT 10`,[i.guildId,i.targetUser.id]);const warns=await query<any>(`SELECT * FROM warnings WHERE guild_id=$1 AND user_id=$2 ORDER BY created_at DESC LIMIT 10`,[i.guildId,i.targetUser.id]);await i.reply({content:`**${i.targetUser.username} • Staff history**\nWarnings: ${warns.length}\nNotes: ${notes.length}\n${[...warns.map(x=>`⚠️ ${x.reason}`),...notes.map(x=>`📝 ${x.note}`)].slice(0,15).join("\n")||"No history."}`,ephemeral:true});return true;}
- if(i.commandName==="Mark helpful"&&i.isMessageContextMenuCommand()){if(i.targetMessage.author.bot||i.targetMessage.author.id===i.user.id){await i.reply({content:"Pick a message from another member.",ephemeral:true});return true;}const added=await query<any>(`INSERT INTO reputation_events(guild_id,giver_id,receiver_id,reason,source_message_id) VALUES($1,$2,$3,'Helpful message',$4) ON CONFLICT DO NOTHING RETURNING id`,[i.guildId,i.user.id,i.targetMessage.author.id,i.targetMessage.id]);if(!added.length){await i.reply({content:"You've already marked that message as helpful.",ephemeral:true});return true;}await query(`INSERT INTO member_stats(guild_id,user_id,thanks_received,helpful_actions) VALUES($1,$2,1,1) ON CONFLICT(guild_id,user_id) DO UPDATE SET thanks_received=member_stats.thanks_received+1,helpful_actions=member_stats.helpful_actions+1`,[i.guildId,i.targetMessage.author.id]);await i.reply({content:`💚 Marked ${i.targetMessage.author}'s message as helpful.`,ephemeral:true});return true;}
- if(i.commandName==="Report message"&&i.isMessageContextMenuCommand()){const evidence=`Message by ${i.targetMessage.author.tag}: ${i.targetMessage.content}\n${i.targetMessage.url}`;const r=await query<any>(`INSERT INTO scam_cases(guild_id,reporter_id,accused_id,evidence) VALUES($1,$2,$3,$4) RETURNING id`,[i.guildId,i.user.id,i.targetMessage.author.id,evidence]);await i.reply({content:`🚨 Report #${r[0].id} sent to staff.`,ephemeral:true});return true;}
- return false;
+export async function handleComponent(client:Client,i:any){
+  if(!i.guildId||!i.isButton())return false;
+  if(i.customId.startsWith("giveaway:")){
+    const id=Number(i.customId.split(":")[1]),g=await one<any>(`SELECT * FROM giveaways WHERE id=$1 AND guild_id=$2 AND status='LIVE' AND ends_at>now()`,[id,i.guildId]);
+    if(!g){await i.reply({content:"This giveaway has ended.",ephemeral:true});return true;}
+    const member=await i.guild.members.fetch(i.user.id);
+    if(g.required_role_id&&!member.roles.cache.has(g.required_role_id)){await i.reply({content:"You don't have the required role.",ephemeral:true});return true;}
+    const ageDays=(Date.now()-i.user.createdTimestamp)/86400000;if(ageDays<Number(g.min_account_age_days||0)){await i.reply({content:"Your Discord account is too new for this giveaway.",ephemeral:true});return true;}
+    const inserted=await query<any>(`INSERT INTO giveaway_entries(giveaway_id,user_id,entries) VALUES($1,$2,1) ON CONFLICT DO NOTHING RETURNING user_id`,[id,i.user.id]);
+    await i.reply({content:inserted.length?"🎟️ You're entered.":"You're already entered.",ephemeral:true});return true;
+  }
+  if(i.customId.startsWith("role:")){
+    const roleId=i.customId.slice(5),member=await i.guild.members.fetch(i.user.id),role=i.guild.roles.cache.get(roleId);if(!role){await i.reply({content:"That role is no longer available.",ephemeral:true});return true;}
+    if(member.roles.cache.has(roleId)){await member.roles.remove(roleId);await i.reply({content:`Removed @${role.name}.`,ephemeral:true});}else{await member.roles.add(roleId);await i.reply({content:`Added @${role.name}.`,ephemeral:true});}return true;
+  }
+  return false;
 }
 
-export async function handleComponent(client:Client,i:any) {
- if(!i.guildId||!i.isButton()) return false;
- if(i.customId.startsWith("invest:")){const id=Number(i.customId.split(":")[1]);const inv=await one<any>(`SELECT * FROM investments WHERE id=$1 AND guild_id=$2 AND status='LIVE'`,[id,i.guildId]);if(!inv){await i.reply({content:"That investment is no longer live.",ephemeral:true});return true;}if(inv.user_id===i.user.id){await i.reply({content:"That's your own investment call, so it doesn't count as joining another member's call.",ephemeral:true});return true;}const added=await query<any>(`INSERT INTO investment_entries(investment_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING RETURNING investment_id`,[id,i.user.id]);const c=await one<any>(`SELECT count(*) total FROM investment_entries WHERE investment_id=$1`,[id]);await i.reply({content:added.length?`You're in investment #${id}. ${c?.total||0} members are tracking it.`:`You're already tracking investment #${id}.`,ephemeral:true});return true;}
- if(i.customId.startsWith("giveaway:")){const id=Number(i.customId.split(":")[1]),g=await one<any>(`SELECT * FROM giveaways WHERE id=$1 AND guild_id=$2 AND status='LIVE' AND ends_at>now()`,[id,i.guildId]);if(!g){await i.reply({content:"This giveaway has ended.",ephemeral:true});return true;}const member=await i.guild.members.fetch(i.user.id);if(g.required_role_id&&!member.roles.cache.has(g.required_role_id)){await i.reply({content:"You don't have the required role for this giveaway.",ephemeral:true});return true;}const age=(Date.now()-i.user.createdTimestamp)/86400000;if(age<Number(g.min_account_age_days||0)){await i.reply({content:"Your Discord account is too new to enter this giveaway.",ephemeral:true});return true;}const premium=await one<any>(`SELECT 1 FROM entitlements WHERE guild_id=$1 AND discord_user_id=$2 AND active=true AND (expires_at IS NULL OR expires_at>now())`,[i.guildId,i.user.id]);const entries=1+(premium?Number(g.premium_bonus_entries||0):0);await query(`INSERT INTO giveaway_entries(giveaway_id,user_id,entries) VALUES($1,$2,$3) ON CONFLICT(giveaway_id,user_id) DO UPDATE SET entries=$3`,[id,i.user.id,entries]);await i.reply({content:`🎟️ You're entered${entries>1?` with ${entries} entries`:""}.`,ephemeral:true});return true;}
- if(i.customId.startsWith("role:")){const roleId=i.customId.split(":")[1],m=await i.guild.members.fetch(i.user.id);if(m.roles.cache.has(roleId))await m.roles.remove(roleId);else await m.roles.add(roleId);await i.reply({content:"Your roles have been updated.",ephemeral:true});return true;}
- return false;
+export async function onMemberActivity(message:any){
+  if(!message.guildId||message.author?.bot||message.deleted)return;
+  await query(`INSERT INTO member_stats(guild_id,user_id,messages,last_message_at,last_active_date) VALUES($1,$2,1,now(),current_date)
+    ON CONFLICT(guild_id,user_id) DO UPDATE SET messages=member_stats.messages+1,last_message_at=now(),last_active_date=current_date`,[message.guildId,message.author.id]);
+  await query(`INSERT INTO activity_daily(guild_id,user_id,activity_date,messages) VALUES($1,$2,current_date,1) ON CONFLICT(guild_id,user_id,activity_date) DO UPDATE SET messages=activity_daily.messages+1`,[message.guildId,message.author.id]);
+  await query(`INSERT INTO server_metrics_daily(guild_id,metric_date,messages) VALUES($1,current_date,1) ON CONFLICT(guild_id,metric_date) DO UPDATE SET messages=server_metrics_daily.messages+1`,[message.guildId]);
 }
 
-function weightedPick(entries:any[],count:number){const pool=entries.flatMap(e=>Array(Math.max(1,Number(e.entries||1))).fill(e.user_id));const out:string[]=[];while(pool.length&&out.length<count){const u=pool[Math.floor(Math.random()*pool.length)];if(u&&!out.includes(u))out.push(u);for(let x=pool.length-1;x>=0;x--)if(pool[x]===u)pool.splice(x,1);}return out;}
-async function rerollGiveaway(client:Client,gid:string,id:number,channel:any){const g=await one<any>(`SELECT * FROM giveaways WHERE id=$1 AND guild_id=$2`,[id,gid]);if(!g)return;const e=await query<any>(`SELECT * FROM giveaway_entries WHERE giveaway_id=$1`,[id]);const w=weightedPick(e,Number(g.winner_count||1));if(channel?.isTextBased())await channel.send(`🎲 Giveaway #${id} reroll: ${w.map(x=>`<@${x}>`).join(", ")||"No eligible entries"}`);}
+export async function onMemberJoinLeave(guildId:string,type:"joins"|"leaves"){
+  await query(`INSERT INTO server_metrics_daily(guild_id,metric_date,${type}) VALUES($1,current_date,1) ON CONFLICT(guild_id,metric_date) DO UPDATE SET ${type}=server_metrics_daily.${type}+1`,[guildId]);
+}
 
-function cronMatches(expr:string,d:Date){const p=expr.trim().split(/\s+/);if(p.length!==5)return false;const [mi,hr,, ,dow]=p;const ok=(v:string|undefined,n:number)=>v==="*"||Number(v)===n;return ok(mi,d.getMinutes())&&ok(hr,d.getHours())&&ok(dow,d.getDay());}
+function cronMatches(expr:string,d=new Date()){
+  const [min,hour,_dom,_month,dow]=expr.split(" ");const check=(part:string,value:number)=>part==="*"||part.split(",").map(Number).includes(value);
+  return check(min,d.getMinutes())&&check(hour,d.getHours())&&check(dow,d.getDay());
+}
+
 export async function runAutomationTick(client:Client){
- const now=new Date();
- const due=await query<any>(`SELECT * FROM scheduled_messages WHERE enabled=true AND (last_sent_at IS NULL OR last_sent_at<date_trunc('minute',now()))`);for(const s of due){if(!cronMatches(s.cron_expression,now))continue;const ch=await client.channels.fetch(s.channel_id).catch(()=>null);if(ch?.isTextBased()){await (ch as TextChannel).send(s.content).catch(()=>{});await query(`UPDATE scheduled_messages SET last_sent_at=now() WHERE id=$1`,[s.id]);}}
- const gs=await query<any>(`SELECT * FROM giveaways WHERE status='LIVE' AND ends_at<=now()`);for(const g of gs){const e=await query<any>(`SELECT * FROM giveaway_entries WHERE giveaway_id=$1`,[g.id]);const w=weightedPick(e,Number(g.winner_count||1));await query(`UPDATE giveaways SET status='ENDED',winners=$1 WHERE id=$2`,[w,g.id]);const ch=await client.channels.fetch(g.channel_id).catch(()=>null);if(ch?.isTextBased())await (ch as TextChannel).send(`🎉 **${g.prize}** giveaway ended! Winner${w.length===1?'':'s'}: ${w.map(x=>`<@${x}>`).join(', ')||'No eligible entries'}`).catch(()=>{});}
- const rooms=await query<any>(`SELECT * FROM temp_rooms WHERE status='OPEN' AND expires_at IS NOT NULL AND expires_at<=now()`);for(const r of rooms){const ch=await client.channels.fetch(r.channel_id).catch(()=>null);if(ch)await (ch as any).delete("Temporary trading room expired").catch(()=>{});await query(`UPDATE temp_rooms SET status='CLOSED' WHERE id=$1`,[r.id]);}
- await refreshExpiredEntitlements();
- if(Date.now()-lastEntitlementRoleSweep>5*60_000){lastEntitlementRoleSweep=Date.now();await reconcileActiveEntitlementRoles(config.targetGuildId);}
+  const scheduled=await query<any>(`SELECT * FROM scheduled_messages WHERE enabled=true`);
+  const minuteKey=new Date().toISOString().slice(0,16);
+  for(const s of scheduled){
+    if(!cronMatches(s.cron_expression))continue;
+    const key=`schedule:${s.id}:${minuteKey}`;const seen=await one<any>(`SELECT 1 FROM audit_log WHERE guild_id=$1 AND action='automation.schedule.sent' AND details->>'key'=$2 LIMIT 1`,[s.guild_id,key]);if(seen)continue;
+    const ch=await client.channels.fetch(s.channel_id).catch(()=>null);if(ch?.isTextBased()){await (ch as TextChannel).send(s.content).catch(console.error);await audit(s.guild_id,"system","automation.schedule.sent",{key,scheduleId:s.id});}
+  }
+
+  const due=await query<any>(`SELECT * FROM giveaways WHERE status='LIVE' AND ends_at<=now() ORDER BY ends_at LIMIT 20`);
+  for(const g of due){
+    const entries=await query<any>(`SELECT user_id FROM giveaway_entries WHERE giveaway_id=$1 ORDER BY random()`,[g.id]);
+    const winners=entries.slice(0,Math.max(1,Number(g.winner_count||1))).map(x=>x.user_id);
+    await query(`UPDATE giveaways SET status='ENDED',winners=$2 WHERE id=$1 AND status='LIVE'`,[g.id,winners]);
+    const ch=await client.channels.fetch(g.channel_id).catch(()=>null);if(ch?.isTextBased())await (ch as TextChannel).send(winners.length?`🎉 **${g.prize}** winner${winners.length===1?"":"s"}: ${winners.map(x=>`<@${x}>`).join(", ")}`:`Giveaway **${g.prize}** ended with no eligible entries.`).catch(()=>{});
+  }
+
+  await refreshExpiredEntitlements();
+  if(Date.now()-lastEntitlementRoleSweep>5*60_000){lastEntitlementRoleSweep=Date.now();await reconcileActiveEntitlementRoles(config.targetGuildId);}
 }
-
-export async function onMemberActivity(message:any){if(!message.guildId||message.author.bot)return;await query(`INSERT INTO activity_daily(guild_id,user_id,activity_date,messages) VALUES($1,$2,current_date,1) ON CONFLICT(guild_id,user_id,activity_date) DO UPDATE SET messages=activity_daily.messages+1`,[message.guildId,message.author.id]);await query(`INSERT INTO server_metrics_daily(guild_id,metric_date,messages) VALUES($1,current_date,1) ON CONFLICT(guild_id,metric_date) DO UPDATE SET messages=server_metrics_daily.messages+1`,[message.guildId]);const s=await one<any>(`SELECT * FROM member_stats WHERE guild_id=$1 AND user_id=$2`,[message.guildId,message.author.id]);const awards:[string,boolean][]=[["first_steps",Number(s?.messages||0)>=1],["hundred_messages",Number(s?.messages||0)>=100],["community_regular",Number(s?.messages||0)>=1000],["helpful_10",Number(s?.thanks_received||0)>=10]];for(const [k,ok] of awards)if(ok)await query(`INSERT INTO achievements(guild_id,user_id,achievement_key) VALUES($1,$2,$3) ON CONFLICT DO NOTHING`,[message.guildId,message.author.id,k]);}
-
-export async function onMemberJoinLeave(guildId:string,kind:"joins"|"leaves"){await query(`INSERT INTO server_metrics_daily(guild_id,metric_date,${kind}) VALUES($1,current_date,1) ON CONFLICT(guild_id,metric_date) DO UPDATE SET ${kind}=server_metrics_daily.${kind}+1`,[guildId]);}
