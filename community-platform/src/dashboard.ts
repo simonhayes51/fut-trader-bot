@@ -124,7 +124,18 @@ async function publishRoleMenus(cfg:any) {
 }
 
 app.get("/",(req,res)=>res.redirect(req.session.user?"/dashboard":"/login"));
-app.get("/health",(_req,res)=>res.json({ok:true,discordReady:client.isReady(),stripeConfigured:Boolean(config.stripeSecretKey&&config.stripeWebhookSecret),time:new Date().toISOString()}));
+app.get("/health",async(_req,res)=>{
+  let economy:any={ready:false};
+  try{
+    const [season,queue,pending]=await Promise.all([
+      one<any>(`SELECT id,name,ends_at FROM economy_seasons WHERE guild_id=$1 AND active=true AND ends_at>now() ORDER BY starts_at DESC LIMIT 1`,[config.targetGuildId]),
+      one<any>(`SELECT count(*) FILTER(WHERE status IN ('PENDING','FAILED')) waiting,count(*) FILTER(WHERE status='FAILED') failed FROM economy_event_queue WHERE guild_id=$1`,[config.targetGuildId]),
+      one<any>(`SELECT count(*) total FROM store_redemptions WHERE guild_id=$1 AND status='PENDING'`,[config.targetGuildId])
+    ]);
+    economy={ready:true,season:season?.name||null,seasonEndsAt:season?.ends_at||null,queueWaiting:Number(queue?.waiting||0),queueFailed:Number(queue?.failed||0),pendingRedemptions:Number(pending?.total||0)};
+  }catch(err:any){economy={ready:false,error:String(err?.message||err).slice(0,200)};}
+  res.status(economy.ready?200:503).json({ok:economy.ready,discordReady:client.isReady(),stripeConfigured:Boolean(config.stripeSecretKey&&config.stripeWebhookSecret),economy,time:new Date().toISOString()});
+});
 app.get("/login",(_req,res)=>res.render("login",{clientId:config.clientId,redirectUri:config.redirectUri,guildId:config.targetGuildId}));
 
 app.get("/auth/discord",(req,res)=>{
