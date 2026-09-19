@@ -284,8 +284,10 @@ export async function runAutomationTick(client:Client){
 
   const due=await query<any>(`SELECT * FROM giveaways WHERE status='LIVE' AND ends_at<=now() ORDER BY ends_at LIMIT 20`);
   for(const g of due){
-    const entries=await query<any>(`SELECT user_id FROM giveaway_entries WHERE giveaway_id=$1 ORDER BY random()`,[g.id]);
-    const winners=entries.slice(0,Math.max(1,Number(g.winner_count||1))).map(x=>x.user_id);
+    const entries=await query<any>(`SELECT user_id,entries FROM giveaway_entries WHERE giveaway_id=$1`,[g.id]),pool:string[]=[];
+    for(const e of entries)for(let n=0;n<Math.max(1,Number(e.entries||1));n++)pool.push(String(e.user_id));
+    for(let n=pool.length-1;n>0;n--){const j=Math.floor(Math.random()*(n+1));[pool[n],pool[j]]=[pool[j]!,pool[n]!];}
+    const winners:string[]=[];for(const userId of pool){if(!winners.includes(userId))winners.push(userId);if(winners.length>=Math.max(1,Number(g.winner_count||1)))break;}
     await query(`UPDATE giveaways SET status='ENDED',winners=$2 WHERE id=$1 AND status='LIVE'`,[g.id,winners]);
     const ch=await client.channels.fetch(g.channel_id).catch(()=>null);if(ch?.isTextBased())await (ch as TextChannel).send(winners.length?`🎉 **${g.prize}** winner${winners.length===1?"":"s"}: ${winners.map(x=>`<@${x}>`).join(", ")}`:`Giveaway **${g.prize}** ended with no eligible entries.`).catch(()=>{});
   }
