@@ -3,7 +3,7 @@ import { client } from "./bot.js";
 import { config } from "./config.js";
 import { audit, one, query } from "./db.js";
 import { awardCurrency } from "./economy-core.js";
-import { refundStoreRedemption } from "./economy.js";
+import { refundStoreRedemption, runEconomyTick } from "./economy.js";
 
 export const economyRouter=Router();
 const auth=(req:any,res:any,next:any)=>req.session?.user?next():res.redirect("/login");
@@ -93,5 +93,11 @@ economyRouter.post("/economy/redemptions/:id/fulfill",async(req:any,res)=>{
 economyRouter.post("/economy/redemptions/:id/refund",async(req:any,res)=>{try{await refundStoreRedemption(Number(req.params.id),req.session.user.id);res.redirect("/economy?saved=1");}catch(err:any){res.redirect(`/economy?error=${encodeURIComponent(err?.message||"Refund failed")}`);}});
 
 economyRouter.post("/economy/season",async(req:any,res)=>{
-  const gid=config.targetGuildId,name=String(req.body.name||"").trim()||"FC27 Season",days=int(req.body.days,1,365);await query(`UPDATE economy_seasons SET active=false WHERE guild_id=$1 AND active=true`,[gid]);await query(`INSERT INTO economy_seasons(guild_id,name,starts_at,ends_at) VALUES($1,$2,now(),now()+($3||' days')::interval)`,[gid,name,String(days)]);await audit(gid,req.session.user.id,"economy.season.start",{name,days});res.redirect("/economy?saved=1");
+  const gid=config.targetGuildId,name=String(req.body.name||"").trim()||"FC27 Season",days=int(req.body.days,1,365);
+  const current=await one<any>(`SELECT id,name FROM economy_seasons WHERE guild_id=$1 AND active=true ORDER BY starts_at DESC LIMIT 1`,[gid]);
+  if(current){await query(`UPDATE economy_seasons SET ends_at=now() WHERE id=$1`,[current.id]);await runEconomyTick(client);}
+  const next=await one<any>(`SELECT id FROM economy_seasons WHERE guild_id=$1 AND active=true ORDER BY starts_at DESC LIMIT 1`,[gid]);
+  if(next)await query(`UPDATE economy_seasons SET name=$2,starts_at=now(),ends_at=now()+($3||' days')::interval WHERE id=$1`,[next.id,name,String(days)]);
+  else await query(`INSERT INTO economy_seasons(guild_id,name,starts_at,ends_at) VALUES($1,$2,now(),now()+($3||' days')::interval)`,[gid,name,String(days)]);
+  await audit(gid,req.session.user.id,"economy.season.start",{name,days,closedSeasonId:current?.id||null});res.redirect("/economy?saved=1");
 });
