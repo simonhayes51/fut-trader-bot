@@ -12,7 +12,7 @@ function triggerMatches(mode:string,trigger:string,content:string){
 }
 
 export async function handleCommunityMessage(message:Message){
-  if(!message.guildId||message.author.bot||message.deleted)return;
+  if(!message.guildId||message.author.bot)return;
 
   const responses=await query<any>(`SELECT * FROM custom_responses WHERE guild_id=$1 AND enabled=true ORDER BY id`,[message.guildId]);
   for(const row of responses){
@@ -33,7 +33,7 @@ export async function handleCommunityMessage(message:Message){
         const old=await channel.messages.fetch(sticky.last_message_id).catch(()=>null);
         if(old?.author.id===message.client.user?.id)await old.delete().catch(()=>{});
       }
-      const sent=await message.channel.send({embeds:[brandEmbed("📌 Pinned reminder",String(sticky.content).slice(0,4000),BRAND.colours.neutral)]}).catch(()=>null);
+      const sent=await (message.channel as TextChannel).send({embeds:[brandEmbed("📌 Pinned reminder",String(sticky.content).slice(0,4000),BRAND.colours.neutral)]}).catch(()=>null);
       if(sent)await query(`UPDATE sticky_messages SET last_message_id=$1,last_posted_at=now(),updated_at=now() WHERE id=$2`,[sent.id,sticky.id]);
     }
   }
@@ -48,7 +48,7 @@ async function syncStarboard(reaction:MessageReaction|PartialMessageReaction,use
 
   const feature=await getFeature(message.guildId,"starboard",{channelId:"",emoji:"⭐",threshold:5,allowSelf:false,ignoredChannelIds:[]});
   if(!feature.enabled||!feature.config.channelId)return;
-  if((feature.config.ignoredChannelIds||[]).includes(message.channelId))return;
+  if(((feature.config.ignoredChannelIds||[]) as string[]).includes(message.channelId))return;
 
   const wanted=String(feature.config.emoji||"⭐");
   const got=reaction.emoji.id||reaction.emoji.name||"";
@@ -57,7 +57,7 @@ async function syncStarboard(reaction:MessageReaction|PartialMessageReaction,use
   const users=await reaction.users.fetch().catch(()=>null);
   if(!users)return;
   let count=[...users.values()].filter(u=>!u.bot).length;
-  if(feature.config.allowSelf===false&&message.author)count=[...users.values()].filter(u=>!u.bot&&u.id!==message.author.id).length;
+  const authorId=message.author?.id||"";if(feature.config.allowSelf===false&&authorId)count=[...users.values()].filter(u=>!u.bot&&u.id!==authorId).length;
 
   const threshold=Math.max(2,Number(feature.config.threshold||5));
   const existing=await one<any>(`SELECT * FROM starboard_posts WHERE guild_id=$1 AND source_message_id=$2`,[message.guildId,message.id]);
