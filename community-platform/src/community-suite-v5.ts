@@ -371,6 +371,7 @@ async function awardKudosMilestones(client:Client,guildId:string){
     const inserted=await query<any>(`INSERT INTO kudos_awards(guild_id,user_id,milestone_id) VALUES($1,$2,$3) ON CONFLICT DO NOTHING RETURNING milestone_id`,[guildId,r.user_id,r.id]);if(!inserted.length)continue;
     if(Number(r.xp_reward)>0)await awardCurrency({guildId,userId:r.user_id,currency:"xp",amount:Number(r.xp_reward),reason:`Kudos milestone: ${r.milestone}`,sourceType:"kudos_milestone",sourceId:String(r.id),idempotencyKey:`kudos-milestone:${r.id}:${r.user_id}:xp`});
     if(Number(r.coin_reward)>0)await awardCurrency({guildId,userId:r.user_id,currency:"coins",amount:Number(r.coin_reward),reason:`Kudos milestone: ${r.milestone}`,sourceType:"kudos_milestone",sourceId:String(r.id),idempotencyKey:`kudos-milestone:${r.id}:${r.user_id}:coins`});
+    if(r.badge_key)await query(`INSERT INTO achievements(guild_id,user_id,achievement_key) VALUES($1,$2,$3) ON CONFLICT DO NOTHING`,[guildId,r.user_id,r.badge_key]);
     const member=guild?await guild.members.fetch(r.user_id).catch(()=>null):null;if(member&&r.role_id)await member.roles.add(r.role_id,`${r.milestone} kudos milestone`).catch(()=>{});
   }
 }
