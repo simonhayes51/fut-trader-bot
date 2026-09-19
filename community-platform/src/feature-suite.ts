@@ -26,7 +26,17 @@ const slash:any[]=[
       .addStringOption(o=>o.setName("prize").setDescription("Prize").setRequired(true))
       .addIntegerOption(o=>o.setName("minutes").setDescription("Duration in minutes").setRequired(true).setMinValue(1))
       .addIntegerOption(o=>o.setName("winners").setDescription("Number of winners").setMinValue(1).setMaxValue(20))
-      .addRoleOption(o=>o.setName("required_role").setDescription("Required role")))
+      .addRoleOption(o=>o.setName("required_role").setDescription("Required role"))
+      .addIntegerOption(o=>o.setName("min_member_days").setDescription("Minimum days in server").setMinValue(0))
+      .addIntegerOption(o=>o.setName("min_level").setDescription("Minimum community level").setMinValue(0))
+      .addBooleanOption(o=>o.setName("verified_only").setDescription("Require completed verification"))
+      .addRoleOption(o=>o.setName("blacklist_role").setDescription("Role excluded from entry"))
+      .addIntegerOption(o=>o.setName("premium_bonus").setDescription("Bonus entries for Premium").setMinValue(0).setMaxValue(20))
+      .addIntegerOption(o=>o.setName("booster_bonus").setDescription("Bonus entries for server boosters").setMinValue(0).setMaxValue(20))
+      .addIntegerOption(o=>o.setName("level_bonus_at").setDescription("Level needed for bonus entries").setMinValue(1))
+      .addIntegerOption(o=>o.setName("level_bonus_entries").setDescription("Bonus entries at that level").setMinValue(0).setMaxValue(20))
+      .addIntegerOption(o=>o.setName("tenure_bonus_days").setDescription("Server days needed for tenure bonus").setMinValue(1))
+      .addIntegerOption(o=>o.setName("tenure_bonus_entries").setDescription("Tenure bonus entries").setMinValue(0).setMaxValue(20)))
     .addSubcommand(s=>s.setName("reroll").setDescription("Reroll a finished giveaway").addIntegerOption(o=>o.setName("id").setDescription("Giveaway ID").setRequired(true))),
   new SlashCommandBuilder().setName("note").setDescription("Add a private staff note").setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
     .addUserOption(o=>o.setName("member").setDescription("Member").setRequired(true)).addStringOption(o=>o.setName("note").setDescription("Note").setRequired(true)),
@@ -135,19 +145,23 @@ export async function handleFeatureCommand(client:Client,i:any){
   if(i.commandName==="giveaway"){
     const sub=i.options.getSubcommand();
     if(sub==="start"){
-      const feature=await getFeature(gid,"giveaways",{channelId:"",minAccountAgeDays:3,boosterBonusEntries:0});
-      const prize=i.options.getString("prize",true),minutes=i.options.getInteger("minutes",true),winnerCount=i.options.getInteger("winners")||1,required=i.options.getRole("required_role");
+      const feature=await getFeature(gid,"giveaways",{channelId:"",minAccountAgeDays:3});
+      const prize=i.options.getString("prize",true),minutes=i.options.getInteger("minutes",true),winnerCount=i.options.getInteger("winners")||1,required=i.options.getRole("required_role"),blacklist=i.options.getRole("blacklist_role");
+      const minMemberDays=i.options.getInteger("min_member_days")||0,minLevel=i.options.getInteger("min_level")||0,verifiedOnly=i.options.getBoolean("verified_only")||false;
+      const bonusRules={premium:Number(i.options.getInteger("premium_bonus")||0),booster:Number(i.options.getInteger("booster_bonus")||0),levelAt:Number(i.options.getInteger("level_bonus_at")||0),levelEntries:Number(i.options.getInteger("level_bonus_entries")||0),tenureDays:Number(i.options.getInteger("tenure_bonus_days")||0),tenureEntries:Number(i.options.getInteger("tenure_bonus_entries")||0)};
       const channelId=String(feature.config.channelId||i.channelId),ends=new Date(Date.now()+minutes*60000);
-      const row=(await query<any>(`INSERT INTO giveaways(guild_id,channel_id,prize,winner_count,required_role_id,min_account_age_days,ends_at,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,[gid,channelId,prize,winnerCount,required?.id||null,Number(feature.config.minAccountAgeDays||0),ends,i.user.id]))[0];
+      const row=(await query<any>(`INSERT INTO giveaways(guild_id,channel_id,prize,winner_count,required_role_id,min_account_age_days,min_member_days,min_level,verified_only,blacklist_role_ids,bonus_rules,reroll_exclude_previous,ends_at,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,true,$12,$13) RETURNING *`,[gid,channelId,prize,winnerCount,required?.id||null,Number(feature.config.minAccountAgeDays||0),minMemberDays,minLevel,verifiedOnly,blacklist?[blacklist.id]:[],JSON.stringify(bonusRules),ends,i.user.id]))[0];
       const button=new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(`giveaway:${row.id}`).setLabel("Enter giveaway").setStyle(ButtonStyle.Success));
       const ch=await client.channels.fetch(channelId).catch(()=>null);if(!ch?.isTextBased()){await i.reply({content:"Giveaway channel isn't available.",ephemeral:true});return true;}
-      const msg=await (ch as TextChannel).send({embeds:[brandEmbed(`🎉 ${prize}`,`Ends <t:${Math.floor(ends.getTime()/1000)}:R>\nWinners: **${winnerCount}**${required?`\nRequired role: ${required}`:""}`,BRAND.colours.premium)],components:[button]});
+      const requirements=[required?`Role: ${required}`:"",minMemberDays?`${minMemberDays}+ days in server`:"",minLevel?`Level ${minLevel}+`:"",verifiedOnly?"Verified members only":""].filter(Boolean);
+      const msg=await (ch as TextChannel).send({embeds:[brandEmbed(`🎉 ${prize}`,`Ends <t:${Math.floor(ends.getTime()/1000)}:R>\nWinners: **${winnerCount}**${requirements.length?`\nRequirements: ${requirements.join(" • ")}`:""}`,BRAND.colours.premium)],components:[button]});
       await query(`UPDATE giveaways SET message_id=$1 WHERE id=$2`,[msg.id,row.id]);await i.reply({content:`Giveaway posted in ${ch}.`,ephemeral:true});return true;
     }
     const id=i.options.getInteger("id",true),g=await one<any>(`SELECT * FROM giveaways WHERE id=$1 AND guild_id=$2`,[id,gid]);
     if(!g){await i.reply({content:"Giveaway not found.",ephemeral:true});return true;}
-    const entries=await query<any>(`SELECT user_id FROM giveaway_entries WHERE giveaway_id=$1 ORDER BY random()`,[id]);
-    const winners=entries.slice(0,Math.max(1,Number(g.winner_count||1))).map(x=>x.user_id);
+    const previous=new Set<string>((g.winners||[]).map(String)),entries=await query<any>(`SELECT user_id,entries FROM giveaway_entries WHERE giveaway_id=$1 ORDER BY random()`,[id]);
+    const pool:string[]=[];for(const e of entries){if(g.reroll_exclude_previous&&previous.has(String(e.user_id)))continue;for(let n=0;n<Math.max(1,Number(e.entries||1));n++)pool.push(String(e.user_id));}
+    const winners:string[]=[];for(const userId of pool.sort(()=>Math.random()-.5)){if(!winners.includes(userId))winners.push(userId);if(winners.length>=Math.max(1,Number(g.winner_count||1)))break;}
     await i.reply({content:winners.length?`🎉 Reroll: ${winners.map(x=>`<@${x}>`).join(", ")}`:"No eligible entries.",ephemeral:false});return true;
   }
 
@@ -221,10 +235,19 @@ export async function handleComponent(client:Client,i:any){
     const id=Number(i.customId.split(":")[1]),g=await one<any>(`SELECT * FROM giveaways WHERE id=$1 AND guild_id=$2 AND status='LIVE' AND ends_at>now()`,[id,i.guildId]);
     if(!g){await i.reply({content:"This giveaway has ended.",ephemeral:true});return true;}
     const member=await i.guild.members.fetch(i.user.id);
+    if((g.blacklist_user_ids||[]).includes(i.user.id)||member.roles.cache.some((r:any)=>(g.blacklist_role_ids||[]).includes(r.id))){await i.reply({content:"You're not eligible for this giveaway.",ephemeral:true});return true;}
     if(g.required_role_id&&!member.roles.cache.has(g.required_role_id)){await i.reply({content:"You don't have the required role.",ephemeral:true});return true;}
     const ageDays=(Date.now()-i.user.createdTimestamp)/86400000;if(ageDays<Number(g.min_account_age_days||0)){await i.reply({content:"Your Discord account is too new for this giveaway.",ephemeral:true});return true;}
-    const inserted=await query<any>(`INSERT INTO giveaway_entries(giveaway_id,user_id,entries) VALUES($1,$2,1) ON CONFLICT DO NOTHING RETURNING user_id`,[id,i.user.id]);
-    await i.reply({content:inserted.length?"🎟️ You're entered.":"You're already entered.",ephemeral:true});return true;
+    const memberDays=member.joinedTimestamp?(Date.now()-member.joinedTimestamp)/86400000:0;if(memberDays<Number(g.min_member_days||0)){await i.reply({content:`You need to have been in the server for ${g.min_member_days} days.`,ephemeral:true});return true;}
+    const eco=await one<any>(`SELECT xp_total FROM member_economy WHERE guild_id=$1 AND user_id=$2`,[i.guildId,i.user.id]),level=levelFromXp(Number(eco?.xp_total||0));if(level<Number(g.min_level||0)){await i.reply({content:`You need to be level ${g.min_level} to enter.`,ephemeral:true});return true;}
+    if(g.verified_only){const verified=await one<any>(`SELECT 1 FROM onboarding_answers WHERE guild_id=$1 AND user_id=$2 AND verified=true`,[i.guildId,i.user.id]);if(!verified){await i.reply({content:"Complete server verification before entering.",ephemeral:true});return true;}}
+    const rules=g.bonus_rules||{};let entries=1;
+    if(Number(rules.premium||0)>0){const premium=await one<any>(`SELECT 1 FROM entitlements WHERE guild_id=$1 AND discord_user_id=$2 AND active=true AND (expires_at IS NULL OR expires_at>now())`,[i.guildId,i.user.id]);if(premium)entries+=Number(rules.premium);}
+    if(Number(rules.booster||0)>0&&member.premiumSinceTimestamp)entries+=Number(rules.booster);
+    if(Number(rules.levelAt||0)>0&&level>=Number(rules.levelAt))entries+=Number(rules.levelEntries||0);
+    if(Number(rules.tenureDays||0)>0&&memberDays>=Number(rules.tenureDays))entries+=Number(rules.tenureEntries||0);
+    const inserted=await query<any>(`INSERT INTO giveaway_entries(giveaway_id,user_id,entries) VALUES($1,$2,$3) ON CONFLICT DO NOTHING RETURNING user_id`,[id,i.user.id,Math.max(1,entries)]);
+    await i.reply({content:inserted.length?`🎟️ You're entered with **${Math.max(1,entries)}** entr${entries===1?"y":"ies"}.`:"You're already entered.",ephemeral:true});return true;
   }
   if(i.customId.startsWith("role:")){
     const roleId=i.customId.slice(5),member=await i.guild.members.fetch(i.user.id),role=i.guild.roles.cache.get(roleId);if(!role){await i.reply({content:"That role is no longer available.",ephemeral:true});return true;}
