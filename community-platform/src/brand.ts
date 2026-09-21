@@ -24,6 +24,13 @@ export function brandEmbed(title:string, description?:string, colour:number=BRAN
   return e;
 }
 
+export function systemEmbed(title:string, description?:string, colour:number=BRAND.colours.primary) {
+  const e=brandEmbed(title,description,colour).setFooter({text:`${BRAND.name} | ${new Date().toLocaleString("en-GB",{timeZone:"Europe/London",day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"})}`});
+  if(process.env.SYSTEM_LOGO_URL)e.setThumbnail(process.env.SYSTEM_LOGO_URL);
+  if(process.env.SYSTEM_BANNER_URL)e.setImage(process.env.SYSTEM_BANNER_URL);
+  return e;
+}
+
 export function compactNumber(value:number|bigint) {
   return Number(value||0).toLocaleString("en-GB");
 }
