@@ -17,7 +17,10 @@ export const config = {
   socialPollSeconds: Math.max(60, Number(process.env.SOCIAL_POLL_SECONDS || 120)),
   stripeSecretKey: process.env.STRIPE_SECRET_KEY || "",
   stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET || "",
-  billingCurrency: (process.env.BILLING_CURRENCY || "gbp").toLowerCase()
+  billingCurrency: (process.env.BILLING_CURRENCY || "gbp").toLowerCase(),
+  systemBannerUrl: process.env.SYSTEM_BANNER_URL || "",
+  systemLogoUrl: process.env.SYSTEM_LOGO_URL || "",
+  statusUpdateSeconds: Math.max(30, Number(process.env.STATUS_UPDATE_SECONDS || 60))
 };
 
 function required(key: string): string {
