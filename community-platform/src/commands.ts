@@ -3,7 +3,7 @@ import {
   SlashCommandBuilder, TextChannel, ChannelType
 } from "discord.js";
 import { audit, getFeature, one, query } from "./db.js";
-import { brandEmbed, BRAND } from "./brand.js";
+import { brandEmbed, systemEmbed, BRAND } from "./brand.js";
 import { recordEconomyEvent } from "./economy-core.js";
 
 export const commandData=[
@@ -118,7 +118,7 @@ export async function handleCommand(client:Client,i:ChatInputCommandInteraction)
       permissionOverwrites:overwrites
     });
     await query(`UPDATE tickets SET channel_id=$1 WHERE id=$2`,[channel.id,row.id]);
-    await channel.send({content:`${i.user}`,embeds:[brandEmbed(`🎫 ${type} ticket #${row.id}`,"Describe what you need help with below. A staff member will pick this up.",BRAND.colours.primary)]});
+    await channel.send({content:`${i.user}`,embeds:[systemEmbed(`🎫 ${type} ticket #${row.id}`,"Describe what you need help with below. A staff member will pick this up.",BRAND.colours.primary)]});
     return i.reply({content:`Ticket created: ${channel}`,ephemeral:true});
   }
 }
