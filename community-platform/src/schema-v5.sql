@@ -423,6 +423,31 @@ CREATE TABLE IF NOT EXISTS profile_cosmetics (
   PRIMARY KEY(guild_id,user_id,cosmetic_key)
 );
 
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS review_rating INTEGER CHECK (review_rating BETWEEN 1 AND 5);
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS review_feedback TEXT;
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ;
+
+CREATE TABLE IF NOT EXISTS ticket_reviews (
+  id BIGSERIAL PRIMARY KEY,
+  guild_id TEXT NOT NULL,
+  ticket_id BIGINT NOT NULL,
+  user_id TEXT NOT NULL,
+  handled_by TEXT,
+  closed_by TEXT,
+  ticket_type TEXT NOT NULL,
+  rating INTEGER CHECK (rating BETWEEN 1 AND 5),
+  feedback TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS ticket_reviews_recent_idx ON ticket_reviews(guild_id,created_at DESC);
+
+CREATE TABLE IF NOT EXISTS bot_status_panels (
+  guild_id TEXT PRIMARY KEY,
+  channel_id TEXT NOT NULL,
+  message_id TEXT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 INSERT INTO onboarding_configs(guild_id) SELECT guild_id FROM guild_settings ON CONFLICT DO NOTHING;
 INSERT INTO recap_settings(guild_id) SELECT guild_id FROM guild_settings ON CONFLICT DO NOTHING;
 INSERT INTO recognition_role_settings(guild_id) SELECT guild_id FROM guild_settings ON CONFLICT DO NOTHING;
