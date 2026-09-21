@@ -6,12 +6,14 @@ import {
 import { audit, getFeature, one, query } from "./db.js";
 import { config } from "./config.js";
 import { awardCurrency, getEconomyProfile, levelFromXp, recordEconomyEvent } from "./economy-core.js";
-import { brandEmbed, BRAND } from "./brand.js";
+import { brandEmbed, systemEmbed, BRAND } from "./brand.js";
 import { grantComp, listPlans } from "./billing.js";
 import { claimDaily } from "./economy.js";
 
 const joinWindows=new Map<string,number[]>();
 const healthLastRun=new Map<string,number>();
+const statusLastRun=new Map<string,number>();
+const startedAt=Date.now();
 const fmt=(n:number)=>Math.round(n).toLocaleString("en-GB");
 
 export const v5CommandData=[
@@ -31,7 +33,12 @@ export const v5CommandData=[
       {name:"All categories",value:"all"},{name:"Good Trade / Call",value:"Good trade"},{name:"Helpful",value:"Helpful"},
       {name:"Community",value:"Community"},{name:"Creator",value:"Creator"},{name:"Support",value:"Support"}
     )),
-  new SlashCommandBuilder().setName("verify").setDescription("Start or complete server verification")
+  new SlashCommandBuilder().setName("verify").setDescription("Start or complete server verification"),
+  new SlashCommandBuilder().setName("system").setDescription("Publish EAFC.Live system panels").setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addSubcommand(s=>s.setName("ticket-panel").setDescription("Post the ticket dropdown panel")
+      .addChannelOption(o=>o.setName("channel").setDescription("Ticket panel channel").addChannelTypes(ChannelType.GuildText,ChannelType.GuildAnnouncement)))
+    .addSubcommand(s=>s.setName("bot-status").setDescription("Post a live bot status panel")
+      .addChannelOption(o=>o.setName("channel").setDescription("Status channel").addChannelTypes(ChannelType.GuildText,ChannelType.GuildAnnouncement)))
 ].map(c=>c.toJSON());
 
 export const v5ContextCommandData=[
@@ -131,9 +138,70 @@ async function finishOnboarding(i:any){
   await i.reply({embeds:[brandEmbed("✅ You're all set",`Platform: **${ans.platform}**\nInterests: **${(ans.interests||[]).join(", ")}**\n\nYour roles and profile have been updated.`,BRAND.colours.success)],ephemeral:true});
 }
 
+function ticketMenuOptions(types:string[]){
+  const source=types.length?types:["General","Support","Question","Other"];
+  const emojiFor=(type:string)=>type.toLowerCase().includes("support")?"🛠️":type.toLowerCase().includes("question")?"❓":type.toLowerCase().includes("report")?"🚨":type.toLowerCase().includes("appeal")?"📣":type.toLowerCase().includes("partner")?"🤝":type.toLowerCase().includes("premium")?"⭐":"💬";
+  return source.slice(0,25).map(type=>new StringSelectMenuOptionBuilder().setLabel(`${type} Ticket`.replace(/ Ticket Ticket$/," Ticket").slice(0,100)).setValue(type.slice(0,100)).setEmoji(emojiFor(type)));
+}
+
+async function createTicketChannel(client:Client,guild:any,user:any,type:string,sourceUrl?:string){
+  const feature=await getFeature(guild.id,"tickets",{categoryId:"",staffRoleIds:[],types:["General","Support","Question","Other"]});
+  if(!feature.enabled)throw new Error("Tickets are disabled.");
+  const row=(await query<any>(`INSERT INTO tickets(guild_id,user_id,ticket_type) VALUES($1,$2,$3) RETURNING id`,[guild.id,user.id,type]))[0];
+  const overwrites:any[]=[
+    {id:guild.roles.everyone.id,deny:[PermissionFlagsBits.ViewChannel]},
+    {id:user.id,allow:[PermissionFlagsBits.ViewChannel,PermissionFlagsBits.SendMessages,PermissionFlagsBits.ReadMessageHistory]}
+  ];
+  for(const roleId of feature.config.staffRoleIds||[])overwrites.push({id:roleId,allow:[PermissionFlagsBits.ViewChannel,PermissionFlagsBits.SendMessages,PermissionFlagsBits.ReadMessageHistory]});
+  const ch=await guild.channels.create({name:`ticket-${row.id}-${user.username}`.toLowerCase().replace(/[^a-z0-9-]/g,"").slice(0,90),type:ChannelType.GuildText,parent:feature.config.categoryId||undefined,permissionOverwrites:overwrites});
+  await query(`UPDATE tickets SET channel_id=$1 WHERE id=$2`,[ch.id,row.id]);
+  const body=[`Created by <@${user.id}>.`,sourceUrl?`Source: ${sourceUrl}`:"","Tell us what you need and staff will pick this up."].filter(Boolean).join("\n\n");
+  await ch.send({content:`<@${user.id}>`,embeds:[systemEmbed(`🎫 ${type} ticket #${row.id}`,body,BRAND.colours.primary)]});
+  return {channel:ch,ticket:row};
+}
+
+async function publishTicketPanel(client:Client,guildId:string,channelId:string){
+  const feature=await getFeature(guildId,"tickets",{categoryId:"",staffRoleIds:[],types:["General","Support","Question","Other"]});
+  const ch=await client.channels.fetch(channelId).catch(()=>null);if(!ch?.isTextBased())throw new Error("Ticket channel is not available.");
+  const menu=new StringSelectMenuBuilder().setCustomId("v5:ticket-menu").setPlaceholder("Choose your options").addOptions(...ticketMenuOptions(feature.config.types||[]));
+  return (ch as TextChannel).send({embeds:[systemEmbed("🎫 Ticket Support","If you have a request, click on the menu below.\n\n**Selection options:**\n"+(feature.config.types||["General","Support","Question","Other"]).map((x:string)=>`• ${x} Ticket`).join("\n"),BRAND.colours.primary)],components:[new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu)]});
+}
+
+function formatDuration(ms:number){
+  const total=Math.max(0,Math.floor(ms/1000)),days=Math.floor(total/86400),hours=Math.floor(total%86400/3600),minutes=Math.floor(total%3600/60);
+  return [days?`${days}d`:null,hours?`${hours}h`:null,`${minutes}m`].filter(Boolean).join(" ");
+}
+
+function botStatusEmbed(client:Client){
+  const lastUpdate=Math.floor(Date.now()/1000);
+  return systemEmbed(`${BRAND.name} • Bot Status`,`Status: 🟢 Online\nUptime: \`${formatDuration(Date.now()-startedAt)}\`\nPing: \`${Math.round(client.ws.ping)} ms\`\nLast Update: <t:${lastUpdate}:R>\n\n**Status updates automatically every ${config.statusUpdateSeconds} seconds. Check Last Update for freshness.**`,BRAND.colours.success);
+}
+
+async function publishBotStatus(client:Client,guildId:string,channelId:string){
+  const ch=await client.channels.fetch(channelId).catch(()=>null);if(!ch?.isTextBased())throw new Error("Status channel is not available.");
+  const msg=await (ch as TextChannel).send({embeds:[botStatusEmbed(client)]});
+  await query(`INSERT INTO bot_status_panels(guild_id,channel_id,message_id) VALUES($1,$2,$3) ON CONFLICT(guild_id) DO UPDATE SET channel_id=$2,message_id=$3,updated_at=now()`,[guildId,channelId,msg.id]);
+  return msg;
+}
+
 export async function handleV5Command(i:any){
-  if(!i.guildId||!["afk","birthday","kudosboard","verify"].includes(i.commandName))return false;
+  if(!i.guildId||!["afk","birthday","kudosboard","verify","system"].includes(i.commandName))return false;
   await recordUsage(i.guildId,i.user.id,"command",i.commandName,i.channelId);
+
+  if(i.commandName==="system"){
+    const sub=i.options.getSubcommand(),channel=i.options.getChannel("channel")||i.channel;
+    if(!channel?.isTextBased()){await i.reply({content:"Choose a text channel the bot can post in.",ephemeral:true});return true;}
+    if(sub==="ticket-panel"){
+      const msg=await publishTicketPanel(globalClient||i.client,i.guildId,channel.id);
+      await audit(i.guildId,i.user.id,"system.ticket_panel.publish",{channelId:channel.id,messageId:msg.id});
+      await i.reply({content:`Ticket panel posted in ${channel}.`,ephemeral:true});return true;
+    }
+    if(sub==="bot-status"){
+      const msg=await publishBotStatus(globalClient||i.client,i.guildId,channel.id);
+      await audit(i.guildId,i.user.id,"system.bot_status.publish",{channelId:channel.id,messageId:msg.id});
+      await i.reply({content:`Bot status panel posted in ${channel}.`,ephemeral:true});return true;
+    }
+  }
 
   if(i.commandName==="afk"){
     const reason=i.options.getString("reason");
@@ -178,15 +246,9 @@ export async function handleV5Command(i:any){
 export async function handleV5Context(client:Client,i:any){
   if(!i.guildId||!i.isMessageContextMenuCommand())return false;
   if(i.commandName==="Create support ticket"){
-    const feature=await getFeature(i.guildId,"tickets",{categoryId:"",staffRoleIds:[]});
-    const type="Support",row=(await query<any>(`INSERT INTO tickets(guild_id,user_id,ticket_type) VALUES($1,$2,$3) RETURNING id`,[i.guildId,i.user.id,type]))[0];
-    const overwrites:any[]=[{id:i.guild.roles.everyone.id,deny:[PermissionFlagsBits.ViewChannel]},{id:i.user.id,allow:[PermissionFlagsBits.ViewChannel,PermissionFlagsBits.SendMessages,PermissionFlagsBits.ReadMessageHistory]}];
-    for(const roleId of feature.config.staffRoleIds||[])overwrites.push({id:roleId,allow:[PermissionFlagsBits.ViewChannel,PermissionFlagsBits.SendMessages,PermissionFlagsBits.ReadMessageHistory]});
-    const ch=await i.guild.channels.create({name:`ticket-${row.id}-${i.user.username}`.toLowerCase().replace(/[^a-z0-9-]/g,"").slice(0,90),type:ChannelType.GuildText,parent:feature.config.categoryId||undefined,permissionOverwrites:overwrites});
-    await query(`UPDATE tickets SET channel_id=$1 WHERE id=$2`,[ch.id,row.id]);
-    await ch.send({content:`${i.user}`,embeds:[brandEmbed(`🎫 Support ticket #${row.id}`,`Created from [this message](${i.targetMessage.url}).\n\nDescribe what you need help with below.`,BRAND.colours.primary)]});
+    const created=await createTicketChannel(client,i.guild,i.user,"Support",i.targetMessage.url);
     await recordUsage(i.guildId,i.user.id,"context","ticket_from_message",i.channelId);
-    await i.reply({content:`Ticket created: ${ch}`,ephemeral:true});return true;
+    await i.reply({content:`Ticket created: ${created.channel}`,ephemeral:true});return true;
   }
   if(i.commandName==="Add to starboard"){
     const feature=await getFeature(i.guildId,"starboard",{channelId:""});
@@ -234,6 +296,13 @@ export async function handleV5Component(client:Client,i:any){
     await i.reply({content:"Optional answers saved. Return to the onboarding message and press **Finish onboarding**.",ephemeral:true});return true;
   }
   if(id==="v5:onboard:finish"){await finishOnboarding(i);return true;}
+
+  if(id==="v5:ticket-menu"&&i.isStringSelectMenu()){
+    const type=String(i.values?.[0]||"General");
+    try{const created=await createTicketChannel(client,i.guild,i.user,type);await recordUsage(i.guildId,i.user.id,"component","ticket_panel",i.channelId,{type});await i.reply({content:`Ticket created: ${created.channel}`,ephemeral:true});}
+    catch(err:any){await i.reply({content:String(err?.message||err),ephemeral:true});}
+    return true;
+  }
 
   if(id==="v5:daily"){
     try{const r=await claimDaily(i.guildId,i.user.id);await i.reply({embeds:[brandEmbed("🔥 Daily reward claimed",`**+${fmt(r.coins)} Live Coins**\n${r.streak}-day streak${r.bonus?` • +${fmt(r.bonus)} streak bonus`:""}`,BRAND.colours.coins)],ephemeral:true});}
@@ -441,12 +510,17 @@ async function processRetention(guildId:string){
 
 async function processInviteMilestones(client:Client,guildId:string){
   const rows=await query<any>(`SELECT m.*,x.inviter_id,x.total FROM invite_milestones m JOIN (SELECT inviter_id,count(*)::int total FROM invite_joins WHERE guild_id=$1 AND retained_7d=true AND inviter_id IS NOT NULL GROUP BY inviter_id) x ON x.total>=m.retained_invites WHERE m.guild_id=$1 AND m.enabled=true`,[guildId]);
-  const guild=client.guilds.cache.get(guildId);
+  const guild=client.guilds.cache.get(guildId),feature=await getFeature(guildId,"growth",{inviteUnlockChannelId:""});
   for(const r of rows){const ins=await query<any>(`INSERT INTO invite_milestone_awards(guild_id,user_id,milestone_id) VALUES($1,$2,$3) ON CONFLICT DO NOTHING RETURNING milestone_id`,[guildId,r.inviter_id,r.id]);if(!ins.length)continue;
     if(Number(r.xp_reward)>0)await awardCurrency({guildId,userId:r.inviter_id,currency:"xp",amount:Number(r.xp_reward),reason:`Invite milestone: ${r.retained_invites}`,sourceType:"invite_milestone",sourceId:String(r.id),idempotencyKey:`invite:${r.id}:${r.inviter_id}:xp`});
     if(Number(r.coin_reward)>0)await awardCurrency({guildId,userId:r.inviter_id,currency:"coins",amount:Number(r.coin_reward),reason:`Invite milestone: ${r.retained_invites}`,sourceType:"invite_milestone",sourceId:String(r.id),idempotencyKey:`invite:${r.id}:${r.inviter_id}:coins`});
     const member=guild?await guild.members.fetch(r.inviter_id).catch(()=>null):null;if(member&&r.role_id)await member.roles.add(r.role_id,"Invite milestone").catch(()=>{});
     if(Number(r.premium_days||0)>0){const plans=await listPlans(guildId,true),plan=plans[0];if(plan)await grantComp(guildId,r.inviter_id,plan.id,Number(r.premium_days),"invite-milestone").catch(()=>{});}
+    if(feature.config.inviteUnlockChannelId){
+      const ch=await client.channels.fetch(String(feature.config.inviteUnlockChannelId)).catch(()=>null);
+      const rewards=[Number(r.premium_days||0)>0?`**${r.premium_days} Days Premium**`:null,Number(r.coin_reward)>0?`**${fmt(Number(r.coin_reward))} Live Coins**`:null,Number(r.xp_reward)>0?`**${fmt(Number(r.xp_reward))} XP**`:null].filter(Boolean).join(" + ")||"a reward";
+      if(ch?.isTextBased())await (ch as TextChannel).send({embeds:[systemEmbed("🎉 Invite Milestone",`<@${r.inviter_id}> has unlocked ${rewards} with **${r.retained_invites} retained invites**!`,BRAND.colours.primary)]}).catch(()=>{});
+    }
   }
 }
 
@@ -524,6 +598,16 @@ async function processRecaps(client:Client,guildId:string){
   }
 }
 
+async function updateBotStatusPanels(client:Client,guildId:string){
+  if(Date.now()-(statusLastRun.get(guildId)||0)<config.statusUpdateSeconds*1000)return;
+  statusLastRun.set(guildId,Date.now());
+  const panel=await one<any>(`SELECT * FROM bot_status_panels WHERE guild_id=$1`,[guildId]);if(!panel)return;
+  const ch=await client.channels.fetch(panel.channel_id).catch(()=>null);if(!ch?.isTextBased())return;
+  const msg=await (ch as TextChannel).messages.fetch(panel.message_id).catch(()=>null);if(!msg)return;
+  await msg.edit({embeds:[botStatusEmbed(client)]}).catch(()=>{});
+  await query(`UPDATE bot_status_panels SET updated_at=now() WHERE guild_id=$1`,[guildId]).catch(()=>{});
+}
+
 export async function scanHealth(client:Client,guildId:string){
   const guild=client.guilds.cache.get(guildId);if(!guild)return [];
   const findings:any[]=[],me=guild.members.me;
@@ -591,11 +675,16 @@ export async function publishRolePanel(client:Client,guildId:string,panelId:numb
   if(p.panel_type==="buttons"){
     for(let offset=0;offset<roles.length&&components.length<5;offset+=5){const row=new ActionRowBuilder<ButtonBuilder>();for(const x of roles.slice(offset,offset+5))row.addComponents(new ButtonBuilder().setCustomId(`v5:role:${x.roleId}`).setLabel(String(x.label||x.name||"Role").slice(0,80)).setStyle(ButtonStyle.Secondary));components.push(row);}
   }else{
-    const menu=new StringSelectMenuBuilder().setCustomId(`v5:panel:${p.id}`).setPlaceholder("Choose roles").setMinValues(0).setMaxValues(Math.min(25,roles.length));
-    for(const x of roles.slice(0,25))menu.addOptions(new StringSelectMenuOptionBuilder().setLabel(String(x.label||x.name||"Role").slice(0,100)).setValue(String(x.roleId)));
+    const menu=new StringSelectMenuBuilder().setCustomId(`v5:panel:${p.id}`).setPlaceholder("Choose your options").setMinValues(0).setMaxValues(Math.min(25,roles.length));
+    for(const x of roles.slice(0,25)){
+      const option=new StringSelectMenuOptionBuilder().setLabel(String(x.label||x.name||"Role").slice(0,100)).setValue(String(x.roleId));
+      if(x.description)option.setDescription(String(x.description).slice(0,100));
+      if(x.emoji)option.setEmoji(String(x.emoji));
+      menu.addOptions(option);
+    }
     components.push(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu));
   }
-  const msg=await (ch as TextChannel).send({embeds:[brandEmbed(p.title,p.body||"",BRAND.colours.primary)],components});
+  const msg=await (ch as TextChannel).send({embeds:[systemEmbed(p.title,p.body||"",BRAND.colours.primary)],components});
   await query(`UPDATE role_panels SET message_id=$2,updated_at=now() WHERE id=$1`,[p.id,msg.id]);return msg;
 }
 
@@ -627,7 +716,8 @@ export async function runV5Tick(client:Client){
       processBoosterMilestones(client,g.guild_id),
       processRecognitionRoles(client,g.guild_id),
       processCounters(client,g.guild_id),
-      processRecaps(client,g.guild_id)
+      processRecaps(client,g.guild_id),
+      updateBotStatusPanels(client,g.guild_id)
     ]).catch(console.error);
     if(Date.now()-(healthLastRun.get(g.guild_id)||0)>10*60_000){healthLastRun.set(g.guild_id,Date.now());await scanHealth(client,g.guild_id).catch(console.error);}
   }
