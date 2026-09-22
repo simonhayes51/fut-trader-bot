@@ -47,17 +47,19 @@ function dashboardSidebar(pathname:string,user?:{username?:string;avatar?:string
     {label:"Experience",items:[["/control/onboarding","◌","Onboarding"],["/control/community","◇","Community"],["/control/kudos","👏","Kudos & retention"],["/control/rewards","¤","Rewards"]]},
     {label:"Content & growth",items:[["/control/studio","✦","Message studio"],["/control/automation","↻","Automation"],["/control/growth","↗","Growth & partners"],["/discord","♢","Discord tools"]]},
     {label:"Operations",items:[["/control/security","◉","Security & health"],["/control/safety","⊘","Safety & support"],["/billing","◆","Premium"]]},
-    {label:"Configuration",items:[["/control/settings","⚙","Features"],["/commands","⌘","Command access"],["/audit","≡","Audit log"]]}
+    {label:"Configuration",items:[["/control/settings","⚙","Features"],["/commands","⌘","Command access"],["/audit","≡","Audit log"],["/invite","+","Add bot"]]}
   ];
   const activeFor=(href:string)=>href==="/control"?pathname==="/control":pathname===href||pathname.startsWith(`${href}/`);
   const nav=groups.map(group=>`<div class="nav-group"><div class="nav-label">${group.label}</div>${group.items.map(([href,icon,label])=>`<a class="${activeFor(href)?"active":""}" href="${href}"><span class="nav-icon">${icon}</span><span>${label}</span></a>`).join("")}</div>`).join("");
   const initial=(user?.username||"A").slice(0,1).toUpperCase();
   const guilds=user?.guilds||[];
   const onlyGuild=guilds[0];
+  const addServerLink=`<a class="server-add-link" href="/invite">Add bot to another server</a>`;
   const selector=guilds.length>1?`<form class="server-switcher" method="post" action="/servers/select">
       <label>Server</label>
       <select name="guildId" onchange="this.form.submit()">${guilds.map(g=>`<option value="${g.id}" ${g.id===selectedId?"selected":""}>${g.name}</option>`).join("")}</select>
-    </form>`:onlyGuild?`<div class="server-switcher readonly"><label>Server</label><strong>${onlyGuild.name}</strong></div>`:"";
+      ${addServerLink}
+    </form>`:onlyGuild?`<div class="server-switcher readonly"><label>Server</label><strong>${onlyGuild.name}</strong>${addServerLink}</div>`:`<div class="server-switcher readonly"><label>Server</label>${addServerLink}</div>`;
   return `<aside class="sidebar">
     <a class="brand" href="/control"><span class="brand-mark">E</span><span class="brand-copy"><b>EAFC.Live</b><small>Discord Control</small></span></a>
     ${selector}
@@ -146,6 +148,16 @@ app.get("/health",async(_req,res)=>{
   res.status(economy.ready?200:503).json({ok:economy.ready,discordReady:client.isReady(),stripeConfigured:Boolean(config.stripeSecretKey&&config.stripeWebhookSecret),economy,time:new Date().toISOString()});
 });
 app.get("/login",(_req,res)=>res.render("login",{clientId:config.clientId,redirectUri:config.redirectUri,guildId:config.targetGuildId}));
+
+function discordBotInviteUrl() {
+  const url=new URL("https://discord.com/oauth2/authorize");
+  url.searchParams.set("client_id",config.clientId);
+  url.searchParams.set("scope","bot applications.commands");
+  url.searchParams.set("permissions",config.botInvitePermissions);
+  return url.toString();
+}
+
+app.get("/invite",(_req,res)=>res.redirect(discordBotInviteUrl()));
 
 app.get("/auth/discord",(req,res)=>{
   const state=Math.random().toString(36).slice(2);
