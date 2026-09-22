@@ -3,7 +3,7 @@
 <main class="content saas-page module-workspace">
   <a class="back" href="/dashboard">← Back to overview</a>
   <section class="page-hero compact"><div><div class="eyebrow">SYSTEM / <%= def.category.toUpperCase() %></div><h1><%= def.name %></h1><p><%= def.description %></p></div><div class="hero-actions"><span class="pill <%= enabled?'on':'off' %>"><%= enabled?'Active':'Disabled' %></span></div></section>
-  <% if (typeof saved !== 'undefined' && saved) { %><div class="notice">✓ <%= def.key==='role_menus' ? 'Saved & published to Discord' : 'Saved' %></div><% } %>
+  <% if (typeof saved !== 'undefined' && saved) { %><div class="notice">✓ <%= ['role_menus','tickets'].includes(def.key) ? 'Saved & published to Discord' : 'Saved' %></div><% } %>
   <% if (typeof publishError !== 'undefined' && publishError) { %><div class="notice error-notice">⚠ <%= publishError %></div><% } %>
 
   <form method="post" class="panel setup-panel module-config-card" id="module-form">
@@ -43,7 +43,7 @@
       <% }) %>
     </div>
     <textarea name="config" id="config-output" hidden></textarea>
-    <div class="form-actions sticky-save"><button class="button" id="save-button" type="submit"><%= def.key==='role_menus' ? 'Save & publish' : 'Save' %></button></div>
+    <div class="form-actions sticky-save"><button class="button" id="save-button" type="submit"><%= ['role_menus','tickets'].includes(def.key) ? 'Save & publish' : 'Save' %></button></div>
   </form>
 </main>
 <template id="role-group-template"><div class="repeater-row role-group-row"><div class="row-head"><strong>New group</strong><button type="button" class="danger mini remove-row">Remove</button></div><div class="form-grid"><label>Name<input class="rg-name" placeholder="Platform"></label><label>Selection<select class="rg-max"><option value="1">One role</option><option value="99">Multiple roles</option></select></label></div><div class="check-picker"><% roles.forEach(r=>{ %><label class="check-option"><input class="rg-role" type="checkbox" value="<%= r.id %>"><span>@<%= r.name %></span></label><% }) %></div></div></template>
