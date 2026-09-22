@@ -11,7 +11,7 @@ import { createWebhookSecret, deliverWebhook } from "./social.js";
 import { billingRouter } from "./billing-dashboard.js";
 import { PostgresSessionStore } from "./session-store.js";
 import { clearGuildBrandCache, defaultGuildBrand } from "./brand.js";
-import { DashboardGuild, guildUi, manageableGuildsFromDiscord, requireSelectedGuild, selectedGuild, selectedGuildId } from "./dashboard-context.js";
+import { DashboardGuild, dashboardGuilds, guildUi, manageableGuildsFromDiscord, requireSelectedGuild, selectedGuild, selectedGuildId } from "./dashboard-context.js";
 
 declare module "express-session" {
   interface SessionData { user?: { id:string; username:string; avatar?:string; permissions?:string; guilds?:DashboardGuild[] }; oauthState?: string; selectedGuildId?: string; }
@@ -68,7 +68,8 @@ app.use((req:any,res:any,next:any)=>{
       if(err){if(callback)return callback(err);return next(err);}
       let output=html;
       if(output.includes('<aside class="sidebar">')){
-        output=output.replace(/<aside class="sidebar">[\s\S]*?<\/aside>/,dashboardSidebar(req.path,options?.user||req.session?.user,selectedGuildId(req)));
+        const user=options?.user||req.session?.user;
+        output=output.replace(/<aside class="sidebar">[\s\S]*?<\/aside>/,dashboardSidebar(req.path,user?{...user,guilds:dashboardGuilds(req)}:user,selectedGuildId(req)));
         if(output.includes('/style.css')&&!output.includes('/polish.css')) output=output.replace("</head>",'<link rel="stylesheet" href="/polish.css"></head>');
       }
       if(callback)return callback(null,output);
@@ -174,7 +175,7 @@ app.get("/auth/discord/callback",async(req,res)=>{
 app.post("/logout",(req,res)=>req.session.destroy(()=>res.redirect("/login")));
 app.post("/servers/select",requireAuth,(req:any,res)=>{
   const guildId=String(req.body.guildId||"");
-  const allowed=req.session.user?.guilds?.some((g:DashboardGuild)=>g.id===guildId);
+  const allowed=dashboardGuilds(req).some((g:DashboardGuild)=>g.id===guildId);
   if(allowed&&client.guilds.cache.has(guildId)) req.session.selectedGuildId=guildId;
   res.redirect(String(req.headers.referer||"/control"));
 });
