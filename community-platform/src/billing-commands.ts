@@ -1,7 +1,7 @@
 import { ActionRowBuilder, AutocompleteInteraction, ButtonBuilder, ButtonStyle, ChatInputCommandInteraction, Client, SlashCommandBuilder } from "discord.js";
 import { createCheckout, createPortal, getMemberBilling, listPlans, reconcileMemberBilling } from "./billing.js";
 import { getFeature, query } from "./db.js";
-import { brandEmbed, BRAND } from "./brand.js";
+import { guildEmbed, BRAND } from "./brand.js";
 
 export const billingCommandData = [
   new SlashCommandBuilder().setName("premium").setDescription("View premium plans or subscribe")
@@ -70,7 +70,7 @@ export async function handleBillingCommand(_client:Client,i:ChatInputCommandInte
       try { portal=await createPortal(i.guildId,i.user.id); } catch {}
       const row=new ActionRowBuilder<ButtonBuilder>();
       if(portal) row.addComponents(new ButtonBuilder().setLabel("Manage subscription").setStyle(ButtonStyle.Link).setURL(portal));
-      await i.reply({embeds:[brandEmbed("💎 Premium active",`**${existing.plan_name||"Premium"}**\nStatus: **${existing.status}**`,BRAND.colours.premium)],components:row.components.length?[row]:[],ephemeral:true});
+      await i.reply({embeds:[await guildEmbed(i.guildId,"💎 Premium active",`**${existing.plan_name||"Premium"}**\nStatus: **${existing.status}**`,BRAND.colours.premium,{banner:true})],components:row.components.length?[row]:[],ephemeral:true});
       return true;
     }
 
@@ -92,14 +92,14 @@ export async function handleBillingCommand(_client:Client,i:ChatInputCommandInte
         const row=new ActionRowBuilder<ButtonBuilder>().addComponents(
           new ButtonBuilder().setLabel(`Subscribe to ${plan.name}`).setStyle(ButtonStyle.Link).setURL(url)
         );
-        await i.reply({embeds:[brandEmbed(`💎 ${plan.name}`,plan.description||"Premium server access",BRAND.colours.premium)],components:[row],ephemeral:true});
+        await i.reply({embeds:[await guildEmbed(i.guildId,`💎 ${plan.name}`,plan.description||"Premium server access",BRAND.colours.premium,{banner:true})],components:[row],ephemeral:true});
       } catch(err:any) {
         await i.reply({content:String(err?.message||"Unable to start checkout."),ephemeral:true});
       }
       return true;
     }
 
-    const embed=brandEmbed("💎 EAFC.Live Premium","Choose your membership below. Secure checkout is handled by Stripe.",BRAND.colours.premium);
+    const embed=await guildEmbed(i.guildId,"💎 Premium","Choose your membership below. Secure checkout is handled by Stripe.",BRAND.colours.premium,{banner:true});
     const buttons:ButtonBuilder[]=[];
     for(const p of plans) {
       embed.addFields({name:p.name,value:p.description||"Premium access"});
@@ -124,6 +124,6 @@ export async function handleBillingCommand(_client:Client,i:ChatInputCommandInte
   const renew=sub.current_period_end?new Date(sub.current_period_end).toLocaleDateString("en-GB"):"—";
   const row=new ActionRowBuilder<ButtonBuilder>();
   if(portal) row.addComponents(new ButtonBuilder().setLabel("Manage billing").setStyle(ButtonStyle.Link).setURL(portal));
-  await i.reply({embeds:[brandEmbed("💎 Your Premium membership",`**${sub.plan_name||"Premium"}**\nStatus: **${sub.status}**\n${sub.cancel_at_period_end?"Ends":"Current period ends"}: **${renew}**`,BRAND.colours.premium)],components:row.components.length?[row]:[],ephemeral:true});
+  await i.reply({embeds:[await guildEmbed(i.guildId,"💎 Your Premium membership",`**${sub.plan_name||"Premium"}**\nStatus: **${sub.status}**\n${sub.cancel_at_period_end?"Ends":"Current period ends"}: **${renew}**`,BRAND.colours.premium,{banner:true})],components:row.components.length?[row]:[],ephemeral:true});
   return true;
 }
