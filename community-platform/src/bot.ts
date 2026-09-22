@@ -67,6 +67,15 @@ async function registerCommandsForGuild(rest:REST,guildId:string,commands:any[])
   await rest.put(Routes.applicationGuildCommands(config.clientId,guildId),{body:commands});
 }
 
+function welcomeText(template:string,member:any,invite:any) {
+  return String(template||"Welcome {user}!")
+    .replaceAll("{user}",`<@${member.id}>`)
+    .replaceAll("{server}",member.guild.name)
+    .replaceAll("{inviter}",invite?.inviterMention||"Unknown")
+    .replaceAll("{invites}",String(invite?.totalInvites||0))
+    .replaceAll("{invite_code}",invite?.code||"unknown");
+}
+
 export async function startBot() {
   const rest=new REST({version:"10"}).setToken(config.discordToken);
   const commands=[...commandData,...billingCommandData,...economyCommandData,...featureCommandData,...ticketOpsCommandData,...v5CommandData,...v5ContextCommandData].map(normalizeCommandOptions);
@@ -86,7 +95,7 @@ export async function startBot() {
   client.on(Events.MessageCreate,async message=>{await handleMessage(message);await handleCommunityMessage(message).catch(console.error);await onV5Message(message).catch(console.error);await onMemberActivity(message).catch(console.error);await onEconomyMessage(message).catch(console.error);});
   client.on(Events.MessageReactionAdd,(reaction,user)=>{void onCommunityReactionAdd(reaction,user);void onV5Reaction(reaction,user,true);});
   client.on(Events.MessageReactionRemove,(reaction,user)=>{void onCommunityReactionRemove(reaction,user);void onV5Reaction(reaction,user,false);});
-  client.on(Events.GuildMemberAdd,async member=>{await onMemberJoinLeave(member.guild.id,"joins").catch(console.error);await onEconomyJoin(member.guild.id,member.id).catch(console.error);await onV5MemberAdd(member).catch(console.error);await handleJoin(client,member);const feature=await getFeature(member.guild.id,"welcome",{channelId:"",autoRoleId:"",message:"Welcome {user} to {server}! Please read and accept the server rules.",dmWelcome:false});if(!feature.enabled)return;if(feature.config.autoRoleId)await member.roles.add(String(feature.config.autoRoleId)).catch(()=>{});const text=String(feature.config.message||"Welcome {user}!").replaceAll("{user}",`<@${member.id}>`).replaceAll("{server}",member.guild.name);if(feature.config.channelId){const ch=await client.channels.fetch(String(feature.config.channelId)).catch(()=>null);if(ch?.isTextBased()){const embed=(await guildSystemEmbed(member.guild.id,`Welcome to ${member.guild.name}`,text,BRAND.colours.primary)).setThumbnail(member.user.displayAvatarURL()).addFields({name:"Member count",value:String(member.guild.memberCount),inline:false});await (ch as TextChannel).send({content:`Welcome ${member}. Say hi!`,embeds:[embed],allowedMentions:{users:[member.id]}}).catch(()=>{});}}if(feature.config.dmWelcome)await member.send(text.replace(`<@${member.id}>`,member.user.username)).catch(()=>{});});
+  client.on(Events.GuildMemberAdd,async member=>{await onMemberJoinLeave(member.guild.id,"joins").catch(console.error);await onEconomyJoin(member.guild.id,member.id).catch(console.error);const invite=await onV5MemberAdd(member).catch(err=>{console.error(err);return null;});await handleJoin(client,member);const feature=await getFeature(member.guild.id,"welcome",{channelId:"",autoRoleId:"",message:"Welcome {user} to {server}! Please read and accept the server rules.",dmWelcome:false});if(!feature.enabled)return;if(feature.config.autoRoleId)await member.roles.add(String(feature.config.autoRoleId)).catch(()=>{});const text=welcomeText(feature.config.message||"Welcome {user}!",member,invite);if(feature.config.channelId){const ch=await client.channels.fetch(String(feature.config.channelId)).catch(()=>null);if(ch?.isTextBased()){const embed=(await guildSystemEmbed(member.guild.id,`Welcome to ${member.guild.name}`,text,BRAND.colours.primary)).setThumbnail(member.user.displayAvatarURL()).addFields({name:"Member count",value:String(member.guild.memberCount),inline:true});if(invite?.inviterId)embed.addFields({name:"Invited by",value:`${invite.inviterMention} • ${invite.totalInvites.toLocaleString("en-GB")} invite${invite.totalInvites===1?"":"s"}`,inline:true});await (ch as TextChannel).send({content:`Welcome ${member}. Say hi!`,embeds:[embed],allowedMentions:{users:[member.id,invite?.inviterId].filter((id):id is string=>Boolean(id))}}).catch(()=>{});}}if(feature.config.dmWelcome)await member.send(text.replace(`<@${member.id}>`,member.user.username)).catch(()=>{});});
   client.on(Events.GuildMemberRemove,member=>{void onMemberJoinLeave(member.guild.id,"leaves").catch(console.error);void onV5MemberRemove(member).catch(console.error);});
   client.on(Events.GuildMemberUpdate,(oldMember,newMember)=>{void onV5MemberUpdate(oldMember,newMember).catch(console.error);});
   client.on(Events.GuildAuditLogEntryCreate,(entry,guild)=>{void onV5AuditEntry(entry,guild).catch(console.error);});
