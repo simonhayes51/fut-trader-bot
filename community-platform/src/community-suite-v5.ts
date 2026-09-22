@@ -382,7 +382,9 @@ export async function refreshInviteSnapshot(guild:any){
   for(const inv of invites.values())await query(`INSERT INTO invite_snapshots(guild_id,code,inviter_id,uses) VALUES($1,$2,$3,$4) ON CONFLICT(guild_id,code) DO UPDATE SET inviter_id=$3,uses=$4,updated_at=now()`,[guild.id,inv.code,inv.inviter?.id||null,inv.uses||0]);
 }
 
-async function detectInvite(guild:any,userId:string){
+export type InviteAttribution = { code:string; inviterId:string|null; inviterMention:string; totalInvites:number };
+
+async function detectInvite(guild:any,userId:string):Promise<InviteAttribution|null>{
   const current=await guild.invites.fetch().catch(()=>null);if(!current)return null;
   const old=await query<any>(`SELECT * FROM invite_snapshots WHERE guild_id=$1`,[guild.id]);
   const map=new Map(old.map((x:any)=>[x.code,x]));
@@ -392,16 +394,18 @@ async function detectInvite(guild:any,userId:string){
   if(used){
     await query(`INSERT INTO invite_joins(guild_id,user_id,inviter_id,invite_code) VALUES($1,$2,$3,$4) ON CONFLICT(guild_id,user_id) DO UPDATE SET inviter_id=$3,invite_code=$4`,[guild.id,userId,used.inviter?.id||null,used.code]);
     await query(`UPDATE member_funnel SET inviter_id=$3,invite_code=$4 WHERE guild_id=$1 AND user_id=$2`,[guild.id,userId,used.inviter?.id||null,used.code]);
+    const total=used.inviter?.id?await one<any>(`SELECT count(*)::int total FROM invite_joins WHERE guild_id=$1 AND inviter_id=$2`,[guild.id,used.inviter.id]):null;
+    return {code:used.code,inviterId:used.inviter?.id||null,inviterMention:used.inviter?.id?`<@${used.inviter.id}>`:"Unknown",totalInvites:Number(total?.total||0)};
   }
-  return used;
+  return null;
 }
 
 export async function onV5MemberAdd(member:GuildMember){
   const gid=member.guild.id,uid=member.id;await ensureV5Defaults(gid);
   await query(`INSERT INTO member_funnel(guild_id,user_id,joined_at) VALUES($1,$2,now()) ON CONFLICT(guild_id,user_id) DO UPDATE SET joined_at=COALESCE(member_funnel.joined_at,now()),left_at=NULL`,[gid,uid]);
-  void detectInvite(member.guild,uid).catch(()=>{});
+  const invite=await detectInvite(member.guild,uid).catch(()=>null);
   const feature=await getFeature(gid,"security_suite",{antiAlt:true,minAccountAgeHours:24,antiRaid:true,joinsPerMinute:8,quarantineOnRaid:true});
-  if(!feature.enabled)return;
+  if(!feature.enabled)return invite;
   const cfg=feature.config||{},ageHours=(Date.now()-member.user.createdTimestamp)/3600000;
   const onboarding=await onboardingConfig(gid);
   const now=Date.now(),window=(joinWindows.get(gid)||[]).filter(t=>now-t<60000);window.push(now);joinWindows.set(gid,window);
@@ -410,6 +414,7 @@ export async function onV5MemberAdd(member:GuildMember){
   if((young||raid)&&onboarding.quarantine_role_id)await member.roles.add(String(onboarding.quarantine_role_id),young?"New account quarantine":"Raid protection").catch(()=>{});
   if(young)await query(`INSERT INTO security_events(guild_id,event_type,target_id,severity,details,action_taken) VALUES($1,'young_account',$2,'warning',$3::jsonb,$4)`,[gid,uid,JSON.stringify({ageHours:Math.round(ageHours)}),onboarding.quarantine_role_id?"quarantine_role":"logged"]);
   if(raid)await query(`INSERT INTO security_events(guild_id,event_type,target_id,severity,details,action_taken) VALUES($1,'join_spike',$2,'critical',$3::jsonb,$4)`,[gid,uid,JSON.stringify({joinsLastMinute:window.length}),onboarding.quarantine_role_id?"quarantine_role":"logged"]);
+  return invite;
 }
 
 export async function onV5MemberRemove(member:any){
