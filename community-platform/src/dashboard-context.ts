@@ -54,6 +54,29 @@ export function dashboardGuilds(req:any) {
   return sessionGuilds.filter(g=>client.guilds.cache.has(g.id)).sort((a,b)=>a.name.localeCompare(b.name));
 }
 
+export async function refreshDashboardGuilds(req:any,force=false) {
+  const user=req.session?.user;
+  if(!user?.id) return;
+  const now=Date.now();
+  if(!force&&Number(req.session.guildRefreshAt||0)>now-60_000) return;
+  req.session.guildRefreshAt=now;
+  const admin=config.adminIds.has(user.id);
+  const byId=new Map<string,DashboardGuild>();
+  for(const g of user.guilds||[]) if(client.guilds.cache.has(g.id)) byId.set(g.id,g);
+  for(const guild of client.guilds.cache.values()) {
+    if(admin) {
+      byId.set(guild.id,{id:guild.id,name:guild.name,icon:guild.icon||null,owner:false,permissions:"0"});
+      continue;
+    }
+    const member=await guild.members.fetch(user.id).catch(()=>null);
+    if(member&&(member.permissions.has(PermissionFlagsBits.Administrator)||member.permissions.has(PermissionFlagsBits.ManageGuild))) {
+      byId.set(guild.id,{id:guild.id,name:guild.name,icon:guild.icon||null,owner:guild.ownerId===user.id,permissions:String(member.permissions.bitfield)});
+    }
+  }
+  user.guilds=[...byId.values()].sort((a,b)=>a.name.localeCompare(b.name));
+  if(req.session.selectedGuildId&&!user.guilds.some((g:DashboardGuild)=>g.id===req.session.selectedGuildId)) delete req.session.selectedGuildId;
+}
+
 export function selectedGuildId(req:any) {
   const guilds=dashboardGuilds(req);
   const selected=String(req.session?.selectedGuildId||"");
