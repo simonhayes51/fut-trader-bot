@@ -16,7 +16,7 @@
 <section class="section"><div class="section-head"><div><h2>Content sources</h2><p>Pause or remove any feed without touching code.</p></div><span class="table-count"><%= feeds.length %> configured</span></div>
 <div class="table-wrap"><table><thead><tr><th>Feed</th><th>Type</th><th>Posts into</th><th>Status</th><th></th></tr></thead><tbody>
 <% feeds.forEach(f=>{ const channel=channels.find(c=>c.id===f.channel_id); %><tr>
-<td><strong><%= f.name %></strong><% if(f.provider==='webhook'){ %><small class="block">Custom webhook ready<% if(f.source){ %> • group: <%= f.source %><% } %></small><% } else { %><small class="block"><%= f.source %></small><% } %></td>
+<td><strong><%= f.name %></strong><% if(f.provider==='webhook'){ %><small class="block">Custom webhook ready<% if(f.source){ %> • group: <%= f.source %><% } %></small><code class="block"><%= baseUrl %>/hooks/social/<%= f.secret_key %></code><% } else { %><small class="block"><%= f.source %></small><% } %></td>
 <td><span class="pill"><%= f.provider==='x'?'X / Twitter':f.provider==='rss'?'Website / RSS':f.provider.charAt(0).toUpperCase()+f.provider.slice(1) %></span></td><td># <%= channel?.name||'Channel unavailable' %></td>
 <td><span class="pill <%= f.enabled?'on':'off' %>"><%= f.enabled?'Posting':'Paused' %></span></td>
 <td class="actions"><form method="post" action="/social/<%= f.id %>/toggle"><button class="ghost"><%= f.enabled?'Pause':'Resume' %></button></form><form method="post" action="/social/<%= f.id %>/delete" onsubmit="return confirm('Delete this feed?')"><button class="danger">Delete</button></form></td>
