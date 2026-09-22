@@ -19,7 +19,11 @@ export type DashboardUser = {
 };
 
 export function canManageGuild(permissionString:string|undefined) {
-  try { return (BigInt(permissionString||"0") & PermissionFlagsBits.ManageGuild)===PermissionFlagsBits.ManageGuild; }
+  try {
+    const permissions=BigInt(permissionString||"0");
+    return (permissions & PermissionFlagsBits.Administrator)===PermissionFlagsBits.Administrator
+      || (permissions & PermissionFlagsBits.ManageGuild)===PermissionFlagsBits.ManageGuild;
+  }
   catch { return false; }
 }
 
