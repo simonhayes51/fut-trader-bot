@@ -231,7 +231,28 @@ export async function handleContextCommand(i:any){
 }
 
 export async function handleComponent(client:Client,i:any){
-  if(!i.guildId||!i.isButton())return false;
+  if(!i.guildId||(!i.isButton()&&!i.isStringSelectMenu()))return false;
+  if(i.isStringSelectMenu()&&i.customId.startsWith("role-menu:")){
+    const groupIndex=Number(i.customId.split(":")[1]);
+    const feature=await getFeature(i.guildId,"role_menus",{groups:[]});
+    const groups:any[]=Array.isArray(feature.config?.groups)?feature.config.groups:[];
+    const group:any=groups[groupIndex]||null;
+    const allowed=new Set<string>((Array.isArray(group?.roleIds)?group.roleIds:[]).map(String));
+    if(!allowed.size){await i.reply({content:"That role menu is no longer configured.",ephemeral:true});return true;}
+    const member=await i.guild.members.fetch(i.user.id);
+    const selected=new Set<string>(i.values.filter((id:string)=>allowed.has(id)));
+    const added:string[]=[],removed:string[]=[];
+    for(const roleId of allowed){
+      const role=i.guild.roles.cache.get(roleId);
+      if(!role)continue;
+      if(selected.has(roleId)&&!member.roles.cache.has(roleId)){await member.roles.add(roleId);added.push(role.name);}
+      if(!selected.has(roleId)&&member.roles.cache.has(roleId)){await member.roles.remove(roleId);removed.push(role.name);}
+    }
+    const parts=[added.length?`Added ${added.map(x=>`@${x}`).join(", ")}.`:"",removed.length?`Removed ${removed.map(x=>`@${x}`).join(", ")}.`:""].filter(Boolean);
+    await i.reply({content:parts.join(" ")||"Your roles are already up to date.",ephemeral:true});
+    return true;
+  }
+  if(!i.isButton())return false;
   if(i.customId.startsWith("giveaway:")){
     const id=Number(i.customId.split(":")[1]),g=await one<any>(`SELECT * FROM giveaways WHERE id=$1 AND guild_id=$2 AND status='LIVE' AND ends_at>now()`,[id,i.guildId]);
     if(!g){await i.reply({content:"This giveaway has ended.",ephemeral:true});return true;}
