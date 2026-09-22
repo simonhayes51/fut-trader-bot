@@ -14,12 +14,30 @@ export type ModuleDefinition = {
   key:string;
   name:string;
   description:string;
-  category:"Community"|"Engagement"|"Moderation"|"Automation"|"Social"|"Billing";
+  category:"Community"|"Engagement"|"Moderation"|"Automation"|"Social"|"Billing"|"Branding";
   defaults:Record<string,any>;
   fields:ModuleField[];
 };
 
 export const modules:ModuleDefinition[]=[
+  {
+    key:"server_branding",name:"Server branding",description:"Customise the bot name, embed colours, logo, header image and footer per Discord server.",category:"Branding",
+    defaults:{name:"EAFC.Live",url:"https://eafc.live",footerText:"EAFC.Live • FC27 Community",logoUrl:"",bannerUrl:"",primaryColour:"#22d3ee",premiumColour:"#8b5cf6",successColour:"#22c55e",warningColour:"#f59e0b",dangerColour:"#ef4444",neutralColour:"#64748b",coinsColour:"#f5b942"},
+    fields:[
+      {key:"name",label:"Server/bot brand name",type:"text",placeholder:"EAFC Legends"},
+      {key:"url",label:"Website URL",type:"text",placeholder:"https://example.com"},
+      {key:"footerText",label:"Embed footer text",type:"text",placeholder:"EAFC Legends • FC27 Trading"},
+      {key:"logoUrl",label:"Logo URL",help:"Shown as the embed thumbnail where possible.",type:"text",placeholder:"https://.../logo.png"},
+      {key:"bannerUrl",label:"Header/banner URL",help:"Shown on larger system and premium embeds.",type:"text",placeholder:"https://.../banner.png"},
+      {key:"primaryColour",label:"Primary colour",type:"text",placeholder:"#22d3ee"},
+      {key:"premiumColour",label:"Premium colour",type:"text",placeholder:"#8b5cf6"},
+      {key:"successColour",label:"Success colour",type:"text",placeholder:"#22c55e"},
+      {key:"warningColour",label:"Warning colour",type:"text",placeholder:"#f59e0b"},
+      {key:"dangerColour",label:"Danger colour",type:"text",placeholder:"#ef4444"},
+      {key:"neutralColour",label:"Neutral colour",type:"text",placeholder:"#64748b"},
+      {key:"coinsColour",label:"Coins/rewards colour",type:"text",placeholder:"#f5b942"}
+    ]
+  },
   {
     key:"welcome",name:"Welcome & onboarding",description:"Welcome new members, assign a base role and optionally send a private introduction.",category:"Community",
     defaults:{channelId:"",autoRoleId:"",message:"Welcome {user} to {server}! Read the rules and choose your roles.",dmWelcome:false},
