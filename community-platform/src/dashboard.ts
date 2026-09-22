@@ -11,9 +11,10 @@ import { createWebhookSecret, deliverWebhook } from "./social.js";
 import { billingRouter } from "./billing-dashboard.js";
 import { PostgresSessionStore } from "./session-store.js";
 import { clearGuildBrandCache, defaultGuildBrand } from "./brand.js";
+import { DashboardGuild, guildUi, manageableGuildsFromDiscord, requireSelectedGuild, selectedGuild, selectedGuildId } from "./dashboard-context.js";
 
 declare module "express-session" {
-  interface SessionData { user?: { id:string; username:string; avatar?:string; permissions?:string }; oauthState?: string; }
+  interface SessionData { user?: { id:string; username:string; avatar?:string; permissions?:string; guilds?:DashboardGuild[] }; oauthState?: string; selectedGuildId?: string; }
 }
 
 const here=path.dirname(fileURLToPath(import.meta.url));
@@ -34,7 +35,7 @@ app.use(session({
   cookie:{httpOnly:true,sameSite:"lax",secure:process.env.NODE_ENV==="production",maxAge:7*24*60*60*1000}
 }));
 
-function dashboardSidebar(pathname:string,user?:{username?:string;avatar?:string}) {
+function dashboardSidebar(pathname:string,user?:{username?:string;avatar?:string;guilds?:DashboardGuild[]},selectedId?:string) {
   const groups:Array<{label:string;items:Array<[string,string,string]>}>=[
     {label:"Overview",items:[["/control","⌂","Home"],["/control/members","◎","Members"],["/control/insights","▦","Insights"]]},
     {label:"Experience",items:[["/control/onboarding","◌","Onboarding"],["/control/community","◇","Community"],["/control/kudos","👏","Kudos & retention"],["/control/rewards","¤","Rewards"]]},
@@ -45,8 +46,15 @@ function dashboardSidebar(pathname:string,user?:{username?:string;avatar?:string
   const activeFor=(href:string)=>href==="/control"?pathname==="/control":pathname===href||pathname.startsWith(`${href}/`);
   const nav=groups.map(group=>`<div class="nav-group"><div class="nav-label">${group.label}</div>${group.items.map(([href,icon,label])=>`<a class="${activeFor(href)?"active":""}" href="${href}"><span class="nav-icon">${icon}</span><span>${label}</span></a>`).join("")}</div>`).join("");
   const initial=(user?.username||"A").slice(0,1).toUpperCase();
+  const guilds=user?.guilds||[];
+  const onlyGuild=guilds[0];
+  const selector=guilds.length>1?`<form class="server-switcher" method="post" action="/servers/select">
+      <label>Server</label>
+      <select name="guildId" onchange="this.form.submit()">${guilds.map(g=>`<option value="${g.id}" ${g.id===selectedId?"selected":""}>${g.name}</option>`).join("")}</select>
+    </form>`:onlyGuild?`<div class="server-switcher readonly"><label>Server</label><strong>${onlyGuild.name}</strong></div>`:"";
   return `<aside class="sidebar">
     <a class="brand" href="/control"><span class="brand-mark">E</span><span class="brand-copy"><b>EAFC.Live</b><small>Discord Control</small></span></a>
+    ${selector}
     <nav>${nav}</nav>
     <div class="sidebar-footer"><div class="admin-chip"><span class="admin-avatar">${initial}</span><span><b>${user?.username||"Administrator"}</b><small>Administrator</small></span></div><form method="post" action="/logout"><button class="icon-button" title="Log out">↪</button></form></div>
   </aside>`;
@@ -60,7 +68,7 @@ app.use((req:any,res:any,next:any)=>{
       if(err){if(callback)return callback(err);return next(err);}
       let output=html;
       if(output.includes('<aside class="sidebar">')){
-        output=output.replace(/<aside class="sidebar">[\s\S]*?<\/aside>/,dashboardSidebar(req.path,options?.user||req.session?.user));
+        output=output.replace(/<aside class="sidebar">[\s\S]*?<\/aside>/,dashboardSidebar(req.path,options?.user||req.session?.user,selectedGuildId(req)));
         if(output.includes('/style.css')&&!output.includes('/polish.css')) output=output.replace("</head>",'<link rel="stylesheet" href="/polish.css"></head>');
       }
       if(callback)return callback(null,output);
@@ -85,23 +93,9 @@ async function discordGet(pathname:string,token:string) {
   return res.json() as Promise<any>;
 }
 function requireAuth(req:any,res:any,next:any) { if(!req.session.user) return res.redirect("/login"); next(); }
-function canManageGuild(permissionString:string|undefined) {
-  try { return (BigInt(permissionString||"0") & PermissionFlagsBits.ManageGuild)===PermissionFlagsBits.ManageGuild; }
-  catch { return false; }
-}
-async function getGuildUi() {
-  const guild=client.guilds.cache.get(config.targetGuildId);
-  if(!guild) return {channels:[],roles:[]};
-  const channels=[...guild.channels.cache.values()].filter(c=>c.isTextBased()||c.type===4).map(c=>({id:c.id,name:c.name,type:c.type})).sort((a,b)=>a.name.localeCompare(b.name));
-  const botHighest=guild.members.me?.roles.highest.position ?? 0;
-  const roles=[...guild.roles.cache.values()]
-    .filter(r=>r.id!==guild.id&&!r.managed&&r.position<botHighest)
-    .map(r=>({id:r.id,name:r.name})).sort((a,b)=>b.name.localeCompare(a.name));
-  return {channels,roles};
-}
 
-async function publishRoleMenus(cfg:any) {
-  const guild=client.guilds.cache.get(config.targetGuildId);
+async function publishRoleMenus(req:any,cfg:any) {
+  const guild=selectedGuild(req);
   if(!guild) throw new Error("Bot is not connected to Discord.");
   const channelId=String(cfg?.channelId||"");
   if(!channelId) throw new Error("Choose a role selection channel first.");
@@ -164,11 +158,12 @@ app.get("/auth/discord/callback",async(req,res)=>{
     delete req.session.oauthState;
     const token=await discordToken(String(req.query.code));
     const [user,guilds]=await Promise.all([discordGet("/users/@me",token.access_token),discordGet("/users/@me/guilds",token.access_token)]);
-    const guild=(guilds as any[]).find(g=>g.id===config.targetGuildId);
-    const allowed=config.adminIds.has(user.id)||Boolean(guild?.owner)||canManageGuild(guild?.permissions);
-    if(!allowed) return res.status(403).send("You need Manage Server permission for this Discord server.");
-    req.session.user={id:user.id,username:user.username,avatar:user.avatar,permissions:guild?.permissions};
-    await audit(config.targetGuildId,user.id,"dashboard.login",{username:user.username});
+    const manageable=manageableGuildsFromDiscord(user.id,guilds as any[]);
+    if(!manageable.length) return res.status(403).send("You need Manage Server permission in a Discord server where this bot is installed.");
+    const preferred=(manageable.find(g=>g.id===req.session.selectedGuildId)||manageable.find(g=>g.id===config.targetGuildId)||manageable[0])!;
+    req.session.selectedGuildId=preferred.id;
+    req.session.user={id:user.id,username:user.username,avatar:user.avatar,permissions:preferred.permissions,guilds:manageable};
+    await audit(preferred.id,user.id,"dashboard.login",{username:user.username});
     req.session.save(err=>{
       if(err) return res.status(500).send("Unable to save dashboard session.");
       res.redirect("/control");
@@ -177,24 +172,34 @@ app.get("/auth/discord/callback",async(req,res)=>{
 });
 
 app.post("/logout",(req,res)=>req.session.destroy(()=>res.redirect("/login")));
+app.post("/servers/select",requireAuth,(req:any,res)=>{
+  const guildId=String(req.body.guildId||"");
+  const allowed=req.session.user?.guilds?.some((g:DashboardGuild)=>g.id===guildId);
+  if(allowed&&client.guilds.cache.has(guildId)) req.session.selectedGuildId=guildId;
+  res.redirect(String(req.headers.referer||"/control"));
+});
 
 app.get("/dashboard",requireAuth,(_req,res)=>res.redirect("/control"));
 
+app.use(["/modules","/social","/moderation","/trading","/tickets","/audit"],requireSelectedGuild);
+
 app.get("/modules/:key",requireAuth,async(req,res)=>{
   const def=moduleMap.get(req.params.key);if(!def) return res.status(404).send("Unknown module");
+  const gid=selectedGuildId(req);
   if(def.key==="server_branding"){
-    const row=await one<any>(`SELECT settings FROM guild_settings WHERE guild_id=$1`,[config.targetGuildId]);
+    const row=await one<any>(`SELECT settings FROM guild_settings WHERE guild_id=$1`,[gid]);
     const brand={...defaultGuildBrand(),...(row?.settings?.brand||{})};
     const current={...def.defaults,...brand};
-    const ui=await getGuildUi();
+    const ui=await guildUi(req);
     return res.render("module",{user:req.session.user,def,enabled:true,current,saved:req.query.saved==="1",publishError:req.query.error?String(req.query.error):"",...ui});
   }
-  const row=await one<any>(`SELECT enabled,config FROM feature_settings WHERE guild_id=$1 AND feature_key=$2`,[config.targetGuildId,def.key]);
-  const ui=await getGuildUi();
+  const row=await one<any>(`SELECT enabled,config FROM feature_settings WHERE guild_id=$1 AND feature_key=$2`,[gid,def.key]);
+  const ui=await guildUi(req);
   res.render("module",{user:req.session.user,def,enabled:row?.enabled??true,current:{...def.defaults,...(row?.config||{})},saved:req.query.saved==="1",publishError:req.query.error?String(req.query.error):"",...ui});
 });
 app.post("/modules/:key",requireAuth,async(req,res)=>{
   const def=moduleMap.get(req.params.key);if(!def) return res.status(404).send("Unknown module");
+  const gid=selectedGuildId(req);
   let parsed:any;try{parsed=JSON.parse(req.body.config||"{}");}catch{return res.status(400).send("Config must be valid JSON.");}
   const enabled=req.body.enabled==="on";
   if(def.key==="server_branding"){
@@ -213,17 +218,17 @@ app.post("/modules/:key",requireAuth,async(req,res)=>{
       coinsColour:String(parsed.coinsColour||"").trim()
     };
     await query(`INSERT INTO guild_settings(guild_id,settings,updated_at) VALUES($1,jsonb_build_object('brand',$2::jsonb),now())
-      ON CONFLICT(guild_id) DO UPDATE SET settings=jsonb_set(COALESCE(guild_settings.settings,'{}'::jsonb),'{brand}',$2::jsonb,true),updated_at=now()`,[config.targetGuildId,JSON.stringify(clean)]);
-    clearGuildBrandCache(config.targetGuildId);
-    await audit(config.targetGuildId,req.session.user!.id,"brand.update",{brand:clean});
+      ON CONFLICT(guild_id) DO UPDATE SET settings=jsonb_set(COALESCE(guild_settings.settings,'{}'::jsonb),'{brand}',$2::jsonb,true),updated_at=now()`,[gid,JSON.stringify(clean)]);
+    clearGuildBrandCache(gid);
+    await audit(gid,req.session.user!.id,"brand.update",{brand:clean});
     return res.redirect(`/modules/${def.key}?saved=1`);
   }
-  await query(`INSERT INTO feature_settings(guild_id,feature_key,enabled,config,updated_at) VALUES($1,$2,$3,$4::jsonb,now()) ON CONFLICT(guild_id,feature_key) DO UPDATE SET enabled=$3,config=$4::jsonb,updated_at=now()`,[config.targetGuildId,def.key,enabled,JSON.stringify(parsed)]);
-  await audit(config.targetGuildId,req.session.user!.id,"feature.update",{key:def.key,enabled,config:parsed});
+  await query(`INSERT INTO feature_settings(guild_id,feature_key,enabled,config,updated_at) VALUES($1,$2,$3,$4::jsonb,now()) ON CONFLICT(guild_id,feature_key) DO UPDATE SET enabled=$3,config=$4::jsonb,updated_at=now()`,[gid,def.key,enabled,JSON.stringify(parsed)]);
+  await audit(gid,req.session.user!.id,"feature.update",{key:def.key,enabled,config:parsed});
   if(def.key==="role_menus"&&enabled){
     try{
-      await publishRoleMenus(parsed);
-      await audit(config.targetGuildId,req.session.user!.id,"role_menu.publish",{channelId:parsed.channelId,groups:Array.isArray(parsed.groups)?parsed.groups.length:0});
+      await publishRoleMenus(req,parsed);
+      await audit(gid,req.session.user!.id,"role_menu.publish",{channelId:parsed.channelId,groups:Array.isArray(parsed.groups)?parsed.groups.length:0});
     }catch(err:any){
       console.error("Role menu publish failed",err);
       return res.redirect(`/modules/${def.key}?error=${encodeURIComponent(err?.message||"Could not publish role menu")}`);
@@ -232,15 +237,15 @@ app.post("/modules/:key",requireAuth,async(req,res)=>{
   res.redirect(`/modules/${def.key}?saved=1`);
 });
 
-app.get("/social",requireAuth,async(req,res)=>{const feeds=await query<any>(`SELECT * FROM social_feeds WHERE guild_id=$1 ORDER BY id DESC`,[config.targetGuildId]);const ui=await getGuildUi();res.render("social",{user:req.session.user,feeds,...ui,baseUrl:config.baseUrl});});
-app.post("/social",requireAuth,async(req,res)=>{const provider=String(req.body.provider||"rss");const secret=provider==="webhook"?createWebhookSecret():null;await query(`INSERT INTO social_feeds(guild_id,name,provider,source,channel_id,enabled,include_keywords,exclude_keywords,mention_role_id,secret_key) VALUES($1,$2,$3,$4,$5,true,$6,$7,$8,$9)`,[config.targetGuildId,String(req.body.name||"Feed"),provider,String(req.body.source||""),String(req.body.channelId||""),String(req.body.includeKeywords||"").split(",").map((s:string)=>s.trim()).filter(Boolean),String(req.body.excludeKeywords||"").split(",").map((s:string)=>s.trim()).filter(Boolean),req.body.mentionRoleId||null,secret]);await audit(config.targetGuildId,req.session.user!.id,"social.create",{provider,name:req.body.name});res.redirect("/social");});
-app.post("/social/:id/toggle",requireAuth,async(req,res)=>{await query(`UPDATE social_feeds SET enabled=NOT enabled,updated_at=now() WHERE id=$1 AND guild_id=$2`,[req.params.id,config.targetGuildId]);res.redirect("/social");});
-app.post("/social/:id/delete",requireAuth,async(req,res)=>{await query(`DELETE FROM social_feeds WHERE id=$1 AND guild_id=$2`,[req.params.id,config.targetGuildId]);await audit(config.targetGuildId,req.session.user!.id,"social.delete",{id:req.params.id});res.redirect("/social");});
+app.get("/social",requireAuth,async(req,res)=>{const gid=selectedGuildId(req);const feeds=await query<any>(`SELECT * FROM social_feeds WHERE guild_id=$1 ORDER BY id DESC`,[gid]);const ui=await guildUi(req);res.render("social",{user:req.session.user,feeds,...ui,baseUrl:config.baseUrl});});
+app.post("/social",requireAuth,async(req,res)=>{const gid=selectedGuildId(req);const provider=String(req.body.provider||"rss");const secret=provider==="webhook"?createWebhookSecret():null;await query(`INSERT INTO social_feeds(guild_id,name,provider,source,channel_id,enabled,include_keywords,exclude_keywords,mention_role_id,secret_key) VALUES($1,$2,$3,$4,$5,true,$6,$7,$8,$9)`,[gid,String(req.body.name||"Feed"),provider,String(req.body.source||""),String(req.body.channelId||""),String(req.body.includeKeywords||"").split(",").map((s:string)=>s.trim()).filter(Boolean),String(req.body.excludeKeywords||"").split(",").map((s:string)=>s.trim()).filter(Boolean),req.body.mentionRoleId||null,secret]);await audit(gid,req.session.user!.id,"social.create",{provider,name:req.body.name});res.redirect("/social");});
+app.post("/social/:id/toggle",requireAuth,async(req,res)=>{const gid=selectedGuildId(req);await query(`UPDATE social_feeds SET enabled=NOT enabled,updated_at=now() WHERE id=$1 AND guild_id=$2`,[req.params.id,gid]);res.redirect("/social");});
+app.post("/social/:id/delete",requireAuth,async(req,res)=>{const gid=selectedGuildId(req);await query(`DELETE FROM social_feeds WHERE id=$1 AND guild_id=$2`,[req.params.id,gid]);await audit(gid,req.session.user!.id,"social.delete",{id:req.params.id});res.redirect("/social");});
 app.post("/hooks/social/:secret",async(req,res)=>{const ok=await deliverWebhook(req.params.secret,req.body);res.status(ok?202:404).json({ok});});
 
-app.get("/moderation",requireAuth,async(req,res)=>{const warnings=await query<any>(`SELECT * FROM warnings WHERE guild_id=$1 ORDER BY created_at DESC LIMIT 100`,[config.targetGuildId]);const auditRows=await query<any>(`SELECT * FROM audit_log WHERE guild_id=$1 ORDER BY created_at DESC LIMIT 100`,[config.targetGuildId]);res.render("moderation",{user:req.session.user,warnings,auditRows});});
+app.get("/moderation",requireAuth,async(req,res)=>{const gid=selectedGuildId(req);const warnings=await query<any>(`SELECT * FROM warnings WHERE guild_id=$1 ORDER BY created_at DESC LIMIT 100`,[gid]);const auditRows=await query<any>(`SELECT * FROM audit_log WHERE guild_id=$1 ORDER BY created_at DESC LIMIT 100`,[gid]);res.render("moderation",{user:req.session.user,warnings,auditRows});});
 app.get("/trading",requireAuth,(_req,res)=>res.redirect("/control/engagement"));
-app.post("/trading/:id/status",requireAuth,async(req,res)=>{const status=String(req.body.status||"LIVE");if(!["LIVE","HIT","PROFIT","MISS","EXPIRED"].includes(status)) return res.status(400).send("Invalid status");await query(`UPDATE trade_calls SET status=$1,closed_at=CASE WHEN $1='LIVE' THEN NULL ELSE now() END WHERE id=$2 AND guild_id=$3`,[status,req.params.id,config.targetGuildId]);await audit(config.targetGuildId,req.session.user!.id,"trade.status",{id:req.params.id,status});res.redirect("/trading");});
-app.get("/tickets",requireAuth,async(req,res)=>{const tickets=await query<any>(`SELECT * FROM tickets WHERE guild_id=$1 ORDER BY created_at DESC LIMIT 100`,[config.targetGuildId]);res.render("tickets",{user:req.session.user,tickets});});
-app.post("/tickets/:id/close",requireAuth,async(req,res)=>{const ticket=await one<any>(`SELECT * FROM tickets WHERE id=$1 AND guild_id=$2`,[req.params.id,config.targetGuildId]);if(ticket?.channel_id){const ch=await client.channels.fetch(ticket.channel_id).catch(()=>null);if(ch) await (ch as any).delete(`Ticket closed from dashboard by ${req.session.user!.username}`).catch(()=>{});}await query(`UPDATE tickets SET status='CLOSED',closed_at=now() WHERE id=$1 AND guild_id=$2`,[req.params.id,config.targetGuildId]);await audit(config.targetGuildId,req.session.user!.id,"ticket.close",{id:req.params.id});res.redirect("/tickets");});
-app.get("/audit",requireAuth,async(req,res)=>{const rows=await query<any>(`SELECT * FROM audit_log WHERE guild_id=$1 ORDER BY created_at DESC LIMIT 250`,[config.targetGuildId]);res.render("audit",{user:req.session.user,rows});});
+app.post("/trading/:id/status",requireAuth,async(req,res)=>{const gid=selectedGuildId(req);const status=String(req.body.status||"LIVE");if(!["LIVE","HIT","PROFIT","MISS","EXPIRED"].includes(status)) return res.status(400).send("Invalid status");await query(`UPDATE trade_calls SET status=$1,closed_at=CASE WHEN $1='LIVE' THEN NULL ELSE now() END WHERE id=$2 AND guild_id=$3`,[status,req.params.id,gid]);await audit(gid,req.session.user!.id,"trade.status",{id:req.params.id,status});res.redirect("/trading");});
+app.get("/tickets",requireAuth,async(req,res)=>{const gid=selectedGuildId(req);const tickets=await query<any>(`SELECT * FROM tickets WHERE guild_id=$1 ORDER BY created_at DESC LIMIT 100`,[gid]);res.render("tickets",{user:req.session.user,tickets});});
+app.post("/tickets/:id/close",requireAuth,async(req,res)=>{const gid=selectedGuildId(req);const ticket=await one<any>(`SELECT * FROM tickets WHERE id=$1 AND guild_id=$2`,[req.params.id,gid]);if(ticket?.channel_id){const ch=await client.channels.fetch(ticket.channel_id).catch(()=>null);if(ch) await (ch as any).delete(`Ticket closed from dashboard by ${req.session.user!.username}`).catch(()=>{});}await query(`UPDATE tickets SET status='CLOSED',closed_at=now() WHERE id=$1 AND guild_id=$2`,[req.params.id,gid]);await audit(gid,req.session.user!.id,"ticket.close",{id:req.params.id});res.redirect("/tickets");});
+app.get("/audit",requireAuth,async(req,res)=>{const gid=selectedGuildId(req);const rows=await query<any>(`SELECT * FROM audit_log WHERE guild_id=$1 ORDER BY created_at DESC LIMIT 250`,[gid]);res.render("audit",{user:req.session.user,rows});});
