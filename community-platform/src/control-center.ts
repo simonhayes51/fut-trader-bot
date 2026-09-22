@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { client } from "./bot.js";
-import { config } from "./config.js";
+import { selectedGuildId, guildUi } from "./dashboard-context.js";
 import { audit, one, query } from "./db.js";
 import { modules } from "./modules.js";
 import { levelFromXp } from "./economy-core.js";
@@ -10,23 +10,10 @@ export const controlRouter=Router();
 const auth=(req:any,res:any,next:any)=>req.session?.user?next():res.redirect("/login");
 controlRouter.use(auth);
 
-async function guildUi(){
-  const guild=client.guilds.cache.get(config.targetGuildId);
-  if(!guild)return {guild:null,channels:[],roles:[],members:[]};
-  const fetched=await guild.members.fetch().catch(()=>guild.members.cache);
-  const botHighest=guild.members.me?.roles.highest.position??0;
-  return {
-    guild,
-    channels:[...guild.channels.cache.values()].filter(c=>c.isTextBased()||c.type===4).map(c=>({id:c.id,name:c.name,type:c.type})).sort((a,b)=>a.name.localeCompare(b.name)),
-    roles:[...guild.roles.cache.values()].filter(r=>r.id!==guild.id&&!r.managed&&r.position<botHighest).map(r=>({id:r.id,name:r.name})).sort((a,b)=>a.name.localeCompare(b.name)),
-    members:[...fetched.values()].filter(m=>!m.user.bot).map(m=>({id:m.id,name:m.displayName,username:m.user.username,joinedAt:m.joinedAt}))
-  };
-}
-
 controlRouter.get("/control",async(req:any,res)=>{
-  const gid=config.targetGuildId;
+  const gid=selectedGuildId(req);
   const [ui,metrics,recent,kudos,season,features,widgets]=await Promise.all([
-    guildUi(),
+    guildUi(req),
     one<any>(`SELECT
       (SELECT count(*) FROM member_stats WHERE guild_id=$1) tracked_members,
       (SELECT count(*) FROM member_stats WHERE guild_id=$1 AND last_message_at>now()-interval '7 days') active_7d,
@@ -53,7 +40,7 @@ controlRouter.get("/control",async(req:any,res)=>{
 });
 
 controlRouter.get("/control/members",async(req:any,res)=>{
-  const gid=config.targetGuildId,q=String(req.query.q||"").trim().toLowerCase(),ui=await guildUi();
+  const gid=selectedGuildId(req),q=String(req.query.q||"").trim().toLowerCase(),ui=await guildUi(req);
   let members=ui.members.filter(m=>!q||m.name.toLowerCase().includes(q)||m.username.toLowerCase().includes(q)).slice(0,150);
   const ids=members.map(m=>m.id);
   const [stats,economy,streaks,premium]=await Promise.all([
@@ -68,9 +55,9 @@ controlRouter.get("/control/members",async(req:any,res)=>{
 });
 
 controlRouter.get("/control/engagement",async(req:any,res)=>{
-  const gid=config.targetGuildId;
+  const gid=selectedGuildId(req);
   const [ui,settings,season,quests,store,topKudos,achievements]=await Promise.all([
-    guildUi(),
+    guildUi(req),
     query<any>(`SELECT feature_key,enabled,config FROM feature_settings WHERE guild_id=$1 AND feature_key=ANY($2::text[])`,[gid,["reputation","levels","giveaways","starboard"]]),
     one<any>(`SELECT * FROM economy_seasons WHERE guild_id=$1 AND active=true ORDER BY starts_at DESC LIMIT 1`,[gid]),
     query<any>(`SELECT * FROM quest_definitions WHERE guild_id=$1 AND active=true ORDER BY cadence,sort_order`,[gid]),
@@ -83,9 +70,9 @@ controlRouter.get("/control/engagement",async(req:any,res)=>{
 });
 
 controlRouter.get("/control/community",async(req:any,res)=>{
-  const gid=config.targetGuildId;
+  const gid=selectedGuildId(req);
   const [ui,responses,stickies,settings]=await Promise.all([
-    guildUi(),
+    guildUi(req),
     query<any>(`SELECT * FROM custom_responses WHERE guild_id=$1 ORDER BY enabled DESC,id DESC`,[gid]),
     query<any>(`SELECT * FROM sticky_messages WHERE guild_id=$1 ORDER BY enabled DESC,id DESC`,[gid]),
     query<any>(`SELECT feature_key,enabled,config FROM feature_settings WHERE guild_id=$1 AND feature_key=ANY($2::text[])`,[gid,["welcome","role_menus","suggestions","tickets","starboard"]])
@@ -97,27 +84,27 @@ controlRouter.post("/control/community/responses",async(req:any,res)=>{
   const trigger=String(req.body.trigger||"").trim(),response=String(req.body.response||"").trim(),mode=String(req.body.matchMode||"contains");
   if(!trigger||!response)return res.redirect("/control/community");
   const channels=Array.isArray(req.body.channels)?req.body.channels:req.body.channels?[req.body.channels]:[];
-  await query(`INSERT INTO custom_responses(guild_id,trigger,response,match_mode,channel_ids,cooldown_seconds) VALUES($1,$2,$3,$4,$5,$6)`,[config.targetGuildId,trigger,response,["exact","contains","starts_with"].includes(mode)?mode:"contains",channels,Math.max(5,Number(req.body.cooldownSeconds||30))]);
-  await audit(config.targetGuildId,req.session.user.id,"community.response.create",{trigger,mode});res.redirect("/control/community?saved=1");
+  await query(`INSERT INTO custom_responses(guild_id,trigger,response,match_mode,channel_ids,cooldown_seconds) VALUES($1,$2,$3,$4,$5,$6)`,[selectedGuildId(req),trigger,response,["exact","contains","starts_with"].includes(mode)?mode:"contains",channels,Math.max(5,Number(req.body.cooldownSeconds||30))]);
+  await audit(selectedGuildId(req),req.session.user.id,"community.response.create",{trigger,mode});res.redirect("/control/community?saved=1");
 });
-controlRouter.post("/control/community/responses/:id/toggle",async(req:any,res)=>{await query(`UPDATE custom_responses SET enabled=NOT enabled,updated_at=now() WHERE id=$1 AND guild_id=$2`,[req.params.id,config.targetGuildId]);res.redirect("/control/community");});
-controlRouter.post("/control/community/responses/:id/delete",async(req:any,res)=>{await query(`DELETE FROM custom_responses WHERE id=$1 AND guild_id=$2`,[req.params.id,config.targetGuildId]);res.redirect("/control/community");});
+controlRouter.post("/control/community/responses/:id/toggle",async(req:any,res)=>{await query(`UPDATE custom_responses SET enabled=NOT enabled,updated_at=now() WHERE id=$1 AND guild_id=$2`,[req.params.id,selectedGuildId(req)]);res.redirect("/control/community");});
+controlRouter.post("/control/community/responses/:id/delete",async(req:any,res)=>{await query(`DELETE FROM custom_responses WHERE id=$1 AND guild_id=$2`,[req.params.id,selectedGuildId(req)]);res.redirect("/control/community");});
 
 controlRouter.post("/control/community/stickies",async(req:any,res)=>{
   const channelId=String(req.body.channelId||""),content=String(req.body.content||"").trim();if(!channelId||!content)return res.redirect("/control/community");
   await query(`INSERT INTO sticky_messages(guild_id,channel_id,content,min_interval_seconds,enabled) VALUES($1,$2,$3,$4,true)
-    ON CONFLICT(guild_id,channel_id) DO UPDATE SET content=$3,min_interval_seconds=$4,enabled=true,updated_at=now()`,[config.targetGuildId,channelId,content,Math.max(60,Number(req.body.intervalSeconds||300))]);
-  await audit(config.targetGuildId,req.session.user.id,"community.sticky.save",{channelId});res.redirect("/control/community?saved=1");
+    ON CONFLICT(guild_id,channel_id) DO UPDATE SET content=$3,min_interval_seconds=$4,enabled=true,updated_at=now()`,[selectedGuildId(req),channelId,content,Math.max(60,Number(req.body.intervalSeconds||300))]);
+  await audit(selectedGuildId(req),req.session.user.id,"community.sticky.save",{channelId});res.redirect("/control/community?saved=1");
 });
-controlRouter.post("/control/community/stickies/:id/toggle",async(req:any,res)=>{await query(`UPDATE sticky_messages SET enabled=NOT enabled,updated_at=now() WHERE id=$1 AND guild_id=$2`,[req.params.id,config.targetGuildId]);res.redirect("/control/community");});
-controlRouter.post("/control/community/stickies/:id/delete",async(req:any,res)=>{await query(`DELETE FROM sticky_messages WHERE id=$1 AND guild_id=$2`,[req.params.id,config.targetGuildId]);res.redirect("/control/community");});
+controlRouter.post("/control/community/stickies/:id/toggle",async(req:any,res)=>{await query(`UPDATE sticky_messages SET enabled=NOT enabled,updated_at=now() WHERE id=$1 AND guild_id=$2`,[req.params.id,selectedGuildId(req)]);res.redirect("/control/community");});
+controlRouter.post("/control/community/stickies/:id/delete",async(req:any,res)=>{await query(`DELETE FROM sticky_messages WHERE id=$1 AND guild_id=$2`,[req.params.id,selectedGuildId(req)]);res.redirect("/control/community");});
 
 controlRouter.get("/control/automation",async(req:any,res)=>{
   const [ui,scheduled,feeds,giveaways]=await Promise.all([
-    guildUi(),
-    query<any>(`SELECT * FROM scheduled_messages WHERE guild_id=$1 ORDER BY enabled DESC,id DESC`,[config.targetGuildId]),
-    query<any>(`SELECT * FROM social_feeds WHERE guild_id=$1 ORDER BY enabled DESC,id DESC`,[config.targetGuildId]),
-    query<any>(`SELECT * FROM giveaways WHERE guild_id=$1 ORDER BY created_at DESC LIMIT 20`,[config.targetGuildId])
+    guildUi(req),
+    query<any>(`SELECT * FROM scheduled_messages WHERE guild_id=$1 ORDER BY enabled DESC,id DESC`,[selectedGuildId(req)]),
+    query<any>(`SELECT * FROM social_feeds WHERE guild_id=$1 ORDER BY enabled DESC,id DESC`,[selectedGuildId(req)]),
+    query<any>(`SELECT * FROM giveaways WHERE guild_id=$1 ORDER BY created_at DESC LIMIT 20`,[selectedGuildId(req)])
   ]);
   res.render("control-automation",{user:req.session.user,...ui,scheduled,feeds,giveaways});
 });
@@ -125,38 +112,38 @@ controlRouter.get("/control/automation",async(req:any,res)=>{
 controlRouter.post("/control/automation/scheduled",async(req:any,res)=>{
   const days=Array.isArray(req.body.days)?req.body.days:req.body.days?[req.body.days]:[];
   const dow=days.length?days.join(","):"*",hour=Math.max(0,Math.min(23,Number(req.body.hour||0))),minute=Math.max(0,Math.min(59,Number(req.body.minute||0)));
-  await query(`INSERT INTO scheduled_messages(guild_id,name,channel_id,cron_expression,content,enabled) VALUES($1,$2,$3,$4,$5,true)`,[config.targetGuildId,String(req.body.name||"Scheduled post"),String(req.body.channelId||""),`${minute} ${hour} * * ${dow}`,String(req.body.content||"").slice(0,2000)]);
-  await audit(config.targetGuildId,req.session.user.id,"automation.schedule.create",{name:req.body.name,channelId:req.body.channelId});res.redirect("/control/automation");
+  await query(`INSERT INTO scheduled_messages(guild_id,name,channel_id,cron_expression,content,enabled) VALUES($1,$2,$3,$4,$5,true)`,[selectedGuildId(req),String(req.body.name||"Scheduled post"),String(req.body.channelId||""),`${minute} ${hour} * * ${dow}`,String(req.body.content||"").slice(0,2000)]);
+  await audit(selectedGuildId(req),req.session.user.id,"automation.schedule.create",{name:req.body.name,channelId:req.body.channelId});res.redirect("/control/automation");
 });
-controlRouter.post("/control/automation/scheduled/:id/toggle",async(req:any,res)=>{await query(`UPDATE scheduled_messages SET enabled=NOT enabled WHERE id=$1 AND guild_id=$2`,[req.params.id,config.targetGuildId]);res.redirect("/control/automation");});
-controlRouter.post("/control/automation/scheduled/:id/delete",async(req:any,res)=>{await query(`DELETE FROM scheduled_messages WHERE id=$1 AND guild_id=$2`,[req.params.id,config.targetGuildId]);res.redirect("/control/automation");});
+controlRouter.post("/control/automation/scheduled/:id/toggle",async(req:any,res)=>{await query(`UPDATE scheduled_messages SET enabled=NOT enabled WHERE id=$1 AND guild_id=$2`,[req.params.id,selectedGuildId(req)]);res.redirect("/control/automation");});
+controlRouter.post("/control/automation/scheduled/:id/delete",async(req:any,res)=>{await query(`DELETE FROM scheduled_messages WHERE id=$1 AND guild_id=$2`,[req.params.id,selectedGuildId(req)]);res.redirect("/control/automation");});
 
 controlRouter.post("/control/automation/feeds",async(req:any,res)=>{
   const provider=String(req.body.provider||"rss"),secret=provider==="webhook"?createWebhookSecret():null;
   await query(`INSERT INTO social_feeds(guild_id,name,provider,source,channel_id,enabled,include_keywords,exclude_keywords,mention_role_id,secret_key) VALUES($1,$2,$3,$4,$5,true,$6,$7,$8,$9)`,[
-    config.targetGuildId,String(req.body.name||"Feed"),provider,String(req.body.source||""),String(req.body.channelId||""),
+    selectedGuildId(req),String(req.body.name||"Feed"),provider,String(req.body.source||""),String(req.body.channelId||""),
     String(req.body.includeKeywords||"").split(",").map((x:string)=>x.trim()).filter(Boolean),
     String(req.body.excludeKeywords||"").split(",").map((x:string)=>x.trim()).filter(Boolean),
     req.body.mentionRoleId||null,secret
   ]);
-  await audit(config.targetGuildId,req.session.user.id,"social.create",{name:req.body.name,provider});res.redirect("/control/automation");
+  await audit(selectedGuildId(req),req.session.user.id,"social.create",{name:req.body.name,provider});res.redirect("/control/automation");
 });
-controlRouter.post("/control/automation/feeds/:id/toggle",async(req:any,res)=>{await query(`UPDATE social_feeds SET enabled=NOT enabled,updated_at=now() WHERE id=$1 AND guild_id=$2`,[req.params.id,config.targetGuildId]);res.redirect("/control/automation");});
-controlRouter.post("/control/automation/feeds/:id/delete",async(req:any,res)=>{await query(`DELETE FROM social_feeds WHERE id=$1 AND guild_id=$2`,[req.params.id,config.targetGuildId]);res.redirect("/control/automation");});
+controlRouter.post("/control/automation/feeds/:id/toggle",async(req:any,res)=>{await query(`UPDATE social_feeds SET enabled=NOT enabled,updated_at=now() WHERE id=$1 AND guild_id=$2`,[req.params.id,selectedGuildId(req)]);res.redirect("/control/automation");});
+controlRouter.post("/control/automation/feeds/:id/delete",async(req:any,res)=>{await query(`DELETE FROM social_feeds WHERE id=$1 AND guild_id=$2`,[req.params.id,selectedGuildId(req)]);res.redirect("/control/automation");});
 
 controlRouter.get("/control/safety",async(req:any,res)=>{
   const [ui,warnings,reports,tickets,settings]=await Promise.all([
-    guildUi(),
-    query<any>(`SELECT * FROM warnings WHERE guild_id=$1 ORDER BY created_at DESC LIMIT 50`,[config.targetGuildId]),
-    query<any>(`SELECT * FROM scam_cases WHERE guild_id=$1 ORDER BY created_at DESC LIMIT 50`,[config.targetGuildId]),
-    query<any>(`SELECT * FROM tickets WHERE guild_id=$1 ORDER BY created_at DESC LIMIT 50`,[config.targetGuildId]),
-    query<any>(`SELECT feature_key,enabled,config FROM feature_settings WHERE guild_id=$1 AND feature_key=ANY($2::text[])`,[config.targetGuildId,["automod","mod_tools","join_security","tickets"]])
+    guildUi(req),
+    query<any>(`SELECT * FROM warnings WHERE guild_id=$1 ORDER BY created_at DESC LIMIT 50`,[selectedGuildId(req)]),
+    query<any>(`SELECT * FROM scam_cases WHERE guild_id=$1 ORDER BY created_at DESC LIMIT 50`,[selectedGuildId(req)]),
+    query<any>(`SELECT * FROM tickets WHERE guild_id=$1 ORDER BY created_at DESC LIMIT 50`,[selectedGuildId(req)]),
+    query<any>(`SELECT feature_key,enabled,config FROM feature_settings WHERE guild_id=$1 AND feature_key=ANY($2::text[])`,[selectedGuildId(req),["automod","mod_tools","join_security","tickets"]])
   ]);
   res.render("control-safety",{user:req.session.user,...ui,warnings,reports,tickets,settings:new Map<string,any>(settings.map(s=>[String(s.feature_key),s] as [string,any]))});
 });
 
 controlRouter.get("/control/settings",async(req:any,res)=>{
-  const [ui,rows]=await Promise.all([guildUi(),query<any>(`SELECT feature_key,enabled,config,updated_at FROM feature_settings WHERE guild_id=$1`,[config.targetGuildId])]);
+  const [ui,rows]=await Promise.all([guildUi(req),query<any>(`SELECT feature_key,enabled,config,updated_at FROM feature_settings WHERE guild_id=$1`,[selectedGuildId(req)])]);
   const map=new Map<string,any>(rows.map(r=>[String(r.feature_key),r] as [string,any]));
   res.render("control-settings",{user:req.session.user,...ui,modules:modules.map(m=>({...m,state:map.get(m.key)}))});
 });
