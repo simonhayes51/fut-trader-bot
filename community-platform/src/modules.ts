@@ -22,9 +22,10 @@ export type ModuleDefinition = {
 export const modules:ModuleDefinition[]=[
   {
     key:"server_branding",name:"Server branding",description:"Customise the bot name, embed colours, logo, header image and footer per Discord server.",category:"Branding",
-    defaults:{name:"EAFC.Live",url:"https://eafc.live",footerText:"EAFC.Live • FC27 Community",logoUrl:"",bannerUrl:"",primaryColour:"#22d3ee",premiumColour:"#8b5cf6",successColour:"#22c55e",warningColour:"#f59e0b",dangerColour:"#ef4444",neutralColour:"#64748b",coinsColour:"#f5b942"},
+    defaults:{name:"EAFC.Live",botNickname:"",url:"https://eafc.live",footerText:"EAFC.Live • FC27 Community",logoUrl:"",bannerUrl:"",primaryColour:"#22d3ee",premiumColour:"#8b5cf6",successColour:"#22c55e",warningColour:"#f59e0b",dangerColour:"#ef4444",neutralColour:"#64748b",coinsColour:"#f5b942"},
     fields:[
       {key:"name",label:"Server/bot brand name",type:"text",placeholder:"EAFC Legends"},
+      {key:"botNickname",label:"Bot nickname in this server",help:"Changes the bot's Discord display name for this server only. Leave blank to keep the current nickname.",type:"text",placeholder:"EAFC Legends Bot"},
       {key:"url",label:"Website URL",type:"text",placeholder:"https://example.com"},
       {key:"footerText",label:"Embed footer text",type:"text",placeholder:"EAFC Legends • FC27 Trading"},
       {key:"logoUrl",label:"Logo URL",help:"Shown as the embed thumbnail where possible.",type:"text",placeholder:"https://.../logo.png"},
