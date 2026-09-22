@@ -9,6 +9,7 @@ import { awardCurrency, getEconomyProfile, levelFromXp, recordEconomyEvent } fro
 import { brandEmbed, systemEmbed, BRAND } from "./brand.js";
 import { grantComp, listPlans } from "./billing.js";
 import { claimDaily } from "./economy.js";
+import { publishTicketPanelForGuild, ticketMenuOptions } from "./ticket-panel-publisher.js";
 
 const joinWindows=new Map<string,number[]>();
 const healthLastRun=new Map<string,number>();
@@ -138,12 +139,6 @@ async function finishOnboarding(i:any){
   await i.reply({embeds:[brandEmbed("✅ You're all set",`Platform: **${ans.platform}**\nInterests: **${(ans.interests||[]).join(", ")}**\n\nYour roles and profile have been updated.`,BRAND.colours.success)],ephemeral:true});
 }
 
-function ticketMenuOptions(types:string[]){
-  const source=types.length?types:["General","Support","Question","Other"];
-  const emojiFor=(type:string)=>type.toLowerCase().includes("support")?"🛠️":type.toLowerCase().includes("question")?"❓":type.toLowerCase().includes("report")?"🚨":type.toLowerCase().includes("appeal")?"📣":type.toLowerCase().includes("partner")?"🤝":type.toLowerCase().includes("premium")?"⭐":"💬";
-  return source.slice(0,25).map(type=>new StringSelectMenuOptionBuilder().setLabel(`${type} Ticket`.replace(/ Ticket Ticket$/," Ticket").slice(0,100)).setValue(type.slice(0,100)).setEmoji(emojiFor(type)));
-}
-
 async function createTicketChannel(client:Client,guild:any,user:any,type:string,sourceUrl?:string){
   const feature=await getFeature(guild.id,"tickets",{categoryId:"",staffRoleIds:[],types:["General","Support","Question","Other"]});
   if(!feature.enabled)throw new Error("Tickets are disabled.");
@@ -163,8 +158,7 @@ async function createTicketChannel(client:Client,guild:any,user:any,type:string,
 async function publishTicketPanel(client:Client,guildId:string,channelId:string){
   const feature=await getFeature(guildId,"tickets",{categoryId:"",staffRoleIds:[],types:["General","Support","Question","Other"]});
   const ch=await client.channels.fetch(channelId).catch(()=>null);if(!ch?.isTextBased())throw new Error("Ticket channel is not available.");
-  const menu=new StringSelectMenuBuilder().setCustomId("v5:ticket-menu").setPlaceholder("Choose your options").addOptions(...ticketMenuOptions(feature.config.types||[]));
-  return (ch as TextChannel).send({embeds:[systemEmbed("🎫 Ticket Support","If you have a request, click on the menu below.\n\n**Selection options:**\n"+(feature.config.types||["General","Support","Question","Other"]).map((x:string)=>`• ${x} Ticket`).join("\n"),BRAND.colours.primary)],components:[new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu)]});
+  return publishTicketPanelForGuild(guildId,ch,feature.config.types||[]);
 }
 
 function formatDuration(ms:number){
