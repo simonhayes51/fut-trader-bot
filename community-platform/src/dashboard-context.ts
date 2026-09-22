@@ -37,8 +37,21 @@ export function manageableGuildsFromDiscord(userId:string,guilds:any[]) {
   return allowed.sort((a,b)=>a.name.localeCompare(b.name));
 }
 
+export function dashboardGuilds(req:any) {
+  const user=req.session?.user;
+  const sessionGuilds:DashboardGuild[]=user?.guilds||[];
+  const admin=Boolean(user?.id&&config.adminIds.has(user.id));
+  if(admin) {
+    const byId=new Map<string,DashboardGuild>();
+    for(const g of sessionGuilds) if(client.guilds.cache.has(g.id)) byId.set(g.id,g);
+    for(const g of client.guilds.cache.values()) byId.set(g.id,{id:g.id,name:g.name,icon:g.icon||null,owner:false,permissions:"0"});
+    return [...byId.values()].sort((a,b)=>a.name.localeCompare(b.name));
+  }
+  return sessionGuilds.filter(g=>client.guilds.cache.has(g.id)).sort((a,b)=>a.name.localeCompare(b.name));
+}
+
 export function selectedGuildId(req:any) {
-  const guilds:DashboardGuild[]=req.session?.user?.guilds||[];
+  const guilds=dashboardGuilds(req);
   const selected=String(req.session?.selectedGuildId||"");
   if(selected&&guilds.some(g=>g.id===selected)&&client.guilds.cache.has(selected)) return selected;
   const fallback=guilds.find(g=>g.id===config.targetGuildId&&client.guilds.cache.has(g.id))||guilds.find(g=>client.guilds.cache.has(g.id));
