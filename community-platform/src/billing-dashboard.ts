@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { client } from "./bot.js";
 import { config } from "./config.js";
+import { selectedGuildId } from "./dashboard-context.js";
 import { audit, query } from "./db.js";
 import { generateReferralCode, grantComp, handleStripeWebhook, reconcileCheckoutSession, revokeEntitlement, stripe } from "./billing.js";
 
@@ -50,13 +51,13 @@ billingRouter.get("/return",(req,res)=>res.render("billing-result",{
 
 billingRouter.get("/",auth,async(req:any,res)=>{
   const [plans,subs,refs,events,stripePriceResult]=await Promise.all([
-    query<any>(`SELECT * FROM billing_plans WHERE guild_id=$1 ORDER BY sort_order,name`,[config.targetGuildId]),
-    query<any>(`SELECT s.*,p.name plan_name,p.slug FROM billing_subscriptions s LEFT JOIN billing_plans p ON p.id=s.plan_id WHERE s.guild_id=$1 ORDER BY s.updated_at DESC LIMIT 250`,[config.targetGuildId]),
-    query<any>(`SELECT * FROM referral_codes WHERE guild_id=$1 ORDER BY created_at DESC`,[config.targetGuildId]),
+    query<any>(`SELECT * FROM billing_plans WHERE guild_id=$1 ORDER BY sort_order,name`,[selectedGuildId(req)]),
+    query<any>(`SELECT s.*,p.name plan_name,p.slug FROM billing_subscriptions s LEFT JOIN billing_plans p ON p.id=s.plan_id WHERE s.guild_id=$1 ORDER BY s.updated_at DESC LIMIT 250`,[selectedGuildId(req)]),
+    query<any>(`SELECT * FROM referral_codes WHERE guild_id=$1 ORDER BY created_at DESC`,[selectedGuildId(req)]),
     query<any>(`SELECT stripe_event_id,event_type,processed_at,error,created_at FROM billing_events ORDER BY created_at DESC LIMIT 50`,[]),
     stripe ? stripe.prices.list({active:true,type:"recurring",limit:100,expand:["data.product"]}).catch(()=>null) : Promise.resolve(null)
   ]);
-  const guild=client.guilds.cache.get(config.targetGuildId);
+  const guild=client.guilds.cache.get(selectedGuildId(req));
   const roles=guild?[...guild.roles.cache.values()].filter(r=>r.id!==guild.id&&!r.managed).sort((a,b)=>b.position-a.position):[];
   let members:any[]=[];
   if(guild){
@@ -86,15 +87,15 @@ billingRouter.post("/plans",auth,async(req:any,res)=>{
   if(!slug||!name||!req.body.stripePriceId||!req.body.roleId) return res.status(400).send("Plan name, Stripe price and Discord role are required.");
   await query(`INSERT INTO billing_plans(guild_id,name,slug,description,stripe_price_id,role_id,trial_days,sort_order) VALUES($1,$2,$3,$4,$5,$6,0,$7)
     ON CONFLICT(guild_id,slug) DO UPDATE SET name=$2,description=$4,stripe_price_id=$5,role_id=$6,trial_days=0,sort_order=$7,updated_at=now()`,[
-    config.targetGuildId,name,slug,String(req.body.description||""),String(req.body.stripePriceId),String(req.body.roleId),Number(req.body.sortOrder||0)
+    selectedGuildId(req),name,slug,String(req.body.description||""),String(req.body.stripePriceId),String(req.body.roleId),Number(req.body.sortOrder||0)
   ]);
-  await audit(config.targetGuildId,req.session.user.id,"billing.plan.saved",{slug,name});
+  await audit(selectedGuildId(req),req.session.user.id,"billing.plan.saved",{slug,name});
   res.redirect("/billing");
 });
 
 billingRouter.post("/plans/:id/toggle",auth,async(req:any,res)=>{
-  await query(`UPDATE billing_plans SET active=NOT active,updated_at=now() WHERE id=$1 AND guild_id=$2`,[req.params.id,config.targetGuildId]);
-  await audit(config.targetGuildId,req.session.user.id,"billing.plan.toggle",{id:req.params.id});
+  await query(`UPDATE billing_plans SET active=NOT active,updated_at=now() WHERE id=$1 AND guild_id=$2`,[req.params.id,selectedGuildId(req)]);
+  await audit(selectedGuildId(req),req.session.user.id,"billing.plan.toggle",{id:req.params.id});
   res.redirect("/billing");
 });
 
@@ -102,12 +103,12 @@ billingRouter.post("/comp",auth,async(req:any,res)=>{
   const userId=String(req.body.discordUserId||"").trim();
   const planId=Number(req.body.planId),days=Math.max(1,Number(req.body.days||30));
   if(!/^\d{15,22}$/.test(userId)||!planId) return res.status(400).send("Choose a Discord member and plan.");
-  await grantComp(config.targetGuildId,userId,planId,days,req.session.user.id);
+  await grantComp(selectedGuildId(req),userId,planId,days,req.session.user.id);
   res.redirect("/billing");
 });
 
 billingRouter.post("/revoke",auth,async(req:any,res)=>{
-  await revokeEntitlement(config.targetGuildId,String(req.body.discordUserId),Number(req.body.planId),req.session.user.id);
+  await revokeEntitlement(selectedGuildId(req),String(req.body.discordUserId),Number(req.body.planId),req.session.user.id);
   res.redirect("/billing");
 });
 
@@ -116,14 +117,14 @@ billingRouter.post("/referrals",auth,async(req:any,res)=>{
   const owner=String(req.body.ownerDiscordUserId||"").trim()||null;
   await query(`INSERT INTO referral_codes(guild_id,owner_discord_user_id,code,reward_type,reward_value) VALUES($1,$2,$3,$4,$5)
     ON CONFLICT(guild_id,code) DO UPDATE SET owner_discord_user_id=$2,reward_type=$4,reward_value=$5,active=true`,[
-    config.targetGuildId,owner,code,String(req.body.rewardType||"none"),Number(req.body.rewardValue||0)
+    selectedGuildId(req),owner,code,String(req.body.rewardType||"none"),Number(req.body.rewardValue||0)
   ]);
-  await audit(config.targetGuildId,req.session.user.id,"billing.referral.saved",{code,owner});
+  await audit(selectedGuildId(req),req.session.user.id,"billing.referral.saved",{code,owner});
   res.redirect("/billing");
 });
 
 billingRouter.post("/referrals/:id/toggle",auth,async(_req,res)=>{
   const req:any=_req;
-  await query(`UPDATE referral_codes SET active=NOT active WHERE id=$1 AND guild_id=$2`,[req.params.id,config.targetGuildId]);
+  await query(`UPDATE referral_codes SET active=NOT active WHERE id=$1 AND guild_id=$2`,[req.params.id,selectedGuildId(req)]);
   res.redirect("/billing");
 });
