@@ -211,8 +211,10 @@ app.get("/modules/:key",requireAuth,async(req,res)=>{
     const row=await one<any>(`SELECT settings FROM guild_settings WHERE guild_id=$1`,[gid]);
     const brand={...defaultGuildBrand(),...(row?.settings?.brand||{})};
     const ui=await guildUi(req);
-    const current={...def.defaults,...brand,botNickname:row?.settings?.brand?.botNickname||ui.guild?.members.me?.nickname||""};
-    return res.render("module",{user:req.session.user,def,enabled:true,current,saved:req.query.saved==="1",publishError:req.query.error?String(req.query.error):"",...ui});
+    const savedBrand=row?.settings?.brand||{};
+    const discordIconUrl=ui.guild?.iconURL({extension:"png",size:512})||"";
+    const current={...def.defaults,...brand,logoUrl:savedBrand.logoUrl||discordIconUrl,botNickname:savedBrand.botNickname||ui.guild?.members.me?.nickname||""};
+    return res.render("module",{user:req.session.user,def,enabled:true,current,saved:req.query.saved==="1",publishError:req.query.error?String(req.query.error):"",discordIconUrl,...ui});
   }
   const row=await one<any>(`SELECT enabled,config FROM feature_settings WHERE guild_id=$1 AND feature_key=$2`,[gid,def.key]);
   const ui=await guildUi(req);
