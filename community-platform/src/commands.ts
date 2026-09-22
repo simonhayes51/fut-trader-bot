@@ -3,7 +3,7 @@ import {
   SlashCommandBuilder, TextChannel, ChannelType
 } from "discord.js";
 import { audit, getFeature, one, query } from "./db.js";
-import { brandEmbed, systemEmbed, BRAND } from "./brand.js";
+import { clearGuildBrandCache, guildEmbed, guildSystemEmbed, BRAND } from "./brand.js";
 import { recordEconomyEvent } from "./economy-core.js";
 
 export const commandData=[
@@ -33,6 +33,14 @@ export const commandData=[
       {name:"Partnership",value:"Partnership"},
       {name:"Other",value:"Other"}
     )),
+  new SlashCommandBuilder().setName("serverbrand").setDescription("Customise this server's bot branding")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addStringOption(o=>o.setName("name").setDescription("Brand name shown in embeds").setMaxLength(80))
+    .addStringOption(o=>o.setName("logo_url").setDescription("Logo URL shown as embed thumbnail").setMaxLength(500))
+    .addStringOption(o=>o.setName("banner_url").setDescription("Header/banner image URL").setMaxLength(500))
+    .addStringOption(o=>o.setName("footer").setDescription("Embed footer text").setMaxLength(120))
+    .addStringOption(o=>o.setName("primary_colour").setDescription("Primary colour, e.g. #22d3ee").setMaxLength(7))
+    .addStringOption(o=>o.setName("premium_colour").setDescription("Premium colour, e.g. #8b5cf6").setMaxLength(7)),
   new SlashCommandBuilder().setName("ping").setDescription("Check bot latency")
 ].map(c=>c.toJSON());
 
@@ -67,7 +75,7 @@ export async function handleCommand(client:Client,i:ChatInputCommandInteraction)
       await giveKudos(guildId,i.user.id,member.id,reason,Number(feature.config.dailyLimit||5));
       await recordEconomyEvent(guildId,i.user.id,"kudos_given",{sourceType:"kudos",sourceId:`${i.id}:${member.id}`,idempotencyBase:`kudos-given:${i.id}:${i.user.id}`});
       await audit(guildId,i.user.id,"reputation.kudos",{receiverId:member.id,type,note});
-      return i.reply({embeds:[brandEmbed("👏 Kudos given",`${i.user} recognised ${member} for **${type.toLowerCase()}**${note?`\n“${note}”`:""}`,BRAND.colours.success)]});
+      return i.reply({embeds:[await guildEmbed(guildId,"👏 Kudos given",`${i.user} recognised ${member} for **${type.toLowerCase()}**${note?`\n“${note}”`:""}`,BRAND.colours.success)]});
     }catch(err:any){return i.reply({content:String(err?.message||err),ephemeral:true});}
   }
 
@@ -76,7 +84,7 @@ export async function handleCommand(client:Client,i:ChatInputCommandInteraction)
     if(!feature.enabled)return i.reply({content:"Suggestions are disabled.",ephemeral:true});
     const body=i.options.getString("suggestion",true);
     const rows=await query<{id:number}>(`INSERT INTO suggestions(guild_id,user_id,body) VALUES($1,$2,$3) RETURNING id`,[guildId,i.user.id,body]);
-    const embed=brandEmbed(`💡 Suggestion #${rows[0]!.id}`,body,BRAND.colours.primary).setAuthor({name:i.user.username,iconURL:i.user.displayAvatarURL()});
+    const embed=(await guildEmbed(guildId,`💡 Suggestion #${rows[0]!.id}`,body,BRAND.colours.primary)).setAuthor({name:i.user.username,iconURL:i.user.displayAvatarURL()});
     const channel=feature.config.channelId?await client.channels.fetch(String(feature.config.channelId)).catch(()=>null):i.channel;
     if(channel?.isTextBased()){
       const msg=await (channel as TextChannel).send({embeds:[embed]});
@@ -118,7 +126,26 @@ export async function handleCommand(client:Client,i:ChatInputCommandInteraction)
       permissionOverwrites:overwrites
     });
     await query(`UPDATE tickets SET channel_id=$1 WHERE id=$2`,[channel.id,row.id]);
-    await channel.send({content:`${i.user}`,embeds:[systemEmbed(`🎫 ${type} ticket #${row.id}`,"Describe what you need help with below. A staff member will pick this up.",BRAND.colours.primary)]});
+    await channel.send({content:`${i.user}`,embeds:[await guildSystemEmbed(guildId,`🎫 ${type} ticket #${row.id}`,"Describe what you need help with below. A staff member will pick this up.",BRAND.colours.primary)]});
     return i.reply({content:`Ticket created: ${channel}`,ephemeral:true});
+  }
+
+  if(i.commandName==="serverbrand"){
+    const row=await one<any>(`SELECT settings FROM guild_settings WHERE guild_id=$1`,[guildId]);
+    const existing=row?.settings?.brand||{};
+    const next={
+      ...existing,
+      ...(i.options.getString("name")!==null?{name:i.options.getString("name")}:{}),
+      ...(i.options.getString("logo_url")!==null?{logoUrl:i.options.getString("logo_url")}:{}),
+      ...(i.options.getString("banner_url")!==null?{bannerUrl:i.options.getString("banner_url")}:{}),
+      ...(i.options.getString("footer")!==null?{footerText:i.options.getString("footer")}:{}),
+      ...(i.options.getString("primary_colour")!==null?{primaryColour:i.options.getString("primary_colour")}:{}),
+      ...(i.options.getString("premium_colour")!==null?{premiumColour:i.options.getString("premium_colour")}:{})
+    };
+    await query(`INSERT INTO guild_settings(guild_id,guild_name,settings,updated_at) VALUES($1,$2,jsonb_build_object('brand',$3::jsonb),now())
+      ON CONFLICT(guild_id) DO UPDATE SET guild_name=$2,settings=jsonb_set(COALESCE(guild_settings.settings,'{}'::jsonb),'{brand}',$3::jsonb,true),updated_at=now()`,[guildId,i.guild.name,JSON.stringify(next)]);
+    clearGuildBrandCache(guildId);
+    await audit(guildId,i.user.id,"brand.update.command",{brand:next});
+    return i.reply({embeds:[await guildEmbed(guildId,"Branding updated","Future premium, ticket and system embeds will use this server's branding.",undefined,{banner:true})],ephemeral:true});
   }
 }
