@@ -86,14 +86,19 @@ export function createWebhookSecret() { return crypto.randomBytes(24).toString("
 export async function deliverWebhook(secret:string,payload:any) {
   const feed=await one<Feed>(`SELECT * FROM social_feeds WHERE secret_key=$1 AND enabled=true AND provider='webhook'`,[secret]);
   if(!feed) return false;
+  const webhookGroup=(feed.source||feed.name||"").trim();
+  const feeds=webhookGroup
+    ? await query<Feed>(`SELECT * FROM social_feeds WHERE provider='webhook' AND enabled=true AND COALESCE(NULLIF(btrim(source),''),btrim(name))=$1 ORDER BY id`,[webhookGroup])
+    : [feed];
   const id=String(payload.id||payload.url||Date.now());
-  await post(feed,{
+  const item={
     id,
     title:String(payload.title||payload.text||"New update"),
     description:String(payload.description||payload.text||""),
     url:payload.url?String(payload.url):undefined,
     author:payload.author?String(payload.author):feed.name,
     image:payload.image?String(payload.image):undefined
-  });
+  };
+  for(const target of feeds) await post(target,item);
   return true;
 }
