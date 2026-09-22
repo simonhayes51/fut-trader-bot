@@ -210,8 +210,8 @@ app.get("/modules/:key",requireAuth,async(req,res)=>{
   if(def.key==="server_branding"){
     const row=await one<any>(`SELECT settings FROM guild_settings WHERE guild_id=$1`,[gid]);
     const brand={...defaultGuildBrand(),...(row?.settings?.brand||{})};
-    const current={...def.defaults,...brand};
     const ui=await guildUi(req);
+    const current={...def.defaults,...brand,botNickname:row?.settings?.brand?.botNickname||ui.guild?.members.me?.nickname||""};
     return res.render("module",{user:req.session.user,def,enabled:true,current,saved:req.query.saved==="1",publishError:req.query.error?String(req.query.error):"",...ui});
   }
   const row=await one<any>(`SELECT enabled,config FROM feature_settings WHERE guild_id=$1 AND feature_key=$2`,[gid,def.key]);
@@ -226,6 +226,7 @@ app.post("/modules/:key",requireAuth,async(req,res)=>{
   if(def.key==="server_branding"){
     const clean={
       name:String(parsed.name||"").trim(),
+      botNickname:String(parsed.botNickname||"").trim().slice(0,32),
       url:String(parsed.url||"").trim(),
       footerText:String(parsed.footerText||"").trim(),
       logoUrl:String(parsed.logoUrl||"").trim(),
@@ -242,6 +243,15 @@ app.post("/modules/:key",requireAuth,async(req,res)=>{
       ON CONFLICT(guild_id) DO UPDATE SET settings=jsonb_set(COALESCE(guild_settings.settings,'{}'::jsonb),'{brand}',$2::jsonb,true),updated_at=now()`,[gid,JSON.stringify(clean)]);
     clearGuildBrandCache(gid);
     await audit(gid,req.session.user!.id,"brand.update",{brand:clean});
+    if(clean.botNickname){
+      const guild=selectedGuild(req);
+      try{
+        await guild?.members.me?.setNickname(clean.botNickname,`Branding updated by ${req.session.user!.username}`);
+      }catch(err:any){
+        console.error("Bot nickname update failed",err);
+        return res.redirect(`/modules/${def.key}?saved=1&error=${encodeURIComponent("Saved branding, but I could not change the bot nickname. Check the bot role has permission and sits high enough.")}`);
+      }
+    }
     return res.redirect(`/modules/${def.key}?saved=1`);
   }
   await query(`INSERT INTO feature_settings(guild_id,feature_key,enabled,config,updated_at) VALUES($1,$2,$3,$4::jsonb,now()) ON CONFLICT(guild_id,feature_key) DO UPDATE SET enabled=$3,config=$4::jsonb,updated_at=now()`,[gid,def.key,enabled,JSON.stringify(parsed)]);
