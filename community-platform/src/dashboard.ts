@@ -11,10 +11,10 @@ import { createWebhookSecret, deliverWebhook } from "./social.js";
 import { billingRouter } from "./billing-dashboard.js";
 import { PostgresSessionStore } from "./session-store.js";
 import { clearGuildBrandCache, defaultGuildBrand } from "./brand.js";
-import { DashboardGuild, dashboardGuilds, guildUi, manageableGuildsFromDiscord, requireSelectedGuild, selectedGuild, selectedGuildId } from "./dashboard-context.js";
+import { DashboardGuild, dashboardGuilds, guildUi, manageableGuildsFromDiscord, refreshDashboardGuilds, requireSelectedGuild, selectedGuild, selectedGuildId } from "./dashboard-context.js";
 
 declare module "express-session" {
-  interface SessionData { user?: { id:string; username:string; avatar?:string; permissions?:string; guilds?:DashboardGuild[] }; oauthState?: string; selectedGuildId?: string; }
+  interface SessionData { user?: { id:string; username:string; avatar?:string; permissions?:string; guilds?:DashboardGuild[] }; oauthState?: string; selectedGuildId?: string; guildRefreshAt?: number; }
 }
 
 const here=path.dirname(fileURLToPath(import.meta.url));
@@ -34,6 +34,12 @@ app.use(session({
   proxy:true,
   cookie:{httpOnly:true,sameSite:"lax",secure:process.env.NODE_ENV==="production",maxAge:7*24*60*60*1000}
 }));
+
+app.use(async(req:any,_res:any,next:any)=>{
+  try { if(req.session?.user) await refreshDashboardGuilds(req); }
+  catch(err) { console.error("Dashboard guild refresh failed",err); }
+  next();
+});
 
 function dashboardSidebar(pathname:string,user?:{username?:string;avatar?:string;guilds?:DashboardGuild[]},selectedId?:string) {
   const groups:Array<{label:string;items:Array<[string,string,string]>}>=[
@@ -164,6 +170,7 @@ app.get("/auth/discord/callback",async(req,res)=>{
     const preferred=(manageable.find(g=>g.id===req.session.selectedGuildId)||manageable.find(g=>g.id===config.targetGuildId)||manageable[0])!;
     req.session.selectedGuildId=preferred.id;
     req.session.user={id:user.id,username:user.username,avatar:user.avatar,permissions:preferred.permissions,guilds:manageable};
+    await refreshDashboardGuilds(req,true);
     await audit(preferred.id,user.id,"dashboard.login",{username:user.username});
     req.session.save(err=>{
       if(err) return res.status(500).send("Unable to save dashboard session.");
