@@ -47,9 +47,9 @@ function dashboardSidebar(pathname:string,user?:{username?:string;avatar?:string
     {label:"Experience",items:[["/control/onboarding","◌","Onboarding"],["/control/community","◇","Community"],["/control/kudos","👏","Kudos & retention"],["/control/rewards","¤","Rewards"]]},
     {label:"Content & growth",items:[["/control/studio","✦","Message studio"],["/control/automation","↻","Automation"],["/control/growth","↗","Growth & partners"],["/discord","♢","Discord tools"]]},
     {label:"Operations",items:[["/control/security","◉","Security & health"],["/control/safety","⊘","Safety & support"],["/billing","◆","Premium"]]},
-    {label:"Configuration",items:[["/control/settings","⚙","Features"],["/commands","⌘","Command access"],["/audit","≡","Audit log"],["/invite","+","Add bot"]]}
+    {label:"Configuration",items:[["/branding","◈","Branding"],["/control/settings","⚙","Features"],["/commands","⌘","Command access"],["/audit","≡","Audit log"],["/invite","+","Add bot"]]}
   ];
-  const activeFor=(href:string)=>href==="/control"?pathname==="/control":pathname===href||pathname.startsWith(`${href}/`);
+  const activeFor=(href:string)=>href==="/control"?pathname==="/control":href==="/branding"?pathname==="/branding"||pathname==="/modules/server_branding":pathname===href||pathname.startsWith(`${href}/`);
   const nav=groups.map(group=>`<div class="nav-group"><div class="nav-label">${group.label}</div>${group.items.map(([href,icon,label])=>`<a class="${activeFor(href)?"active":""}" href="${href}"><span class="nav-icon">${icon}</span><span>${label}</span></a>`).join("")}</div>`).join("");
   const initial=(user?.username||"A").slice(0,1).toUpperCase();
   const guilds=user?.guilds||[];
@@ -200,6 +200,7 @@ app.post("/servers/select",requireAuth,(req:any,res)=>{
 });
 
 app.get("/dashboard",requireAuth,(_req,res)=>res.redirect("/control"));
+app.get("/branding",requireSelectedGuild,(_req,res)=>res.redirect("/modules/server_branding"));
 
 app.use(["/modules","/social","/moderation","/trading","/tickets","/audit"],requireSelectedGuild);
 
