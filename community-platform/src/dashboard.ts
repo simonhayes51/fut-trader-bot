@@ -13,6 +13,7 @@ import { PostgresSessionStore } from "./session-store.js";
 import { clearGuildBrandCache, defaultGuildBrand } from "./brand.js";
 import { DashboardGuild, dashboardGuilds, guildUi, manageableGuildsFromDiscord, refreshDashboardGuilds, requireSelectedGuild, selectedGuild, selectedGuildId } from "./dashboard-context.js";
 import { publishRoleMenusForGuild } from "./role-menu-publisher.js";
+import { publishTicketPanelForGuild } from "./ticket-panel-publisher.js";
 
 declare module "express-session" {
   interface SessionData { user?: { id:string; username:string; avatar?:string; permissions?:string; guilds?:DashboardGuild[] }; oauthState?: string; selectedGuildId?: string; guildRefreshAt?: number; }
@@ -121,6 +122,24 @@ async function publishRoleMenus(req:any,cfg:any) {
   if(!groups.length) throw new Error("Add at least one role group before publishing.");
   const posted=await publishRoleMenusForGuild(guild,channel,groups);
   if(!posted) throw new Error("No assignable roles are selected. Move the bot role above the member roles you want it to manage.");
+}
+
+async function publishTicketPanel(req:any,cfg:any) {
+  const guild=selectedGuild(req);
+  if(!guild) throw new Error("Bot is not connected to Discord.");
+  const channelId=String(cfg?.panelChannelId||"");
+  if(!channelId) throw new Error("Choose a ticket panel channel first.");
+  const channel=await client.channels.fetch(channelId).catch(()=>null);
+  if(!channel?.isTextBased()) throw new Error("The selected ticket panel channel is not available to the bot.");
+  const me=guild.members.me;
+  if(!me) throw new Error("Bot member is not available in the server.");
+  const permissions=(channel as any).permissionsFor?.(me);
+  if(permissions && (!permissions.has(PermissionFlagsBits.ViewChannel)||!permissions.has(PermissionFlagsBits.SendMessages))) {
+    throw new Error("The bot needs View Channel and Send Messages permission in the selected ticket panel channel.");
+  }
+  if(!cfg?.categoryId) throw new Error("Choose a ticket category before publishing.");
+  if(!Array.isArray(cfg?.staffRoleIds)||!cfg.staffRoleIds.length) throw new Error("Choose at least one ticket staff role before publishing.");
+  return publishTicketPanelForGuild(guild.id,channel,Array.isArray(cfg?.types)?cfg.types:[]);
 }
 
 app.get("/",(req,res)=>res.redirect(req.session.user?"/control":"/login"));
@@ -254,6 +273,15 @@ app.post("/modules/:key",requireAuth,async(req,res)=>{
     }catch(err:any){
       console.error("Role menu publish failed",err);
       return res.redirect(`/modules/${def.key}?error=${encodeURIComponent(err?.message||"Could not publish role menu")}`);
+    }
+  }
+  if(def.key==="tickets"&&enabled){
+    try{
+      const msg=await publishTicketPanel(req,parsed);
+      await audit(gid,req.session.user!.id,"ticket_panel.publish",{channelId:parsed.panelChannelId,messageId:msg.id});
+    }catch(err:any){
+      console.error("Ticket panel publish failed",err);
+      return res.redirect(`/modules/${def.key}?error=${encodeURIComponent(err?.message||"Could not publish ticket panel")}`);
     }
   }
   res.redirect(`/modules/${def.key}?saved=1`);
