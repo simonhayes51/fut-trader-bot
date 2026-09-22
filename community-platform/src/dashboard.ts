@@ -10,6 +10,7 @@ import { moduleMap, modules } from "./modules.js";
 import { createWebhookSecret, deliverWebhook } from "./social.js";
 import { billingRouter } from "./billing-dashboard.js";
 import { PostgresSessionStore } from "./session-store.js";
+import { clearGuildBrandCache, defaultGuildBrand } from "./brand.js";
 
 declare module "express-session" {
   interface SessionData { user?: { id:string; username:string; avatar?:string; permissions?:string }; oauthState?: string; }
@@ -181,6 +182,13 @@ app.get("/dashboard",requireAuth,(_req,res)=>res.redirect("/control"));
 
 app.get("/modules/:key",requireAuth,async(req,res)=>{
   const def=moduleMap.get(req.params.key);if(!def) return res.status(404).send("Unknown module");
+  if(def.key==="server_branding"){
+    const row=await one<any>(`SELECT settings FROM guild_settings WHERE guild_id=$1`,[config.targetGuildId]);
+    const brand={...defaultGuildBrand(),...(row?.settings?.brand||{})};
+    const current={...def.defaults,...brand};
+    const ui=await getGuildUi();
+    return res.render("module",{user:req.session.user,def,enabled:true,current,saved:req.query.saved==="1",publishError:req.query.error?String(req.query.error):"",...ui});
+  }
   const row=await one<any>(`SELECT enabled,config FROM feature_settings WHERE guild_id=$1 AND feature_key=$2`,[config.targetGuildId,def.key]);
   const ui=await getGuildUi();
   res.render("module",{user:req.session.user,def,enabled:row?.enabled??true,current:{...def.defaults,...(row?.config||{})},saved:req.query.saved==="1",publishError:req.query.error?String(req.query.error):"",...ui});
@@ -189,6 +197,27 @@ app.post("/modules/:key",requireAuth,async(req,res)=>{
   const def=moduleMap.get(req.params.key);if(!def) return res.status(404).send("Unknown module");
   let parsed:any;try{parsed=JSON.parse(req.body.config||"{}");}catch{return res.status(400).send("Config must be valid JSON.");}
   const enabled=req.body.enabled==="on";
+  if(def.key==="server_branding"){
+    const clean={
+      name:String(parsed.name||"").trim(),
+      url:String(parsed.url||"").trim(),
+      footerText:String(parsed.footerText||"").trim(),
+      logoUrl:String(parsed.logoUrl||"").trim(),
+      bannerUrl:String(parsed.bannerUrl||"").trim(),
+      primaryColour:String(parsed.primaryColour||"").trim(),
+      premiumColour:String(parsed.premiumColour||"").trim(),
+      successColour:String(parsed.successColour||"").trim(),
+      warningColour:String(parsed.warningColour||"").trim(),
+      dangerColour:String(parsed.dangerColour||"").trim(),
+      neutralColour:String(parsed.neutralColour||"").trim(),
+      coinsColour:String(parsed.coinsColour||"").trim()
+    };
+    await query(`INSERT INTO guild_settings(guild_id,settings,updated_at) VALUES($1,jsonb_build_object('brand',$2::jsonb),now())
+      ON CONFLICT(guild_id) DO UPDATE SET settings=jsonb_set(COALESCE(guild_settings.settings,'{}'::jsonb),'{brand}',$2::jsonb,true),updated_at=now()`,[config.targetGuildId,JSON.stringify(clean)]);
+    clearGuildBrandCache(config.targetGuildId);
+    await audit(config.targetGuildId,req.session.user!.id,"brand.update",{brand:clean});
+    return res.redirect(`/modules/${def.key}?saved=1`);
+  }
   await query(`INSERT INTO feature_settings(guild_id,feature_key,enabled,config,updated_at) VALUES($1,$2,$3,$4::jsonb,now()) ON CONFLICT(guild_id,feature_key) DO UPDATE SET enabled=$3,config=$4::jsonb,updated_at=now()`,[config.targetGuildId,def.key,enabled,JSON.stringify(parsed)]);
   await audit(config.targetGuildId,req.session.user!.id,"feature.update",{key:def.key,enabled,config:parsed});
   if(def.key==="role_menus"&&enabled){
