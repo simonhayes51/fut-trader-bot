@@ -12,6 +12,7 @@ export const config = {
   sessionSecret: required("SESSION_SECRET"),
   port: Number(process.env.PORT || 3000),
   baseUrl: stripTrailingSlash(process.env.BASE_URL || "http://localhost:3000"),
+  botInvitePermissions: process.env.DISCORD_BOT_INVITE_PERMISSIONS || "8",
   adminIds: new Set((process.env.DASHBOARD_ADMIN_IDS || "").split(",").map(v => v.trim()).filter(Boolean)),
   xBearerToken: process.env.X_BEARER_TOKEN || "",
   socialPollSeconds: Math.max(60, Number(process.env.SOCIAL_POLL_SECONDS || 120)),
