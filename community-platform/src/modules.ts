@@ -45,7 +45,7 @@ export const modules:ModuleDefinition[]=[
     fields:[
       {key:"channelId",label:"Welcome channel",help:"Where public welcome messages are posted.",type:"channel"},
       {key:"autoRoleId",label:"New member role",help:"Optional role automatically assigned when somebody joins.",type:"role"},
-      {key:"message",label:"Welcome message",help:"Use {user} and {server} as placeholders.",type:"textarea"},
+      {key:"message",label:"Welcome message",help:"Use {user}, {server}, {inviter}, {invites} and {invite_code} as placeholders.",type:"textarea"},
       {key:"dmWelcome",label:"Send a welcome DM",help:"Also send the welcome message privately.",type:"toggle"}
     ]
   },
