@@ -2,7 +2,7 @@ import express from "express";
 import session from "express-session";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, PermissionFlagsBits, TextChannel } from "discord.js";
+import { PermissionFlagsBits } from "discord.js";
 import { client } from "./bot.js";
 import { config } from "./config.js";
 import { audit, one, query } from "./db.js";
@@ -12,6 +12,7 @@ import { billingRouter } from "./billing-dashboard.js";
 import { PostgresSessionStore } from "./session-store.js";
 import { clearGuildBrandCache, defaultGuildBrand } from "./brand.js";
 import { DashboardGuild, dashboardGuilds, guildUi, manageableGuildsFromDiscord, refreshDashboardGuilds, requireSelectedGuild, selectedGuild, selectedGuildId } from "./dashboard-context.js";
+import { publishRoleMenusForGuild } from "./role-menu-publisher.js";
 
 declare module "express-session" {
   interface SessionData { user?: { id:string; username:string; avatar?:string; permissions?:string; guilds?:DashboardGuild[] }; oauthState?: string; selectedGuildId?: string; guildRefreshAt?: number; }
@@ -118,20 +119,8 @@ async function publishRoleMenus(req:any,cfg:any) {
   }
   const groups=Array.isArray(cfg?.groups)?cfg.groups:[];
   if(!groups.length) throw new Error("Add at least one role group before publishing.");
-  for(const group of groups){
-    const buttons=(Array.isArray(group.roleIds)?group.roleIds:[]).map((id:string)=>{
-      const role=guild.roles.cache.get(id);
-      if(!role||role.managed||role.position>=me.roles.highest.position) return null;
-      return new ButtonBuilder().setCustomId(`role:${id}`).setLabel(role.name.slice(0,80)).setStyle(ButtonStyle.Secondary);
-    }).filter((b):b is ButtonBuilder=>Boolean(b));
-    if(!buttons.length) continue;
-    const rows:ActionRowBuilder<ButtonBuilder>[]=[];
-    for(let i=0;i<buttons.length;i+=5) rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(...buttons.slice(i,i+5)));
-    await (channel as TextChannel).send({
-      embeds:[new EmbedBuilder().setTitle(String(group.name||"Choose roles").slice(0,256)).setDescription(Number(group.maxSelect||1)===1?"Choose one role below. Click again to remove it.":"Choose any roles that apply to you. Click again to remove a role.")],
-      components:rows.slice(0,5)
-    });
-  }
+  const posted=await publishRoleMenusForGuild(guild,channel,groups);
+  if(!posted) throw new Error("No assignable roles are selected. Move the bot role above the member roles you want it to manage.");
 }
 
 app.get("/",(req,res)=>res.redirect(req.session.user?"/control":"/login"));
