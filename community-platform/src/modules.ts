@@ -88,8 +88,9 @@ export const modules:ModuleDefinition[]=[
   },
   {
     key:"tickets",name:"Tickets & reports",description:"Private support, reports, appeals and partnership requests.",category:"Community",
-    defaults:{categoryId:"",staffRoleIds:[],logChannelId:"",types:["Support","Report","Appeal","Partnership","Other"]},
+    defaults:{panelChannelId:"",categoryId:"",staffRoleIds:[],logChannelId:"",types:["Support","Report","Appeal","Partnership","Other"]},
     fields:[
+      {key:"panelChannelId",label:"Ticket panel channel",help:"Where members will choose a ticket reason from a dropdown.",type:"channel"},
       {key:"categoryId",label:"Ticket category",type:"category"},
       {key:"staffRoleIds",label:"Ticket staff",type:"roles"},
       {key:"logChannelId",label:"Ticket log channel",type:"channel"},
