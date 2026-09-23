@@ -7,7 +7,7 @@ import { client } from "./bot.js";
 import { config } from "./config.js";
 import { audit, one, query } from "./db.js";
 import { moduleMap, modules } from "./modules.js";
-import { createWebhookSecret, deliverWebhook } from "./social.js";
+import { createWebhookSecret, deliverWebhook, deliverWebhookGroup } from "./social.js";
 import { billingRouter } from "./billing-dashboard.js";
 import { PostgresSessionStore } from "./session-store.js";
 import { clearGuildBrandCache, defaultGuildBrand } from "./brand.js";
@@ -288,10 +288,11 @@ app.post("/modules/:key",requireAuth,async(req,res)=>{
 });
 
 app.get("/social",requireAuth,async(req,res)=>{const gid=selectedGuildId(req);const feeds=await query<any>(`SELECT * FROM social_feeds WHERE guild_id=$1 ORDER BY id DESC`,[gid]);const ui=await guildUi(req);res.render("social",{user:req.session.user,feeds,...ui,baseUrl:config.baseUrl});});
-app.post("/social",requireAuth,async(req,res)=>{const gid=selectedGuildId(req);const provider=String(req.body.provider||"rss");const secret=provider==="webhook"?createWebhookSecret():null;await query(`INSERT INTO social_feeds(guild_id,name,provider,source,channel_id,enabled,include_keywords,exclude_keywords,mention_role_id,secret_key) VALUES($1,$2,$3,$4,$5,true,$6,$7,$8,$9)`,[gid,String(req.body.name||"Feed"),provider,String(req.body.source||""),String(req.body.channelId||""),String(req.body.includeKeywords||"").split(",").map((s:string)=>s.trim()).filter(Boolean),String(req.body.excludeKeywords||"").split(",").map((s:string)=>s.trim()).filter(Boolean),req.body.mentionRoleId||null,secret]);await audit(gid,req.session.user!.id,"social.create",{provider,name:req.body.name});res.redirect("/social");});
+app.post("/social",requireAuth,async(req,res)=>{const gid=selectedGuildId(req);const selectedProvider=String(req.body.provider||"rss");const provider=selectedProvider==="eafc_leaks"?"webhook":selectedProvider;const source=selectedProvider==="eafc_leaks"?"EAFC.Live leaks":String(req.body.source||"");const name=selectedProvider==="eafc_leaks"?"EAFC.Live leak feed":String(req.body.name||"Feed");const secret=provider==="webhook"?createWebhookSecret():null;await query(`INSERT INTO social_feeds(guild_id,name,provider,source,channel_id,enabled,include_keywords,exclude_keywords,mention_role_id,secret_key) VALUES($1,$2,$3,$4,$5,true,$6,$7,$8,$9)`,[gid,name,provider,source,String(req.body.channelId||""),String(req.body.includeKeywords||"").split(",").map((s:string)=>s.trim()).filter(Boolean),String(req.body.excludeKeywords||"").split(",").map((s:string)=>s.trim()).filter(Boolean),req.body.mentionRoleId||null,secret]);await audit(gid,req.session.user!.id,"social.create",{provider:selectedProvider,name});res.redirect("/social");});
 app.post("/social/:id/toggle",requireAuth,async(req,res)=>{const gid=selectedGuildId(req);await query(`UPDATE social_feeds SET enabled=NOT enabled,updated_at=now() WHERE id=$1 AND guild_id=$2`,[req.params.id,gid]);res.redirect("/social");});
 app.post("/social/:id/delete",requireAuth,async(req,res)=>{const gid=selectedGuildId(req);await query(`DELETE FROM social_feeds WHERE id=$1 AND guild_id=$2`,[req.params.id,gid]);await audit(gid,req.session.user!.id,"social.delete",{id:req.params.id});res.redirect("/social");});
 app.post("/hooks/social/:secret",async(req,res)=>{const ok=await deliverWebhook(req.params.secret,req.body);res.status(ok?202:404).json({ok});});
+app.post("/hooks/social/eafc-leaks/:secret",async(req,res)=>{if(!config.socialWebhookSecret||req.params.secret!==config.socialWebhookSecret) return res.status(404).json({ok:false});const ok=await deliverWebhookGroup("EAFC.Live leaks",req.body);res.status(ok?202:404).json({ok});});
 
 app.get("/moderation",requireAuth,async(req,res)=>{const gid=selectedGuildId(req);const warnings=await query<any>(`SELECT * FROM warnings WHERE guild_id=$1 ORDER BY created_at DESC LIMIT 100`,[gid]);const auditRows=await query<any>(`SELECT * FROM audit_log WHERE guild_id=$1 ORDER BY created_at DESC LIMIT 100`,[gid]);res.render("moderation",{user:req.session.user,warnings,auditRows});});
 app.get("/trading",requireAuth,(_req,res)=>res.redirect("/control/engagement"));
