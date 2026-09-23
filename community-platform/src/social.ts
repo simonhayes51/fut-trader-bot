@@ -83,6 +83,24 @@ export async function pollSocialFeeds() {
 
 export function createWebhookSecret() { return crypto.randomBytes(24).toString("hex"); }
 
+function webhookItem(feed:Feed,payload:any) {
+  return {
+    id:String(payload.id||payload.url||Date.now()),
+    title:String(payload.title||payload.text||"New update"),
+    description:String(payload.description||payload.text||""),
+    url:payload.url?String(payload.url):undefined,
+    author:payload.author?String(payload.author):feed.name,
+    image:payload.image?String(payload.image):undefined
+  };
+}
+
+export async function deliverWebhookGroup(group:string,payload:any) {
+  const feeds=await query<Feed>(`SELECT * FROM social_feeds WHERE provider='webhook' AND enabled=true AND COALESCE(NULLIF(btrim(source),''),btrim(name))=$1 ORDER BY id`,[group.trim()]);
+  if(!feeds.length) return false;
+  for(const feed of feeds) await post(feed,webhookItem(feed,payload));
+  return true;
+}
+
 export async function deliverWebhook(secret:string,payload:any) {
   const feed=await one<Feed>(`SELECT * FROM social_feeds WHERE secret_key=$1 AND enabled=true AND provider='webhook'`,[secret]);
   if(!feed) return false;
@@ -90,15 +108,6 @@ export async function deliverWebhook(secret:string,payload:any) {
   const feeds=webhookGroup
     ? await query<Feed>(`SELECT * FROM social_feeds WHERE provider='webhook' AND enabled=true AND COALESCE(NULLIF(btrim(source),''),btrim(name))=$1 ORDER BY id`,[webhookGroup])
     : [feed];
-  const id=String(payload.id||payload.url||Date.now());
-  const item={
-    id,
-    title:String(payload.title||payload.text||"New update"),
-    description:String(payload.description||payload.text||""),
-    url:payload.url?String(payload.url):undefined,
-    author:payload.author?String(payload.author):feed.name,
-    image:payload.image?String(payload.image):undefined
-  };
-  for(const target of feeds) await post(target,item);
+  for(const target of feeds) await post(target,webhookItem(target,payload));
   return true;
 }
