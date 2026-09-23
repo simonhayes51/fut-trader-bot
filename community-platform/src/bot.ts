@@ -26,7 +26,7 @@ const commandFeatureMap:Record<string,string>={
   shop:"rewards",redeem:"rewards",giveaway:"giveaways",suggest:"suggestions",ticket:"tickets",ticketstaff:"tickets",verify:"onboarding",birthday:"birthdays",afk:"afk",
   referral:"premium_billing",premium:"premium_billing",subscription:"premium_billing",giftpremium:"premium_billing",
   warn:"mod_tools",history:"mod_tools",note:"mod_tools",timeout:"mod_tools",kick:"mod_tools",ban:"mod_tools",purge:"mod_tools",slowmode:"mod_tools",lock:"mod_tools",unlock:"mod_tools",nick:"mod_tools",role:"mod_tools",
-  event:"scheduled_messages",achievements:"levels",system:"system_panels",serverbrand:"server_branding"
+  event:"scheduled_messages",announce:"scheduled_messages",post:"scheduled_messages",achievements:"levels",system:"system_panels",serverbrand:"server_branding"
 };
 
 export const client = new Client({
