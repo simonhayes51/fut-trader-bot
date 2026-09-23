@@ -41,6 +41,14 @@ export const commandData=[
     .addStringOption(o=>o.setName("footer").setDescription("Embed footer text").setMaxLength(120))
     .addStringOption(o=>o.setName("primary_colour").setDescription("Primary colour, e.g. #22d3ee").setMaxLength(7))
     .addStringOption(o=>o.setName("premium_colour").setDescription("Premium colour, e.g. #8b5cf6").setMaxLength(7)),
+  new SlashCommandBuilder().setName("announce").setDescription("Post an announcement as the bot in this channel")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
+    .addStringOption(o=>o.setName("message").setDescription("Announcement text").setRequired(true).setMaxLength(2000))
+    .addRoleOption(o=>o.setName("tag").setDescription("Optional role to tag")),
+  new SlashCommandBuilder().setName("post").setDescription("Post a message as the bot in this channel")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
+    .addStringOption(o=>o.setName("message").setDescription("Message text").setRequired(true).setMaxLength(2000))
+    .addRoleOption(o=>o.setName("tag").setDescription("Optional role to tag")),
   new SlashCommandBuilder().setName("ping").setDescription("Check bot latency")
 ].map(c=>c.toJSON());
 
@@ -63,6 +71,20 @@ export async function handleCommand(client:Client,i:ChatInputCommandInteraction)
   const guildId=i.guildId;
 
   if(i.commandName==="ping")return i.reply({content:`🏓 ${client.ws.ping}ms`,ephemeral:true});
+
+  if(i.commandName==="announce"||i.commandName==="post"){
+    if(!i.channel?.isTextBased())return i.reply({content:"Use this in the channel you want the bot to post in.",ephemeral:true});
+    const message=i.options.getString("message",true).trim();
+    if(!message)return i.reply({content:"Add a message to post.",ephemeral:true});
+    const tag=i.options.getRole("tag");
+    const content=tag?`${tag}\n${message}`:message;
+    const sent=await (i.channel as TextChannel).send({
+      content,
+      allowedMentions:{parse:[],roles:tag?[tag.id]:[],users:[]}
+    });
+    await audit(guildId,i.user.id,"announcement.post",{command:i.commandName,channelId:i.channelId,messageId:sent.id,tagRoleId:tag?.id||null});
+    return i.reply({content:`Posted in ${i.channel}.`,ephemeral:true});
+  }
 
   if(i.commandName==="kudos"){
     const feature=await getFeature(guildId,"reputation",{dailyLimit:5});
