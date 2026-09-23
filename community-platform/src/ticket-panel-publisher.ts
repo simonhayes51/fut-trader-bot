@@ -25,10 +25,10 @@ export function ticketMenuOptions(types: string[]) {
     .setEmoji(emojiFor(type)));
 }
 
-export async function publishTicketPanelForGuild(guildId: string, channel: any, types: string[]) {
+export async function publishTicketPanelForGuild(guildId: string, channel: any, types: string[], panel?: { id?: string; name?: string }) {
   const source = types.length ? types : ["General", "Support", "Question", "Other"];
   const menu = new StringSelectMenuBuilder()
-    .setCustomId("v5:ticket-menu")
+    .setCustomId(panel?.id ? `v5:ticket-menu:${String(panel.id).slice(0, 70)}` : "v5:ticket-menu")
     .setPlaceholder("Choose your option")
     .addOptions(...ticketMenuOptions(types));
 
@@ -49,7 +49,7 @@ export async function publishTicketPanelForGuild(guildId: string, channel: any, 
   return (channel as TextChannel).send({
     embeds: [await guildSystemEmbed(
       guildId,
-      "🎟️ Ticket Support",
+      `🎟️ ${panel?.name || "Ticket Support"}`,
       `If you have a request, click the menu below.\n\n**📍 Selection options:**\n${reasons}`,
       BRAND.colours.primary
     )],
