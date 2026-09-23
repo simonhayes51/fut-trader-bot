@@ -5,7 +5,7 @@ import {
   StringSelectMenuOptionBuilder,
   TextChannel
 } from "discord.js";
-import { BRAND, guildEmbed } from "./brand.js";
+import { BRAND, guildSystemEmbed } from "./brand.js";
 
 function roleEmoji(name: string) {
   const n = name.toLowerCase();
@@ -55,11 +55,23 @@ export async function publishRoleMenusForGuild(guild: any, channel: any, groups:
       .addOptions(...options.slice(0, 25));
 
     const description = maxSelect === 1
-      ? "Choose one role from the dropdown below."
-      : "Choose any roles that apply to you from the dropdown below.";
+      ? "Choose one role from the menu below."
+      : "Choose any roles that apply to you from the menu below.";
+    const optionList = options
+      .map((option: any) => {
+        const data = option.toJSON();
+        const emoji = data.emoji?.name ? `${data.emoji.name} ` : "";
+        return `${emoji}${data.label}`;
+      })
+      .join("\n");
 
     await (channel as TextChannel).send({
-      embeds: [await guildEmbed(guild.id, String(group.name || "Choose roles").slice(0, 256), description, BRAND.colours.primary)],
+      embeds: [await guildSystemEmbed(
+        guild.id,
+        String(group.name || "Choose roles").slice(0, 256),
+        `${description}\n\n**📍 Selection options:**\n${optionList}`,
+        BRAND.colours.primary
+      )],
       components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu)]
     });
     posted++;
