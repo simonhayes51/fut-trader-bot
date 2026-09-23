@@ -2,7 +2,7 @@ export type ModuleField = {
   key:string;
   label:string;
   help?:string;
-  type:"channel"|"category"|"role"|"roles"|"channels"|"text"|"textarea"|"number"|"toggle"|"select"|"list"|"roleGroups"|"rewards";
+  type:"channel"|"category"|"role"|"roles"|"channels"|"text"|"textarea"|"number"|"toggle"|"select"|"list"|"roleGroups"|"ticketPanels"|"rewards";
   options?: {value:string;label:string}[];
   placeholder?:string;
   min?:number;
@@ -88,13 +88,15 @@ export const modules:ModuleDefinition[]=[
   },
   {
     key:"tickets",name:"Tickets & reports",description:"Private support, reports, appeals and partnership requests.",category:"Community",
-    defaults:{panelChannelId:"",categoryId:"",staffRoleIds:[],logChannelId:"",types:["Support","Report","Appeal","Partnership","Staff Application","Other"]},
+    defaults:{panels:[
+      {id:"support",name:"Ticket Support",enabled:true,panelChannelId:"",categoryId:"",staffRoleIds:[],types:["Support","Report","Appeal","Partnership","Other"]},
+      {id:"applications",name:"Staff Applications",enabled:true,panelChannelId:"",categoryId:"",staffRoleIds:[],types:["Staff Application"]},
+      {id:"trading-school",name:"Trading School",enabled:true,panelChannelId:"",categoryId:"",staffRoleIds:[],types:["Trading School","Lesson Support","Student Question"]}
+    ],panelChannelId:"",categoryId:"",staffRoleIds:[],logChannelId:"",types:["Support","Report","Appeal","Partnership","Staff Application","Other"]},
     fields:[
-      {key:"panelChannelId",label:"Ticket panel channel",help:"Where members will choose a ticket reason from a dropdown.",type:"channel"},
-      {key:"categoryId",label:"Ticket category",type:"category"},
-      {key:"staffRoleIds",label:"Ticket staff",type:"roles"},
+      {key:"panels",label:"Ticket panels",help:"Create separate panels for support, applications, trading school or anything else.",type:"ticketPanels"},
       {key:"logChannelId",label:"Ticket log channel",type:"channel"},
-      {key:"types",label:"Ticket reasons",type:"list",placeholder:"Support\nReport\nAppeal\nPartnership\nOther"}
+      {key:"types",label:"Fallback ticket reasons",type:"list",placeholder:"Support\nReport\nAppeal\nPartnership\nOther"}
     ]
   },
   {
