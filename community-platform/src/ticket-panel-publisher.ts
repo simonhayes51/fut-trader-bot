@@ -15,6 +15,7 @@ export function ticketMenuOptions(types: string[]) {
     if (t.includes("report")) return "🚨";
     if (t.includes("appeal")) return "📣";
     if (t.includes("partner")) return "🤝";
+    if (t.includes("application") || t.includes("apply")) return "📝";
     if (t.includes("premium")) return "⭐";
     return "💬";
   };
@@ -25,21 +26,31 @@ export function ticketMenuOptions(types: string[]) {
 }
 
 export async function publishTicketPanelForGuild(guildId: string, channel: any, types: string[]) {
+  const source = types.length ? types : ["General", "Support", "Question", "Other"];
   const menu = new StringSelectMenuBuilder()
     .setCustomId("v5:ticket-menu")
-    .setPlaceholder("Choose a ticket reason")
+    .setPlaceholder("Choose your option")
     .addOptions(...ticketMenuOptions(types));
 
-  const reasons = (types.length ? types : ["General", "Support", "Question", "Other"])
+  const reasons = source
     .slice(0, 25)
-    .map(type => `• ${type} Ticket`)
+    .map(type => {
+      const emoji = type.toLowerCase().includes("application") ? "📝" :
+        type.toLowerCase().includes("support") ? "🛠️" :
+        type.toLowerCase().includes("question") ? "❓" :
+        type.toLowerCase().includes("report") ? "🚨" :
+        type.toLowerCase().includes("appeal") ? "📣" :
+        type.toLowerCase().includes("partner") ? "🤝" :
+        type.toLowerCase().includes("premium") ? "⭐" : "💬";
+      return `${emoji} ${type} Ticket`.replace(/ Ticket Ticket$/, " Ticket");
+    })
     .join("\n");
 
   return (channel as TextChannel).send({
     embeds: [await guildSystemEmbed(
       guildId,
-      "Ticket Support",
-      `Need help from staff? Choose the closest reason below and a private ticket will be created.\n\n**Ticket reasons**\n${reasons}`,
+      "🎟️ Ticket Support",
+      `If you have a request, click the menu below.\n\n**📍 Selection options:**\n${reasons}`,
       BRAND.colours.primary
     )],
     components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu)]
