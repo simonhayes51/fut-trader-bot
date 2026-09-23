@@ -119,14 +119,18 @@ controlRouter.post("/control/automation/scheduled/:id/toggle",async(req:any,res)
 controlRouter.post("/control/automation/scheduled/:id/delete",async(req:any,res)=>{await query(`DELETE FROM scheduled_messages WHERE id=$1 AND guild_id=$2`,[req.params.id,selectedGuildId(req)]);res.redirect("/control/automation");});
 
 controlRouter.post("/control/automation/feeds",async(req:any,res)=>{
-  const provider=String(req.body.provider||"rss"),secret=provider==="webhook"?createWebhookSecret():null;
+  const selectedProvider=String(req.body.provider||"rss");
+  const provider=selectedProvider==="eafc_leaks"?"webhook":selectedProvider;
+  const source=selectedProvider==="eafc_leaks"?"EAFC.Live leaks":String(req.body.source||"");
+  const name=selectedProvider==="eafc_leaks"?"EAFC.Live leak feed":String(req.body.name||"Feed");
+  const secret=provider==="webhook"?createWebhookSecret():null;
   await query(`INSERT INTO social_feeds(guild_id,name,provider,source,channel_id,enabled,include_keywords,exclude_keywords,mention_role_id,secret_key) VALUES($1,$2,$3,$4,$5,true,$6,$7,$8,$9)`,[
-    selectedGuildId(req),String(req.body.name||"Feed"),provider,String(req.body.source||""),String(req.body.channelId||""),
+    selectedGuildId(req),name,provider,source,String(req.body.channelId||""),
     String(req.body.includeKeywords||"").split(",").map((x:string)=>x.trim()).filter(Boolean),
     String(req.body.excludeKeywords||"").split(",").map((x:string)=>x.trim()).filter(Boolean),
     req.body.mentionRoleId||null,secret
   ]);
-  await audit(selectedGuildId(req),req.session.user.id,"social.create",{name:req.body.name,provider});res.redirect("/control/automation");
+  await audit(selectedGuildId(req),req.session.user.id,"social.create",{name,provider:selectedProvider});res.redirect("/control/automation");
 });
 controlRouter.post("/control/automation/feeds/:id/toggle",async(req:any,res)=>{await query(`UPDATE social_feeds SET enabled=NOT enabled,updated_at=now() WHERE id=$1 AND guild_id=$2`,[req.params.id,selectedGuildId(req)]);res.redirect("/control/automation");});
 controlRouter.post("/control/automation/feeds/:id/delete",async(req:any,res)=>{await query(`DELETE FROM social_feeds WHERE id=$1 AND guild_id=$2`,[req.params.id,selectedGuildId(req)]);res.redirect("/control/automation");});
