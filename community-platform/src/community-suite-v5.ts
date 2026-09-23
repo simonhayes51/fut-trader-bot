@@ -139,18 +139,26 @@ async function finishOnboarding(i:any){
   await i.reply({embeds:[brandEmbed("✅ You're all set",`Platform: **${ans.platform}**\nInterests: **${(ans.interests||[]).join(", ")}**\n\nYour roles and profile have been updated.`,BRAND.colours.success)],ephemeral:true});
 }
 
-async function createTicketChannel(client:Client,guild:any,user:any,type:string,sourceUrl?:string){
+function panelConfig(feature:any,panelId?:string){
+  const panels=Array.isArray(feature?.config?.panels)?feature.config.panels:[];
+  const panel=panelId?panels.find((p:any)=>String(p.id||"")===panelId):null;
+  return panel ? {...feature.config,...panel} : feature.config;
+}
+
+async function createTicketChannel(client:Client,guild:any,user:any,type:string,sourceUrl?:string,panelId?:string){
   const feature=await getFeature(guild.id,"tickets",{categoryId:"",staffRoleIds:[],types:["General","Support","Question","Other"]});
   if(!feature.enabled)throw new Error("Tickets are disabled.");
+  const cfg=panelConfig(feature,panelId);
   const row=(await query<any>(`INSERT INTO tickets(guild_id,user_id,ticket_type) VALUES($1,$2,$3) RETURNING id`,[guild.id,user.id,type]))[0];
   const overwrites:any[]=[
     {id:guild.roles.everyone.id,deny:[PermissionFlagsBits.ViewChannel]},
     {id:user.id,allow:[PermissionFlagsBits.ViewChannel,PermissionFlagsBits.SendMessages,PermissionFlagsBits.ReadMessageHistory]}
   ];
-  for(const roleId of feature.config.staffRoleIds||[])overwrites.push({id:roleId,allow:[PermissionFlagsBits.ViewChannel,PermissionFlagsBits.SendMessages,PermissionFlagsBits.ReadMessageHistory]});
-  const ch=await guild.channels.create({name:`ticket-${row.id}-${user.username}`.toLowerCase().replace(/[^a-z0-9-]/g,"").slice(0,90),type:ChannelType.GuildText,parent:feature.config.categoryId||undefined,permissionOverwrites:overwrites});
+  for(const roleId of cfg.staffRoleIds||[])overwrites.push({id:roleId,allow:[PermissionFlagsBits.ViewChannel,PermissionFlagsBits.SendMessages,PermissionFlagsBits.ReadMessageHistory]});
+  const prefix=String(panelId||type||"ticket").toLowerCase().replace(/[^a-z0-9-]/g,"").slice(0,18)||"ticket";
+  const ch=await guild.channels.create({name:`${prefix}-${row.id}-${user.username}`.toLowerCase().replace(/[^a-z0-9-]/g,"").slice(0,90),type:ChannelType.GuildText,parent:cfg.categoryId||undefined,permissionOverwrites:overwrites});
   await query(`UPDATE tickets SET channel_id=$1 WHERE id=$2`,[ch.id,row.id]);
-  const body=[`Created by <@${user.id}>.`,sourceUrl?`Source: ${sourceUrl}`:"","Tell us what you need and staff will pick this up."].filter(Boolean).join("\n\n");
+  const body=[`Created by <@${user.id}>.`,cfg.name?`Panel: **${cfg.name}**`:"",sourceUrl?`Source: ${sourceUrl}`:"","Tell us what you need and staff will pick this up."].filter(Boolean).join("\n\n");
   await ch.send({content:`<@${user.id}>`,embeds:[systemEmbed(`🎫 ${type} ticket #${row.id}`,body,BRAND.colours.primary)]});
   return {channel:ch,ticket:row};
 }
@@ -294,6 +302,13 @@ export async function handleV5Component(client:Client,i:any){
   if(id==="v5:ticket-menu"&&i.isStringSelectMenu()){
     const type=String(i.values?.[0]||"General");
     try{const created=await createTicketChannel(client,i.guild,i.user,type);await recordUsage(i.guildId,i.user.id,"component","ticket_panel",i.channelId,{type});await i.reply({content:`Ticket created: ${created.channel}`,ephemeral:true});}
+    catch(err:any){await i.reply({content:String(err?.message||err),ephemeral:true});}
+    return true;
+  }
+  if(id.startsWith("v5:ticket-menu:")&&i.isStringSelectMenu()){
+    const panelId=id.split(":").slice(2).join(":");
+    const type=String(i.values?.[0]||"General");
+    try{const created=await createTicketChannel(client,i.guild,i.user,type,undefined,panelId);await recordUsage(i.guildId,i.user.id,"component","ticket_panel",i.channelId,{type,panelId});await i.reply({content:`Ticket created: ${created.channel}`,ephemeral:true});}
     catch(err:any){await i.reply({content:String(err?.message||err),ephemeral:true});}
     return true;
   }
