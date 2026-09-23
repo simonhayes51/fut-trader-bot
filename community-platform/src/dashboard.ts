@@ -127,19 +127,29 @@ async function publishRoleMenus(req:any,cfg:any) {
 async function publishTicketPanel(req:any,cfg:any) {
   const guild=selectedGuild(req);
   if(!guild) throw new Error("Bot is not connected to Discord.");
-  const channelId=String(cfg?.panelChannelId||"");
-  if(!channelId) throw new Error("Choose a ticket panel channel first.");
-  const channel=await client.channels.fetch(channelId).catch(()=>null);
-  if(!channel?.isTextBased()) throw new Error("The selected ticket panel channel is not available to the bot.");
   const me=guild.members.me;
   if(!me) throw new Error("Bot member is not available in the server.");
-  const permissions=(channel as any).permissionsFor?.(me);
-  if(permissions && (!permissions.has(PermissionFlagsBits.ViewChannel)||!permissions.has(PermissionFlagsBits.SendMessages))) {
-    throw new Error("The bot needs View Channel and Send Messages permission in the selected ticket panel channel.");
+  const panels=Array.isArray(cfg?.panels)&&cfg.panels.length
+    ? cfg.panels.filter((panel:any)=>panel.enabled!==false)
+    : [{id:"support",name:"Ticket Support",panelChannelId:cfg?.panelChannelId,categoryId:cfg?.categoryId,staffRoleIds:cfg?.staffRoleIds,types:cfg?.types}];
+  if(!panels.length) throw new Error("Enable at least one ticket panel before publishing.");
+  const posted:any[]=[];
+  for(const panel of panels){
+    const channelId=String(panel?.panelChannelId||"");
+    if(!channelId) throw new Error(`Choose a panel channel for ${panel?.name||"ticket panel"}.`);
+    const channel=await client.channels.fetch(channelId).catch(()=>null);
+    if(!channel?.isTextBased()) throw new Error(`The panel channel for ${panel?.name||"ticket panel"} is not available to the bot.`);
+    const permissions=(channel as any).permissionsFor?.(me);
+    if(permissions && (!permissions.has(PermissionFlagsBits.ViewChannel)||!permissions.has(PermissionFlagsBits.SendMessages))) {
+      throw new Error(`The bot needs View Channel and Send Messages permission in the ${panel?.name||"ticket panel"} channel.`);
+    }
+    if(!panel?.categoryId) throw new Error(`Choose a ticket category for ${panel?.name||"ticket panel"}.`);
+    if(!Array.isArray(panel?.staffRoleIds)||!panel.staffRoleIds.length) throw new Error(`Choose at least one ticket staff role for ${panel?.name||"ticket panel"}.`);
+    const id=String(panel.id||panel.name||"ticket").toLowerCase().replace(/[^a-z0-9-]/g,"-").replace(/^-+|-+$/g,"").slice(0,40)||"ticket";
+    const msg=await publishTicketPanelForGuild(guild.id,channel,Array.isArray(panel?.types)?panel.types:[],{id,name:String(panel.name||"Ticket Support")});
+    posted.push({messageId:msg.id,channelId,name:panel.name,id});
   }
-  if(!cfg?.categoryId) throw new Error("Choose a ticket category before publishing.");
-  if(!Array.isArray(cfg?.staffRoleIds)||!cfg.staffRoleIds.length) throw new Error("Choose at least one ticket staff role before publishing.");
-  return publishTicketPanelForGuild(guild.id,channel,Array.isArray(cfg?.types)?cfg.types:[]);
+  return posted;
 }
 
 app.get("/",(req,res)=>res.redirect(req.session.user?"/control":"/login"));
@@ -277,8 +287,8 @@ app.post("/modules/:key",requireAuth,async(req,res)=>{
   }
   if(def.key==="tickets"&&enabled){
     try{
-      const msg=await publishTicketPanel(req,parsed);
-      await audit(gid,req.session.user!.id,"ticket_panel.publish",{channelId:parsed.panelChannelId,messageId:msg.id});
+      const posted=await publishTicketPanel(req,parsed);
+      await audit(gid,req.session.user!.id,"ticket_panel.publish",{panels:posted});
     }catch(err:any){
       console.error("Ticket panel publish failed",err);
       return res.redirect(`/modules/${def.key}?error=${encodeURIComponent(err?.message||"Could not publish ticket panel")}`);
