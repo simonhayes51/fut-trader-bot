@@ -551,20 +551,24 @@ INSERT INTO activity_settings(guild_id) SELECT guild_id FROM guild_settings ON C
 INSERT INTO feature_settings(guild_id,feature_key,enabled,config)
 SELECT guild_id,'activity_engine',true,'{"timezone":"Europe/London","threadPrompts":true,"rewardButtons":true}'::jsonb FROM guild_settings ON CONFLICT DO NOTHING;
 
-INSERT INTO activity_slots(guild_id,slot_key,prompt_type,title,hour,minute,sort_order)
-SELECT guild_id,'morning-market','market_watch','Morning Market Watch',9,0,10 FROM guild_settings ON CONFLICT(guild_id,slot_key) DO NOTHING;
-INSERT INTO activity_slots(guild_id,slot_key,prompt_type,title,hour,minute,sort_order)
-SELECT guild_id,'lunch-price-check','price_check','Lunchtime Price Check',12,0,20 FROM guild_settings ON CONFLICT(guild_id,slot_key) DO NOTHING;
-INSERT INTO activity_slots(guild_id,slot_key,prompt_type,title,hour,minute,sort_order)
-SELECT guild_id,'afternoon-flip','flip_of_day','Flip of the Day',15,0,30 FROM guild_settings ON CONFLICT(guild_id,slot_key) DO NOTHING;
-INSERT INTO activity_slots(guild_id,slot_key,prompt_type,title,hour,minute,sort_order)
-SELECT guild_id,'evening-discussion','discussion','Tonight''s Trading Question',18,0,40 FROM guild_settings ON CONFLICT(guild_id,slot_key) DO NOTHING;
-INSERT INTO activity_slots(guild_id,slot_key,prompt_type,title,hour,minute,sort_order)
-SELECT guild_id,'trade-proof','trade_proof','Trade Proof Check-in',20,30,50 FROM guild_settings ON CONFLICT(guild_id,slot_key) DO NOTHING;
-INSERT INTO activity_slots(guild_id,slot_key,prompt_type,title,hour,minute,sort_order)
-SELECT guild_id,'daily-leaderboard','leaderboard','Daily Leaderboard',22,0,60 FROM guild_settings ON CONFLICT(guild_id,slot_key) DO NOTHING;
-INSERT INTO activity_slots(guild_id,slot_key,prompt_type,title,hour,minute,sort_order)
-SELECT guild_id,'staff-pulse','staff_pulse','Staff Pulse',22,5,70 FROM guild_settings ON CONFLICT(guild_id,slot_key) DO NOTHING;
+INSERT INTO activity_slots(guild_id,slot_key,prompt_type,title,hour,minute,sort_order,enabled)
+SELECT guild_id,'morning-market','market_watch','Morning Market Watch',9,0,10,false FROM guild_settings ON CONFLICT(guild_id,slot_key) DO NOTHING;
+INSERT INTO activity_slots(guild_id,slot_key,prompt_type,title,hour,minute,sort_order,enabled)
+SELECT guild_id,'lunch-price-check','price_check','Lunchtime Price Check',12,0,20,false FROM guild_settings ON CONFLICT(guild_id,slot_key) DO NOTHING;
+INSERT INTO activity_slots(guild_id,slot_key,prompt_type,title,hour,minute,sort_order,enabled)
+SELECT guild_id,'afternoon-flip','flip_of_day','Flip of the Day',15,0,30,false FROM guild_settings ON CONFLICT(guild_id,slot_key) DO NOTHING;
+INSERT INTO activity_slots(guild_id,slot_key,prompt_type,title,hour,minute,sort_order,enabled)
+SELECT guild_id,'evening-discussion','discussion','Tonight''s Trading Question',18,0,40,false FROM guild_settings ON CONFLICT(guild_id,slot_key) DO NOTHING;
+INSERT INTO activity_slots(guild_id,slot_key,prompt_type,title,hour,minute,sort_order,enabled)
+SELECT guild_id,'trade-proof','trade_proof','Trade Proof Check-in',20,30,50,false FROM guild_settings ON CONFLICT(guild_id,slot_key) DO NOTHING;
+INSERT INTO activity_slots(guild_id,slot_key,prompt_type,title,hour,minute,sort_order,enabled)
+SELECT guild_id,'daily-leaderboard','leaderboard','Daily Leaderboard',22,0,60,false FROM guild_settings ON CONFLICT(guild_id,slot_key) DO NOTHING;
+INSERT INTO activity_slots(guild_id,slot_key,prompt_type,title,hour,minute,sort_order,enabled)
+SELECT guild_id,'staff-pulse','staff_pulse','Staff Pulse',22,5,70,true FROM guild_settings ON CONFLICT(guild_id,slot_key) DO NOTHING;
+
+UPDATE activity_slots SET enabled=(prompt_type='staff_pulse')
+WHERE slot_key IN ('morning-market','lunch-price-check','afternoon-flip','evening-discussion','trade-proof','daily-leaderboard','staff-pulse')
+  AND channel_id IS NULL;
 
 INSERT INTO kudos_milestones(guild_id,milestone,xp_reward,coin_reward,badge_key)
 SELECT guild_id,10,100,100,'kudos_10' FROM guild_settings ON CONFLICT DO NOTHING;
