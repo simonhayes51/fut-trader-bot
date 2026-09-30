@@ -14,19 +14,15 @@ A standalone Discord community bot + web control panel for an FC27 trading serve
 - Private ticket creation
 - W/L community voting
 - Activity XP foundation
-- Daily activity engine with `/activity setup`, `/today`, `/pulse`, scheduled prompts, button rewards, leaderboards and staff summaries
+- Staff-focused activity pulse with `/activity setup`, `/today`, `/pulse`, button rewards, leaderboards and staff summaries
 - FUTBank staff payment reports with `/staffpay report`
+- Counting game support
 
 ### Trading
-- `/tax`
-- `/profit`
-- `/roi`
-- `/breakeven`
 - `/tradetip` freeform trader-tip posts with bought/watching/passed/sold buttons
 - Trader-tip posting and tracking XP for staff payment reports
-- Structured `/call` posts with target ROI and optional discussion thread
-- `/callclose`
 - Dashboard trade-call history and status correction
+- Trade calculators and structured trade-call slash commands are not currently registered in this TypeScript app
 
 ### Moderation / safety
 - `/warn` and `/history`
@@ -63,19 +59,19 @@ Routes:
 
 ## Daily activity engine
 
-The activity engine gives a server a repeatable week-one rhythm without staff having to invent posts all day.
+The activity engine gives staff a repeatable daily pulse without forcing public prompt spam. By default, only the staff pulse is enabled; the public prompts can still be posted manually or enabled later.
 
 Default schedule:
 
-| Time | Prompt |
-| --- | --- |
-| 09:00 | Morning Market Watch |
-| 12:00 | Lunchtime Price Check |
-| 15:00 | Flip of the Day |
-| 18:00 | Tonight's Trading Question |
-| 20:30 | Trade Proof Check-in |
-| 22:00 | Daily Activity Leaderboard |
-| 22:05 | Staff Pulse |
+| Time | Prompt | Default |
+| --- | --- | --- |
+| 09:00 | Morning Market Watch | Off by default |
+| 12:00 | Lunchtime Price Check | Off by default |
+| 15:00 | Flip of the Day | Off by default |
+| 18:00 | Tonight's Trading Question | Off by default |
+| 20:30 | Trade Proof Check-in | Off by default |
+| 22:00 | Daily Activity Leaderboard | Off by default |
+| 22:05 | Staff Pulse | On by default |
 
 Commands:
 
@@ -170,18 +166,31 @@ That makes it easy to connect Make, Zapier, n8n, your own scraper/API, or anothe
 
 Turn on:
 - Welcome & onboarding
-- Reputation & thanks
-- Trading calculators
-- Trade calls
-- W/L voting
+- Role menus
+- Trader tips
+- XP, levels and leaderboards
+- Simple rewards shop for point redemption
+- Premium billing
+- Counting
 - Suggestions
 - Tickets
 - Automod & anti-scam
 - Staff moderation
 - Join security
+- Staff pulse
+- Staff pay reports
+- Giveaways
+- Bump reminders
+- Server backup
 - Social feeds
 
 Then open each module in the dashboard and map the relevant Discord channel/role IDs.
+
+Leave off unless the server asks for them:
+- Public daily activity posts
+- Birthdays
+- AFK
+- Starboard
 
 ## Architecture
 
