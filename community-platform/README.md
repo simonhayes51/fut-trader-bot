@@ -21,6 +21,7 @@ A standalone Discord community bot + web control panel for an FC27 trading serve
 - `/profit`
 - `/roi`
 - `/breakeven`
+- `/tradetip` tracked trader-tip posts with bought/watching/passed/sold buttons
 - Structured `/call` posts with target ROI and optional discussion thread
 - `/callclose`
 - Dashboard trade-call history and status correction
