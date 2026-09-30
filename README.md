@@ -57,7 +57,7 @@ The main Python entry point loads these cogs: `pricecheck`, `taxcalc`, `playerco
 | `/submitleak` | Submits a leak for the community feed. |
 | `/leakaccounts` | Shows monitored X/Twitter accounts. |
 | `/sbcsolve name` | Finds an SBC on FUT.GG and displays requirements and solution information. |
-| `/postatrade` | Posts a trade tip to the configured community channel. |
+| `/postatrade` | Posts a trade tip with tracker buttons so members can mark `I bought this`, `Watching`, `Passed` or `Sold`; the trader and staff can view who is tracking it. |
 
 Some source files contain additional commands, including FUT.GG price lookup (`/pricecheckgg`), X account feed management (`/addleak`, `/removeleak`, `/listleaks`), snipe tracking (`/addsnipe`, `/removesnipe`, `/snipelist`), `/setupsniping`, and `/submitfilter`. Those cogs are **not loaded by the current `bot.py`**, so those commands are not registered by the default Python bot. Similarly, the source tree contains duplicate/old price-check and trending copies; only the cogs listed above are loaded.
 
