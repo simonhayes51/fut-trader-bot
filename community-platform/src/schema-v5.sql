@@ -448,9 +448,111 @@ CREATE TABLE IF NOT EXISTS bot_status_panels (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS notify_keywords (
+  guild_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  keyword TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_triggered_at TIMESTAMPTZ,
+  PRIMARY KEY(guild_id,user_id,keyword)
+);
+CREATE INDEX IF NOT EXISTS notify_keywords_guild_idx ON notify_keywords(guild_id);
+
+CREATE TABLE IF NOT EXISTS bump_reminders (
+  guild_id TEXT PRIMARY KEY,
+  channel_id TEXT NOT NULL,
+  interval_minutes INTEGER NOT NULL DEFAULT 120,
+  message TEXT NOT NULL DEFAULT 'Time to bump the server. Use `/bump` with DISBOARD.',
+  next_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  updated_by TEXT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS bump_reminders_due_idx ON bump_reminders(next_at) WHERE enabled=true;
+
+CREATE TABLE IF NOT EXISTS server_snapshots (
+  id BIGSERIAL PRIMARY KEY,
+  guild_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  created_by TEXT,
+  snapshot JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS server_snapshots_recent_idx ON server_snapshots(guild_id,created_at DESC);
+
+CREATE TABLE IF NOT EXISTS activity_settings (
+  guild_id TEXT PRIMARY KEY,
+  enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  timezone TEXT NOT NULL DEFAULT 'Europe/London',
+  primary_channel_id TEXT,
+  staff_channel_id TEXT,
+  leaderboard_channel_id TEXT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS activity_slots (
+  id BIGSERIAL PRIMARY KEY,
+  guild_id TEXT NOT NULL,
+  slot_key TEXT NOT NULL,
+  prompt_type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  hour INTEGER NOT NULL CHECK (hour BETWEEN 0 AND 23),
+  minute INTEGER NOT NULL CHECK (minute BETWEEN 0 AND 59),
+  channel_id TEXT,
+  enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  last_post_key TEXT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(guild_id,slot_key)
+);
+CREATE INDEX IF NOT EXISTS activity_slots_due_idx ON activity_slots(guild_id,enabled,hour,minute);
+
+CREATE TABLE IF NOT EXISTS activity_posts (
+  id BIGSERIAL PRIMARY KEY,
+  guild_id TEXT NOT NULL,
+  slot_id BIGINT REFERENCES activity_slots(id) ON DELETE SET NULL,
+  prompt_type TEXT NOT NULL,
+  channel_id TEXT NOT NULL,
+  message_id TEXT,
+  title TEXT NOT NULL,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS activity_posts_recent_idx ON activity_posts(guild_id,created_at DESC);
+
+CREATE TABLE IF NOT EXISTS activity_responses (
+  id BIGSERIAL PRIMARY KEY,
+  post_id BIGINT NOT NULL REFERENCES activity_posts(id) ON DELETE CASCADE,
+  guild_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  action TEXT NOT NULL,
+  value TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(post_id,user_id,action)
+);
+CREATE INDEX IF NOT EXISTS activity_responses_today_idx ON activity_responses(guild_id,created_at DESC);
+
 INSERT INTO onboarding_configs(guild_id) SELECT guild_id FROM guild_settings ON CONFLICT DO NOTHING;
 INSERT INTO recap_settings(guild_id) SELECT guild_id FROM guild_settings ON CONFLICT DO NOTHING;
 INSERT INTO recognition_role_settings(guild_id) SELECT guild_id FROM guild_settings ON CONFLICT DO NOTHING;
+INSERT INTO activity_settings(guild_id) SELECT guild_id FROM guild_settings ON CONFLICT DO NOTHING;
+INSERT INTO feature_settings(guild_id,feature_key,enabled,config)
+SELECT guild_id,'activity_engine',true,'{"timezone":"Europe/London","threadPrompts":true,"rewardButtons":true}'::jsonb FROM guild_settings ON CONFLICT DO NOTHING;
+
+INSERT INTO activity_slots(guild_id,slot_key,prompt_type,title,hour,minute,sort_order)
+SELECT guild_id,'morning-market','market_watch','Morning Market Watch',9,0,10 FROM guild_settings ON CONFLICT(guild_id,slot_key) DO NOTHING;
+INSERT INTO activity_slots(guild_id,slot_key,prompt_type,title,hour,minute,sort_order)
+SELECT guild_id,'lunch-price-check','price_check','Lunchtime Price Check',12,0,20 FROM guild_settings ON CONFLICT(guild_id,slot_key) DO NOTHING;
+INSERT INTO activity_slots(guild_id,slot_key,prompt_type,title,hour,minute,sort_order)
+SELECT guild_id,'afternoon-flip','flip_of_day','Flip of the Day',15,0,30 FROM guild_settings ON CONFLICT(guild_id,slot_key) DO NOTHING;
+INSERT INTO activity_slots(guild_id,slot_key,prompt_type,title,hour,minute,sort_order)
+SELECT guild_id,'evening-discussion','discussion','Tonight''s Trading Question',18,0,40 FROM guild_settings ON CONFLICT(guild_id,slot_key) DO NOTHING;
+INSERT INTO activity_slots(guild_id,slot_key,prompt_type,title,hour,minute,sort_order)
+SELECT guild_id,'trade-proof','trade_proof','Trade Proof Check-in',20,30,50 FROM guild_settings ON CONFLICT(guild_id,slot_key) DO NOTHING;
+INSERT INTO activity_slots(guild_id,slot_key,prompt_type,title,hour,minute,sort_order)
+SELECT guild_id,'daily-leaderboard','leaderboard','Daily Leaderboard',22,0,60 FROM guild_settings ON CONFLICT(guild_id,slot_key) DO NOTHING;
+INSERT INTO activity_slots(guild_id,slot_key,prompt_type,title,hour,minute,sort_order)
+SELECT guild_id,'staff-pulse','staff_pulse','Staff Pulse',22,5,70 FROM guild_settings ON CONFLICT(guild_id,slot_key) DO NOTHING;
 
 INSERT INTO kudos_milestones(guild_id,milestone,xp_reward,coin_reward,badge_key)
 SELECT guild_id,10,100,100,'kudos_10' FROM guild_settings ON CONFLICT DO NOTHING;
