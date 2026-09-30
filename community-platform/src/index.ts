@@ -14,6 +14,8 @@ import { runEconomyTick } from "./economy.js";
 import { controlRouter } from "./control-center.js";
 import { v5ControlRouter } from "./control-v5.js";
 import { runV5Tick } from "./community-suite-v5.js";
+import { runUtilityTick } from "./utility-suite.js";
+import { runActivityEngineTick } from "./activity-engine.js";
 
 app.use(v5ControlRouter);
 app.use(controlRouter);
@@ -24,5 +26,5 @@ app.use(economyRouter);
 
 async function readSql(name:string) {return fs.readFile(path.join(process.cwd(),"src",name),"utf8").catch(()=>fs.readFile(path.join(process.cwd(),"dist",name),"utf8"));}
 async function initSchema() {await db.query(await readSql("schema.sql"));await db.query(await readSql("schema-v2.sql"));await db.query(await readSql("schema-v3.sql"));await db.query(await readSql("schema-v4.sql"));await db.query(await readSql("schema-v5.sql"));}
-async function main(){await initSchema();await startBot();app.listen(config.port,()=>console.log(`Dashboard listening on ${config.baseUrl}`));setInterval(()=>pollSocialFeeds().catch(console.error),config.socialPollSeconds*1000);setTimeout(()=>pollSocialFeeds().catch(console.error),5000);setInterval(()=>runAutomationTick(client).catch(console.error),60_000);setTimeout(()=>runAutomationTick(client).catch(console.error),10_000);setInterval(()=>runEconomyTick(client).catch(console.error),60_000);setTimeout(()=>runEconomyTick(client).catch(console.error),15_000);setInterval(()=>runV5Tick(client).catch(console.error),60_000);setTimeout(()=>runV5Tick(client).catch(console.error),20_000);}
+async function main(){await initSchema();await startBot();app.listen(config.port,()=>console.log(`Dashboard listening on ${config.baseUrl}`));setInterval(()=>pollSocialFeeds().catch(console.error),config.socialPollSeconds*1000);setTimeout(()=>pollSocialFeeds().catch(console.error),5000);setInterval(()=>runAutomationTick(client).catch(console.error),60_000);setTimeout(()=>runAutomationTick(client).catch(console.error),10_000);setInterval(()=>runEconomyTick(client).catch(console.error),60_000);setTimeout(()=>runEconomyTick(client).catch(console.error),15_000);setInterval(()=>runV5Tick(client).catch(console.error),60_000);setTimeout(()=>runV5Tick(client).catch(console.error),20_000);setInterval(()=>runUtilityTick(client).catch(console.error),60_000);setTimeout(()=>runUtilityTick(client).catch(console.error),25_000);setInterval(()=>runActivityEngineTick(client).catch(console.error),60_000);setTimeout(()=>runActivityEngineTick(client).catch(console.error),30_000);}
 main().catch(err=>{console.error(err);process.exit(1);});
