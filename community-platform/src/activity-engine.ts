@@ -32,13 +32,13 @@ type ActivitySlot = {
 const defaultTimezone = "Europe/London";
 
 const defaultSlots = [
-  { key: "morning-market", type: "market_watch", title: "Morning Market Watch", hour: 9, minute: 0, channel: "primary", order: 10 },
-  { key: "lunch-price-check", type: "price_check", title: "Lunchtime Price Check", hour: 12, minute: 0, channel: "primary", order: 20 },
-  { key: "afternoon-flip", type: "flip_of_day", title: "Flip of the Day", hour: 15, minute: 0, channel: "primary", order: 30 },
-  { key: "evening-discussion", type: "discussion", title: "Tonight's Trading Question", hour: 18, minute: 0, channel: "primary", order: 40 },
-  { key: "trade-proof", type: "trade_proof", title: "Trade Proof Check-in", hour: 20, minute: 30, channel: "primary", order: 50 },
-  { key: "daily-leaderboard", type: "leaderboard", title: "Daily Leaderboard", hour: 22, minute: 0, channel: "leaderboard", order: 60 },
-  { key: "staff-pulse", type: "staff_pulse", title: "Staff Pulse", hour: 22, minute: 5, channel: "staff", order: 70 }
+  { key: "morning-market", type: "market_watch", title: "Morning Market Watch", hour: 9, minute: 0, channel: "primary", order: 10, enabled: false },
+  { key: "lunch-price-check", type: "price_check", title: "Lunchtime Price Check", hour: 12, minute: 0, channel: "primary", order: 20, enabled: false },
+  { key: "afternoon-flip", type: "flip_of_day", title: "Flip of the Day", hour: 15, minute: 0, channel: "primary", order: 30, enabled: false },
+  { key: "evening-discussion", type: "discussion", title: "Tonight's Trading Question", hour: 18, minute: 0, channel: "primary", order: 40, enabled: false },
+  { key: "trade-proof", type: "trade_proof", title: "Trade Proof Check-in", hour: 20, minute: 30, channel: "primary", order: 50, enabled: false },
+  { key: "daily-leaderboard", type: "leaderboard", title: "Daily Leaderboard", hour: 22, minute: 0, channel: "leaderboard", order: 60, enabled: false },
+  { key: "staff-pulse", type: "staff_pulse", title: "Staff Pulse", hour: 22, minute: 5, channel: "staff", order: 70, enabled: true }
 ] as const;
 
 const actionLabels: Record<string, string> = {
@@ -117,10 +117,12 @@ function unixTodayAt(timezone: string, hour: number, minute: number) {
 async function ensureActivityDefaults(guildId: string) {
   await query(`INSERT INTO activity_settings(guild_id) VALUES($1) ON CONFLICT DO NOTHING`, [guildId]);
   for (const slot of defaultSlots) {
-    await query(`INSERT INTO activity_slots(guild_id,slot_key,prompt_type,title,hour,minute,sort_order)
-      VALUES($1,$2,$3,$4,$5,$6,$7)
-      ON CONFLICT(guild_id,slot_key) DO NOTHING`, [guildId, slot.key, slot.type, slot.title, slot.hour, slot.minute, slot.order]);
+    await query(`INSERT INTO activity_slots(guild_id,slot_key,prompt_type,title,hour,minute,sort_order,enabled)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+      ON CONFLICT(guild_id,slot_key) DO NOTHING`, [guildId, slot.key, slot.type, slot.title, slot.hour, slot.minute, slot.order, slot.enabled]);
   }
+  await query(`UPDATE activity_slots SET enabled=(prompt_type='staff_pulse') WHERE guild_id=$1 AND slot_key=ANY($2::text[]) AND channel_id IS NULL`,
+    [guildId, defaultSlots.map(slot => slot.key)]);
 }
 
 export async function ensureActivityEngineDefaults(guildId: string) {
