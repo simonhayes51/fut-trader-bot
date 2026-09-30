@@ -5,7 +5,7 @@ import {
 } from "discord.js";
 import { audit, getFeature, one, query } from "./db.js";
 import { clearGuildBrandCache, guildEmbed, guildSystemEmbed, BRAND } from "./brand.js";
-import { recordEconomyEvent } from "./economy-core.js";
+import { awardCurrency, recordEconomyEvent } from "./economy-core.js";
 
 export const commandData=[
   new SlashCommandBuilder().setName("kudos").setDescription("Give kudos to a member")
@@ -54,6 +54,12 @@ export const commandData=[
     .addStringOption(o=>o.setName("message").setDescription("Trader tip exactly as you want it posted").setRequired(true).setMaxLength(2000))
     .addStringOption(o=>o.setName("title").setDescription("Optional embed title").setMaxLength(100))
     .addStringOption(o=>o.setName("image_url").setDescription("Optional image URL").setMaxLength(500)),
+  new SlashCommandBuilder().setName("staffpay").setDescription("Create a FUTBank staff payout report")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addSubcommand(sc=>sc.setName("report").setDescription("Split a payment pool by staff XP")
+      .addRoleOption(o=>o.setName("role").setDescription("Staff/trader role to include").setRequired(true))
+      .addIntegerOption(o=>o.setName("pool").setDescription("Payment pool in pounds").setRequired(true).setMinValue(0))
+      .addIntegerOption(o=>o.setName("days").setDescription("Days to include, default 30").setMinValue(1).setMaxValue(90))),
   new SlashCommandBuilder().setName("ping").setDescription("Check bot latency")
 ].map(c=>c.toJSON());
 
@@ -94,6 +100,13 @@ async function tradeTipCounts(guildId:string,callId:number|string){
 
 function trackingSummary(counts:Record<string,number>){
   return `**Bought:** ${counts.bought||0} | **Watching:** ${counts.watching||0} | **Passed:** ${counts.passed||0} | **Sold:** ${counts.sold||0}`;
+}
+
+const trackerTraderXp:Record<string,number>={bought:10,watching:5,passed:1,sold:5};
+const trackerMemberXp:Record<string,number>={bought:3,watching:2,passed:1,sold:2};
+
+function pounds(n:number){
+  return `£${Math.max(0,n).toFixed(2)}`;
 }
 
 async function refreshTradeTipMessage(client:Client,guildId:string,callId:number|string){
@@ -139,8 +152,15 @@ export async function handleTradeTipComponent(client:Client,i:any){
 
   const actionKey=String(action||"");
   if(!(actionKey in trackerLabels))return false;
+  const previous=await one<any>(`SELECT status FROM trade_tip_tracking WHERE guild_id=$1 AND trade_call_id=$2 AND user_id=$3`,[i.guildId,callId,i.user.id]);
   await query(`INSERT INTO trade_tip_tracking(guild_id,trade_call_id,user_id,status,updated_at) VALUES($1,$2,$3,$4,now())
     ON CONFLICT(guild_id,trade_call_id,user_id) DO UPDATE SET status=$4,updated_at=now()`,[i.guildId,callId,i.user.id,actionKey]);
+  if(String(previous?.status||"")!==actionKey){
+    if(String(call.user_id)!==String(i.user.id)){
+      await awardCurrency({guildId:i.guildId,userId:String(call.user_id),currency:"xp",amount:trackerTraderXp[actionKey]||1,reason:`Trader tip tracked: ${trackerLabels[actionKey]}`,sourceType:"trade_tip_tracking",sourceId:String(callId),idempotencyKey:`tradetip:${callId}:${i.user.id}:${actionKey}:trader-xp`,metadata:{trackerId:i.user.id,status:actionKey}}).catch(()=>{});
+    }
+    await awardCurrency({guildId:i.guildId,userId:i.user.id,currency:"xp",amount:trackerMemberXp[actionKey]||1,reason:`Tracked trader tip: ${trackerLabels[actionKey]}`,sourceType:"trade_tip_member_tracking",sourceId:String(callId),idempotencyKey:`tradetip:${callId}:${i.user.id}:${actionKey}:member-xp`,metadata:{traderId:call.user_id,status:actionKey}}).catch(()=>{});
+  }
   await refreshTradeTipMessage(client,i.guildId,callId);
   await i.reply({content:`Logged you as **${trackerLabels[actionKey]}** for this tip.`,ephemeral:true});
   return true;
@@ -149,6 +169,55 @@ export async function handleTradeTipComponent(client:Client,i:any){
 export async function handleCommand(client:Client,i:ChatInputCommandInteraction){
   if(!i.guildId||!i.guild)return;
   const guildId=i.guildId;
+
+  if(i.commandName==="staffpay"){
+    const sub=i.options.getSubcommand();
+    if(sub!=="report")return;
+    const role:any=i.options.getRole("role",true);
+    const pool=i.options.getInteger("pool",true);
+    const days=i.options.getInteger("days")||30;
+    await i.deferReply({ephemeral:true});
+    await i.guild.members.fetch().catch(()=>{});
+    const memberIds=[...role.members.keys()].filter((id:string)=>{
+      const member=role.members.get(id);
+      return member&&!member.user?.bot;
+    });
+    if(!memberIds.length){
+      await i.editReply({content:"That role has no staff members to include."});
+      return;
+    }
+    const interval=`${days} days`;
+    const xpRows=await query<any>(`SELECT user_id,COALESCE(sum(amount),0)::bigint xp
+      FROM economy_ledger
+      WHERE guild_id=$1 AND currency='xp' AND amount>0 AND created_at>=now()-$2::interval AND user_id=ANY($3::text[])
+      GROUP BY user_id`,[guildId,interval,memberIds]);
+    const tradeRows=await query<any>(`SELECT tc.user_id,count(DISTINCT tc.id)::int tips,count(tt.id)::int trackers,
+        count(tt.id) FILTER (WHERE tt.status='bought')::int bought
+      FROM trade_calls tc
+      LEFT JOIN trade_tip_tracking tt ON tt.guild_id=tc.guild_id AND tt.trade_call_id=tc.id
+      WHERE tc.guild_id=$1 AND tc.created_at>=now()-$2::interval AND tc.user_id=ANY($3::text[])
+      GROUP BY tc.user_id`,[guildId,interval,memberIds]);
+    const trades=new Map(tradeRows.map((r:any)=>[String(r.user_id),r]));
+    const rows=memberIds.map((id:string)=>{
+      const xp=Number(xpRows.find((r:any)=>String(r.user_id)===id)?.xp||0);
+      const trade=trades.get(id)||{tips:0,trackers:0,bought:0};
+      return {id,xp,tips:Number(trade.tips||0),trackers:Number(trade.trackers||0),bought:Number(trade.bought||0)};
+    }).filter(r=>r.xp>0||r.tips>0||r.trackers>0).sort((a,b)=>b.xp-a.xp);
+    const totalXp=rows.reduce((sum,r)=>sum+r.xp,0);
+    if(!rows.length||totalXp<=0){
+      await i.editReply({embeds:[await guildEmbed(guildId,"FUTBank Staff Pay Report",`No qualifying XP found for ${role} in the last **${days} days**.`,BRAND.colours.warning)]});
+      return;
+    }
+    const body=rows.slice(0,15).map((r,n)=>{
+      const share=r.xp/totalXp;
+      return `${n+1}. <@${r.id}> - **${r.xp.toLocaleString("en-GB")} XP** - **${pounds(pool*share)}**\nTips: ${r.tips} | Trackers: ${r.trackers} | Bought: ${r.bought}`;
+    }).join("\n\n");
+    const embed=await guildEmbed(guildId,"FUTBank Staff Pay Report",`Pool: **${pounds(pool)}** | Period: **${days} days** | Role: ${role}\n\n${body}`,BRAND.colours.premium);
+    embed.setFooter({text:"Use this as a guide. Final payments can still be adjusted manually for quality, conduct or bonuses."});
+    await audit(guildId,i.user.id,"staffpay.report",{roleId:role.id,pool,days,totalXp,rows:rows.length});
+    await i.editReply({embeds:[embed]});
+    return;
+  }
 
   if(i.commandName==="ping")return i.reply({content:`🏓 ${client.ws.ping}ms`,ephemeral:true});
 
@@ -187,6 +256,7 @@ export async function handleCommand(client:Client,i:ChatInputCommandInteraction)
     await query(`UPDATE trade_calls SET discord_message_id=$1,metadata=metadata||$2::jsonb WHERE id=$3 AND guild_id=$4`,[
       msg.id,JSON.stringify({message_url:msg.url}),call.id,guildId
     ]);
+    await awardCurrency({guildId,userId:i.user.id,currency:"xp",amount:25,reason:"Trader tip posted",sourceType:"trade_tip",sourceId:String(call.id),idempotencyKey:`tradetip:${call.id}:${i.user.id}:post-xp`,metadata:{channelId:i.channelId,label}}).catch(()=>{});
     await query(`INSERT INTO server_metrics_daily(guild_id,metric_date,trade_calls) VALUES($1,current_date,1) ON CONFLICT(guild_id,metric_date) DO UPDATE SET trade_calls=server_metrics_daily.trade_calls+1`,[guildId]).catch(()=>{});
     await audit(guildId,i.user.id,"trade_tip.post",{id:call.id,label,channelId:i.channelId});
     return i.reply({content:`Trade tip posted in ${i.channel}.`,ephemeral:true});
