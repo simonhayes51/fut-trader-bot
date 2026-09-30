@@ -59,12 +59,13 @@ export async function ensureV5Defaults(guildId:string){
   await query(`INSERT INTO counting_configs(guild_id) VALUES($1) ON CONFLICT DO NOTHING`,[guildId]);
   const defaults=[
     ["security_suite",true,{antiAlt:true,minAccountAgeHours:24,antiRaid:true,joinsPerMinute:8,quarantineOnRaid:true,antiNuke:true,actionWindowSeconds:60,maxDestructiveActions:4,trustedRoleIds:[],trustedUserIds:[]}],
-    ["birthdays",true,{channelId:"",roleId:"",xpReward:50,coinReward:100}],
+    ["birthdays",false,{channelId:"",roleId:"",xpReward:50,coinReward:100}],
+    ["afk",false,{}],
     ["server_counters",true,{updateMinutes:10}],
     ["recaps",true,{weekly:true,personalWeekly:true,monthly:true}],
     ["boosters",true,{xpReward:100,coinReward:150}],
     ["onboarding",true,{enabled:true}],
-    ["counting",false,{channelId:"",rewardEvery:100}]
+    ["counting",true,{channelId:"",rewardEvery:100}]
   ];
   for(const [key,enabled,cfg] of defaults)await query(`INSERT INTO feature_settings(guild_id,feature_key,enabled,config) VALUES($1,$2,$3,$4::jsonb) ON CONFLICT DO NOTHING`,
     [guildId,key,enabled,JSON.stringify(cfg)]);
@@ -206,6 +207,8 @@ export async function handleV5Command(i:any){
   }
 
   if(i.commandName==="afk"){
+    const feature=await getFeature(i.guildId,"afk",{});
+    if(!feature.enabled){await i.reply({content:"AFK is disabled on this server.",ephemeral:true});return true;}
     const reason=i.options.getString("reason");
     if(!reason){
       const current=await one<any>(`SELECT 1 FROM member_afk WHERE guild_id=$1 AND user_id=$2`,[i.guildId,i.user.id]);
@@ -219,6 +222,8 @@ export async function handleV5Command(i:any){
   }
 
   if(i.commandName==="birthday"){
+    const feature=await getFeature(i.guildId,"birthdays",{channelId:"",roleId:"",xpReward:50,coinReward:100});
+    if(!feature.enabled){await i.reply({content:"Birthdays are disabled on this server.",ephemeral:true});return true;}
     const sub=i.options.getSubcommand();
     if(sub==="clear"){await query(`UPDATE member_profiles SET birthday_day=NULL,birthday_month=NULL,updated_at=now() WHERE guild_id=$1 AND user_id=$2`,[i.guildId,i.user.id]);await i.reply({content:"Birthday removed.",ephemeral:true});return true;}
     const day=i.options.getInteger("day",true),month=i.options.getInteger("month",true),isPublic=i.options.getBoolean("public")!==false;
@@ -358,12 +363,15 @@ export async function handleV5Component(client:Client,i:any){
 export async function onV5Message(message:any){
   if(!message.guildId||message.author?.bot)return;
   const gid=message.guildId,uid=message.author.id;
-  const afk=await one<any>(`DELETE FROM member_afk WHERE guild_id=$1 AND user_id=$2 RETURNING set_at`,[gid,uid]);
-  if(afk)await message.reply({content:"Welcome back. I've cleared your AFK status.",allowedMentions:{repliedUser:false}}).catch(()=>{});
-  const mentions=[...message.mentions.users.keys()].filter((x:string)=>x!==uid).slice(0,5);
-  if(mentions.length){
-    const rows=await query<any>(`SELECT user_id,reason,set_at FROM member_afk WHERE guild_id=$1 AND user_id=ANY($2::text[])`,[gid,mentions]);
-    if(rows.length)await message.reply({content:rows.map((r:any)=>`<@${r.user_id}> is AFK: **${r.reason||"AFK"}** (<t:${Math.floor(new Date(r.set_at).getTime()/1000)}:R>)`).join("\n"),allowedMentions:{users:[]}}).catch(()=>{});
+  const afkFeature=await getFeature(gid,"afk",{});
+  if(afkFeature.enabled){
+    const afk=await one<any>(`DELETE FROM member_afk WHERE guild_id=$1 AND user_id=$2 RETURNING set_at`,[gid,uid]);
+    if(afk)await message.reply({content:"Welcome back. I've cleared your AFK status.",allowedMentions:{repliedUser:false}}).catch(()=>{});
+    const mentions=[...message.mentions.users.keys()].filter((x:string)=>x!==uid).slice(0,5);
+    if(mentions.length){
+      const rows=await query<any>(`SELECT user_id,reason,set_at FROM member_afk WHERE guild_id=$1 AND user_id=ANY($2::text[])`,[gid,mentions]);
+      if(rows.length)await message.reply({content:rows.map((r:any)=>`<@${r.user_id}> is AFK: **${r.reason||"AFK"}** (<t:${Math.floor(new Date(r.set_at).getTime()/1000)}:R>)`).join("\n"),allowedMentions:{users:[]}}).catch(()=>{});
+    }
   }
 
   const counting=await one<any>(`SELECT * FROM counting_configs WHERE guild_id=$1 AND enabled=true AND channel_id=$2`,[gid,message.channelId]);
