@@ -51,16 +51,8 @@ export const commandData=[
     .addStringOption(o=>o.setName("message").setDescription("Message text").setRequired(true).setMaxLength(2000))
     .addRoleOption(o=>o.setName("tag").setDescription("Optional role to tag")),
   new SlashCommandBuilder().setName("tradetip").setDescription("Post a tracked trader tip")
-    .addStringOption(o=>o.setName("player").setDescription("Player/card name").setRequired(true).setMaxLength(100))
-    .addIntegerOption(o=>o.setName("buy_price").setDescription("Suggested buy price").setRequired(true).setMinValue(1))
-    .addIntegerOption(o=>o.setName("target_price").setDescription("Suggested sell/target price").setMinValue(1))
-    .addStringOption(o=>o.setName("platform").setDescription("Platform").addChoices(
-      {name:"Console",value:"Console"},
-      {name:"PC",value:"PC"},
-      {name:"All platforms",value:"All"}
-    ))
-    .addStringOption(o=>o.setName("sell_time").setDescription("When to sell").setMaxLength(120))
-    .addStringOption(o=>o.setName("reason").setDescription("Reason or notes").setMaxLength(800))
+    .addStringOption(o=>o.setName("message").setDescription("Trader tip exactly as you want it posted").setRequired(true).setMaxLength(2000))
+    .addStringOption(o=>o.setName("title").setDescription("Optional embed title").setMaxLength(100))
     .addStringOption(o=>o.setName("image_url").setDescription("Optional image URL").setMaxLength(500)),
   new SlashCommandBuilder().setName("ping").setDescription("Check bot latency")
 ].map(c=>c.toJSON());
@@ -176,24 +168,17 @@ export async function handleCommand(client:Client,i:ChatInputCommandInteraction)
 
   if(i.commandName==="tradetip"){
     if(!i.channel?.isTextBased())return i.reply({content:"Use this in the channel you want the tip posted in.",ephemeral:true});
-    const player=i.options.getString("player",true).trim();
-    const buyPrice=i.options.getInteger("buy_price",true);
-    const targetPrice=i.options.getInteger("target_price");
-    const platform=i.options.getString("platform")||"All";
-    const sellTime=i.options.getString("sell_time")||"Not specified";
-    const reason=i.options.getString("reason")||"No extra notes.";
+    const body=i.options.getString("message",true).trim();
+    const title=i.options.getString("title")?.trim()||"Trader Tip";
     const imageUrl=i.options.getString("image_url");
-    const rows=await query<any>(`INSERT INTO trade_calls(guild_id,user_id,player,buy_price,target_price,reason,metadata) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb) RETURNING *`,[
-      guildId,i.user.id,player,buyPrice,targetPrice,reason,JSON.stringify({channel_id:i.channelId,platform,sell_time:sellTime,image_url:imageUrl||null})
+    const label=title==="Trader Tip"?body.split(/\r?\n/)[0]!.slice(0,100)||"Trader Tip":title;
+    const rows=await query<any>(`INSERT INTO trade_calls(guild_id,user_id,player,buy_price,target_price,reason,metadata) VALUES($1,$2,$3,NULL,NULL,$4,$5::jsonb) RETURNING *`,[
+      guildId,i.user.id,label,body,JSON.stringify({channel_id:i.channelId,image_url:imageUrl||null,freeform:true})
     ]);
     const call=rows[0]!;
-    const embed=(await guildEmbed(guildId,`Trade Tip: ${player}`,`Posted by ${i.user}\n\nAll trades are at your own risk.`,BRAND.colours.success))
+    const embed=(await guildEmbed(guildId,title,body,BRAND.colours.success))
       .addFields(
-        {name:"Buy price",value:`${buyPrice.toLocaleString("en-GB")} coins`,inline:true},
-        {name:"Target",value:targetPrice?`${targetPrice.toLocaleString("en-GB")} coins`:"Not set",inline:true},
-        {name:"Platform",value:platform,inline:true},
-        {name:"Sell time",value:sellTime,inline:true},
-        {name:"Reason",value:reason,inline:false},
+        {name:"Posted by",value:`${i.user}`,inline:true},
         {name:"Tracking",value:trackingSummary({bought:0,watching:0,passed:0,sold:0}),inline:false}
       )
       .setFooter({text:`Tip ID: ${call.id}`});
@@ -203,7 +188,7 @@ export async function handleCommand(client:Client,i:ChatInputCommandInteraction)
       msg.id,JSON.stringify({message_url:msg.url}),call.id,guildId
     ]);
     await query(`INSERT INTO server_metrics_daily(guild_id,metric_date,trade_calls) VALUES($1,current_date,1) ON CONFLICT(guild_id,metric_date) DO UPDATE SET trade_calls=server_metrics_daily.trade_calls+1`,[guildId]).catch(()=>{});
-    await audit(guildId,i.user.id,"trade_tip.post",{id:call.id,player,channelId:i.channelId});
+    await audit(guildId,i.user.id,"trade_tip.post",{id:call.id,label,channelId:i.channelId});
     return i.reply({content:`Trade tip posted in ${i.channel}.`,ephemeral:true});
   }
 
