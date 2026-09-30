@@ -2,7 +2,7 @@ import {
   Client, Events, GatewayIntentBits, Partials, REST, Routes, TextChannel
 } from "discord.js";
 import { config } from "./config.js";
-import { commandData, handleCommand } from "./commands.js";
+import { commandData, handleCommand, handleTradeTipComponent } from "./commands.js";
 import { billingCommandData, handleBillingAutocomplete, handleBillingCommand } from "./billing-commands.js";
 import { handleJoin, handleMessage } from "./automod.js";
 import { getFeature, query } from "./db.js";
@@ -29,6 +29,7 @@ const commandFeatureMap:Record<string,string>={
   referral:"premium_billing",premium:"premium_billing",subscription:"premium_billing",giftpremium:"premium_billing",
   warn:"mod_tools",history:"mod_tools",note:"mod_tools",timeout:"mod_tools",kick:"mod_tools",ban:"mod_tools",purge:"mod_tools",slowmode:"mod_tools",lock:"mod_tools",unlock:"mod_tools",nick:"mod_tools",role:"mod_tools",
   event:"scheduled_messages",announce:"scheduled_messages",post:"scheduled_messages",achievements:"levels",system:"system_panels",serverbrand:"server_branding",
+  tradetip:"trade_tips",
   avatar:"utility",userinfo:"utility",serverinfo:"utility",roleinfo:"utility",poll:"utility",emoji:"utility",notify:"utility",bumpreminder:"utility",serverbackup:"utility",
   activity:"activity_engine",today:"activity_engine",pulse:"activity_engine"
 };
@@ -91,6 +92,7 @@ export async function startBot() {
     if(interaction.isAutocomplete()){if(await handleBillingAutocomplete(interaction))return;if(await handleEconomyAutocomplete(interaction))return;if(await handleFeatureAutocomplete(interaction))return;await interaction.respond([]).catch(()=>{});return;}
     if(interaction.guildId){if(interaction.isChatInputCommand()){void recordUsage(interaction.guildId,interaction.user.id,"command",interaction.commandName,interaction.channelId||undefined);const mapped=commandFeatureMap[interaction.commandName];if(mapped)void recordUsage(interaction.guildId,interaction.user.id,"feature",mapped,interaction.channelId||undefined,{command:interaction.commandName});}else if(interaction.isButton()||interaction.isStringSelectMenu())void recordUsage(interaction.guildId,interaction.user.id,"component",String(interaction.customId||"component").split(":").slice(0,2).join(":"),interaction.channelId||undefined);}
     if((interaction.isButton()||interaction.isStringSelectMenu()||interaction.isModalSubmit())&&await handleV5Component(client,interaction))return;
+    if(interaction.isButton()&&await handleTradeTipComponent(client,interaction))return;
     if(interaction.isButton()&&await handleActivityComponent(interaction))return;
     if(interaction.isButton()&&await handleEconomyComponent(client,interaction))return;
     if((interaction.isButton()||interaction.isStringSelectMenu())&&await handleComponent(client,interaction))return;
