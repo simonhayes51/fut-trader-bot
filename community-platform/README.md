@@ -14,6 +14,7 @@ A standalone Discord community bot + web control panel for an FC27 trading serve
 - Private ticket creation
 - W/L community voting
 - Activity XP foundation
+- Daily activity engine with `/activity setup`, `/today`, `/pulse`, scheduled prompts, button rewards, leaderboards and staff summaries
 
 ### Trading
 - `/tax`
@@ -56,6 +57,34 @@ Routes:
 - `/tickets` review/close tickets
 - `/moderation` warnings and automod activity
 - `/audit` configuration/admin history
+
+## Daily activity engine
+
+The activity engine gives a server a repeatable week-one rhythm without staff having to invent posts all day.
+
+Default schedule:
+
+| Time | Prompt |
+| --- | --- |
+| 09:00 | Morning Market Watch |
+| 12:00 | Lunchtime Price Check |
+| 15:00 | Flip of the Day |
+| 18:00 | Tonight's Trading Question |
+| 20:30 | Trade Proof Check-in |
+| 22:00 | Daily Activity Leaderboard |
+| 22:05 | Staff Pulse |
+
+Commands:
+
+| Command | What it does |
+| --- | --- |
+| `/activity setup` | Installs the default schedule and channel destinations. |
+| `/activity schedule` | Shows the configured rhythm. |
+| `/activity pause` / `/activity resume` | Stops or restarts automated posts. |
+| `/activity postnow` | Sends a selected prompt immediately. |
+| `/activity settings` | Updates the main, staff and leaderboard channels. |
+| `/today` | Shows the member-facing schedule. |
+| `/pulse` | Shows joins, active chatters, messages, responses, trades, tickets and top contributors. |
 
 Dashboard login requires either:
 1. Discord `Manage Server` permission for `TARGET_GUILD_ID`; or
