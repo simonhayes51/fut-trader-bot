@@ -151,7 +151,7 @@ This is an independent community management and engagement bot with an Express d
 | `/serverbrand [name] [logo_url] [banner_url] [footer] [primary_colour] [premium_colour]` `[staff]` | Sets the bot embed branding for this server. |
 | `/announce message [tag]` `[staff]` | Posts an announcement as the bot in the current channel, optionally tagging one role. |
 | `/post message [tag]` `[staff]` | Posts a regular bot message in the current channel, optionally tagging one role. |
-| `/tradetip player buy_price [target_price] [platform] [sell_time] [reason] [image_url]` | Posts a tracked trader tip with buttons for members to mark `I bought this`, `Watching`, `Passed` or `Sold`; the trader and staff can view who is tracking it. |
+| `/tradetip message [title] [image_url]` | Posts a freeform trader tip as a normal bot post, then adds buttons for members to mark `I bought this`, `Watching`, `Passed` or `Sold`; the trader and staff can view who is tracking it. |
 | `/event name minutes_from_now [duration_minutes] [description]` `[staff]` | Creates a Discord scheduled event. |
 | `/bumpreminder set channel [minutes] [message]` `[staff]` | Schedules recurring reminders to bump the server directory listing. It posts reminders; a member still performs the directory bump. |
 | `/bumpreminder off` `[staff]` | Disables the reminder. |
