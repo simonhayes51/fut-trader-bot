@@ -19,6 +19,8 @@ import {
   onV5MemberAdd, onV5MemberRemove, onV5MemberUpdate, onV5Message, onV5Reaction, recordUsage,
   refreshInviteSnapshot, v5CommandData, v5ContextCommandData
 } from "./community-suite-v5.js";
+import { handleUtilityCommand, onUtilityMessage, utilityCommandData } from "./utility-suite.js";
+import { activityCommandData, ensureActivityEngineDefaults, handleActivityCommand, handleActivityComponent } from "./activity-engine.js";
 import { guildSystemEmbed, BRAND } from "./brand.js";
 
 const commandFeatureMap:Record<string,string>={
@@ -26,7 +28,9 @@ const commandFeatureMap:Record<string,string>={
   shop:"rewards",redeem:"rewards",giveaway:"giveaways",suggest:"suggestions",ticket:"tickets",ticketstaff:"tickets",verify:"onboarding",birthday:"birthdays",afk:"afk",
   referral:"premium_billing",premium:"premium_billing",subscription:"premium_billing",giftpremium:"premium_billing",
   warn:"mod_tools",history:"mod_tools",note:"mod_tools",timeout:"mod_tools",kick:"mod_tools",ban:"mod_tools",purge:"mod_tools",slowmode:"mod_tools",lock:"mod_tools",unlock:"mod_tools",nick:"mod_tools",role:"mod_tools",
-  event:"scheduled_messages",announce:"scheduled_messages",post:"scheduled_messages",achievements:"levels",system:"system_panels",serverbrand:"server_branding"
+  event:"scheduled_messages",announce:"scheduled_messages",post:"scheduled_messages",achievements:"levels",system:"system_panels",serverbrand:"server_branding",
+  avatar:"utility",userinfo:"utility",serverinfo:"utility",roleinfo:"utility",poll:"utility",emoji:"utility",notify:"utility",bumpreminder:"utility",serverbackup:"utility",
+  activity:"activity_engine",today:"activity_engine",pulse:"activity_engine"
 };
 
 export const client = new Client({
@@ -60,6 +64,7 @@ async function ensureGuildDefaults(guild:any) {
   await query(`INSERT INTO guild_settings(guild_id,guild_name) VALUES($1,$2) ON CONFLICT(guild_id) DO UPDATE SET guild_name=$2,updated_at=now()`,[guild.id,guild.name]);
   await ensureEconomyDefaults(guild.id);
   await ensureV5Defaults(guild.id);
+  await ensureActivityEngineDefaults(guild.id);
   await refreshInviteSnapshot(guild).catch(()=>{});
 }
 
@@ -78,7 +83,7 @@ function welcomeText(template:string,member:any,invite:any) {
 
 export async function startBot() {
   const rest=new REST({version:"10"}).setToken(config.discordToken);
-  const commands=[...commandData,...billingCommandData,...economyCommandData,...featureCommandData,...ticketOpsCommandData,...v5CommandData,...v5ContextCommandData].map(normalizeCommandOptions);
+  const commands=[...commandData,...billingCommandData,...economyCommandData,...featureCommandData,...ticketOpsCommandData,...v5CommandData,...v5ContextCommandData,...utilityCommandData,...activityCommandData].map(normalizeCommandOptions);
   assertUniqueCommands(commands);
   client.once(Events.ClientReady, async ready => {console.log(`Discord ready as ${ready.user.tag}`);attachV5Client(client);for(const guild of ready.guilds.cache.values()){await registerCommandsForGuild(rest,guild.id,commands).catch(err=>console.error("Command registration failed",guild.id,err));await ensureGuildDefaults(guild).catch(err=>console.error("Guild init failed",guild.id,err));}});
   client.on(Events.GuildCreate,async guild=>{await registerCommandsForGuild(rest,guild.id,commands).catch(err=>console.error("Command registration failed",guild.id,err));await ensureGuildDefaults(guild).catch(err=>console.error("Guild init failed",guild.id,err));});
@@ -86,13 +91,14 @@ export async function startBot() {
     if(interaction.isAutocomplete()){if(await handleBillingAutocomplete(interaction))return;if(await handleEconomyAutocomplete(interaction))return;if(await handleFeatureAutocomplete(interaction))return;await interaction.respond([]).catch(()=>{});return;}
     if(interaction.guildId){if(interaction.isChatInputCommand()){void recordUsage(interaction.guildId,interaction.user.id,"command",interaction.commandName,interaction.channelId||undefined);const mapped=commandFeatureMap[interaction.commandName];if(mapped)void recordUsage(interaction.guildId,interaction.user.id,"feature",mapped,interaction.channelId||undefined,{command:interaction.commandName});}else if(interaction.isButton()||interaction.isStringSelectMenu())void recordUsage(interaction.guildId,interaction.user.id,"component",String(interaction.customId||"component").split(":").slice(0,2).join(":"),interaction.channelId||undefined);}
     if((interaction.isButton()||interaction.isStringSelectMenu()||interaction.isModalSubmit())&&await handleV5Component(client,interaction))return;
+    if(interaction.isButton()&&await handleActivityComponent(interaction))return;
     if(interaction.isButton()&&await handleEconomyComponent(client,interaction))return;
     if((interaction.isButton()||interaction.isStringSelectMenu())&&await handleComponent(client,interaction))return;
     if((interaction.isUserContextMenuCommand()||interaction.isMessageContextMenuCommand())&&await handleV5Context(client,interaction))return;
     if((interaction.isUserContextMenuCommand()||interaction.isMessageContextMenuCommand())&&await handleContextCommand(interaction))return;
-    if(interaction.isChatInputCommand()){if(await handleV5Command(interaction))return;if(await handleBillingCommand(client,interaction))return;if(await handleEconomyCommand(client,interaction))return;if(await handleTicketOps(client,interaction))return;if(await handleFeatureCommand(client,interaction))return;await handleCommand(client,interaction);}
+    if(interaction.isChatInputCommand()){if(await handleActivityCommand(client,interaction))return;if(await handleV5Command(interaction))return;if(await handleBillingCommand(client,interaction))return;if(await handleEconomyCommand(client,interaction))return;if(await handleTicketOps(client,interaction))return;if(await handleFeatureCommand(client,interaction))return;if(await handleUtilityCommand(client,interaction))return;await handleCommand(client,interaction);}
   }catch(err){console.error("Interaction error",err);const payload={content:"Something went wrong running that action.",ephemeral:true};if("replied" in interaction&&(interaction.replied||interaction.deferred))await interaction.followUp(payload).catch(()=>{});else if("reply" in interaction)await interaction.reply(payload).catch(()=>{});}});
-  client.on(Events.MessageCreate,async message=>{await handleMessage(message);await handleCommunityMessage(message).catch(console.error);await onV5Message(message).catch(console.error);await onMemberActivity(message).catch(console.error);await onEconomyMessage(message).catch(console.error);});
+  client.on(Events.MessageCreate,async message=>{await handleMessage(message);await handleCommunityMessage(message).catch(console.error);await onV5Message(message).catch(console.error);await onUtilityMessage(message).catch(console.error);await onMemberActivity(message).catch(console.error);await onEconomyMessage(message).catch(console.error);});
   client.on(Events.MessageReactionAdd,(reaction,user)=>{void onCommunityReactionAdd(reaction,user);void onV5Reaction(reaction,user,true);});
   client.on(Events.MessageReactionRemove,(reaction,user)=>{void onCommunityReactionRemove(reaction,user);void onV5Reaction(reaction,user,false);});
   client.on(Events.GuildMemberAdd,async member=>{await onMemberJoinLeave(member.guild.id,"joins").catch(console.error);await onEconomyJoin(member.guild.id,member.id).catch(console.error);const invite=await onV5MemberAdd(member).catch(err=>{console.error(err);return null;});await handleJoin(client,member);const feature=await getFeature(member.guild.id,"welcome",{channelId:"",autoRoleId:"",message:"Welcome {user} to {server}! Please read and accept the server rules.",dmWelcome:false});if(!feature.enabled)return;if(feature.config.autoRoleId)await member.roles.add(String(feature.config.autoRoleId)).catch(()=>{});const text=welcomeText(feature.config.message||"Welcome {user}!",member,invite);if(feature.config.channelId){const ch=await client.channels.fetch(String(feature.config.channelId)).catch(()=>null);if(ch?.isTextBased()){const embed=(await guildSystemEmbed(member.guild.id,`Welcome to ${member.guild.name}`,text,BRAND.colours.primary)).setThumbnail(member.user.displayAvatarURL()).addFields({name:"Member count",value:String(member.guild.memberCount),inline:true});if(invite?.inviterId)embed.addFields({name:"Invited by",value:`${invite.inviterMention} • ${invite.totalInvites.toLocaleString("en-GB")} invite${invite.totalInvites===1?"":"s"}`,inline:true});await (ch as TextChannel).send({content:`Welcome ${member}. Say hi!`,embeds:[embed],allowedMentions:{users:[member.id,invite?.inviterId].filter((id):id is string=>Boolean(id))}}).catch(()=>{});}}if(feature.config.dmWelcome)await member.send(text.replace(`<@${member.id}>`,member.user.username)).catch(()=>{});});
