@@ -88,7 +88,7 @@ This is an independent community management and engagement bot with an Express d
 - Discord OAuth dashboard, per-guild feature switches, configuration and audit history.
 - Welcome messages, auto-role, onboarding verification, self-serve role menus, invite attribution, join/leave tracking and account-age/raid security.
 - Reputation kudos, kudos boards, XP/levels, leaderboards, Live Coins, daily rewards, streaks, quests, seasons, achievements, profiles and rewards shop.
-- Daily activity engine with a week-one posting rhythm, interactive prompts, button rewards, activity leaderboards and staff pulse summaries.
+- Staff-focused activity engine with interactive prompts available on demand, button rewards, activity leaderboards and staff pulse summaries.
 - Suggestions with voting, private ticket panels, staff ticket assignment/notes/closure and transcripts.
 - Giveaways with eligibility conditions, entry bonuses, rerolls and scheduled drawing.
 - Staff warnings, history and notes; timeout, kick, ban, purge, slowmode, lock/unlock, nickname and role tools.
@@ -98,6 +98,12 @@ This is an independent community management and engagement bot with an Express d
 - Premium plans, subscription management, referrals and staff-granted premium access (Stripe configuration required for paid billing).
 - Utility commands for polls, emoji management, keyword DMs, bump reminders, server snapshots and Discord member/server/role information.
 - Trade-call records and moderation/review controls in the dashboard. The current TypeScript app does not register trade-calculation or trade-call slash commands.
+
+### Recommended FUTBank feature set
+
+Enable: welcome/onboarding, role menus, trader tips, XP/levels, leaderboards, giveaways, tickets, suggestions, automod, staff pulse, staff pay reports, bump reminders, server backup, premium billing, counting, social feeds and a simple rewards shop for point redemption.
+
+Leave off by default: public daily activity posts, birthdays, AFK and starboard.
 
 ### Slash commands
 
