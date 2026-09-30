@@ -15,6 +15,7 @@ A standalone Discord community bot + web control panel for an FC27 trading serve
 - W/L community voting
 - Activity XP foundation
 - Daily activity engine with `/activity setup`, `/today`, `/pulse`, scheduled prompts, button rewards, leaderboards and staff summaries
+- FUTBank staff payment reports with `/staffpay report`
 
 ### Trading
 - `/tax`
@@ -22,6 +23,7 @@ A standalone Discord community bot + web control panel for an FC27 trading serve
 - `/roi`
 - `/breakeven`
 - `/tradetip` freeform trader-tip posts with bought/watching/passed/sold buttons
+- Trader-tip posting and tracking XP for staff payment reports
 - Structured `/call` posts with target ROI and optional discussion thread
 - `/callclose`
 - Dashboard trade-call history and status correction
