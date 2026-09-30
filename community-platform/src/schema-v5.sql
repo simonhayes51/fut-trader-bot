@@ -532,6 +532,18 @@ CREATE TABLE IF NOT EXISTS activity_responses (
 );
 CREATE INDEX IF NOT EXISTS activity_responses_today_idx ON activity_responses(guild_id,created_at DESC);
 
+ALTER TABLE trade_calls ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+CREATE TABLE IF NOT EXISTS trade_tip_tracking (
+  guild_id TEXT NOT NULL,
+  trade_call_id BIGINT NOT NULL REFERENCES trade_calls(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('bought','watching','passed','sold')),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY(guild_id,trade_call_id,user_id)
+);
+CREATE INDEX IF NOT EXISTS trade_tip_tracking_call_idx ON trade_tip_tracking(guild_id,trade_call_id,status);
+
 INSERT INTO onboarding_configs(guild_id) SELECT guild_id FROM guild_settings ON CONFLICT DO NOTHING;
 INSERT INTO recap_settings(guild_id) SELECT guild_id FROM guild_settings ON CONFLICT DO NOTHING;
 INSERT INTO recognition_role_settings(guild_id) SELECT guild_id FROM guild_settings ON CONFLICT DO NOTHING;
