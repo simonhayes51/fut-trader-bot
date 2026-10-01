@@ -151,3 +151,27 @@ controlRouter.get("/control/settings",async(req:any,res)=>{
   const map=new Map<string,any>(rows.map(r=>[String(r.feature_key),r] as [string,any]));
   res.render("control-settings",{user:req.session.user,...ui,modules:modules.map(m=>({...m,state:map.get(m.key)}))});
 });
+
+controlRouter.post("/control/settings/remove-bot",async(req:any,res)=>{
+  const guildId=selectedGuildId(req);
+  const guild=client.guilds.cache.get(guildId);
+  if(!guild)return res.status(404).send("The bot is not connected to the selected server.");
+  if(String(req.body.guildId||"")!==guild.id)return res.status(409).send("The selected server changed. Reload the settings page and try again.");
+  if(String(req.body.confirmation||"").trim()!==guild.name)return res.status(400).send("Type the selected server's exact name to confirm removal.");
+
+  const actor=req.session.user!;
+  const details={guildId:guild.id,guildName:guild.name,requestedBy:actor.id};
+  await audit(guild.id,actor.id,"bot.leave.requested",details);
+  try{
+    await guild.leave(`Requested by ${actor.username} from the EAFC.Live bot dashboard`);
+  }catch(err:any){
+    await audit(guild.id,actor.id,"bot.leave.failed",{...details,error:String(err?.message||err).slice(0,300)}).catch(()=>{});
+    console.error("Dashboard bot removal failed",guild.id,err);
+    return res.status(502).send("Discord could not remove the bot from this server. No server content was deleted.");
+  }
+
+  await audit(guild.id,actor.id,"bot.leave.completed",details).catch(err=>console.error("Bot removal audit failed",err));
+  if(req.session.user?.guilds)req.session.user.guilds=req.session.user.guilds.filter((item: any)=>item.id!==guild.id);
+  if(req.session.selectedGuildId===guild.id)delete req.session.selectedGuildId;
+  res.redirect("/control/settings?botRemoved=1");
+});
