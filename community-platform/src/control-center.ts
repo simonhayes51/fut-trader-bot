@@ -149,7 +149,7 @@ controlRouter.get("/control/safety",async(req:any,res)=>{
 controlRouter.get("/control/settings",async(req:any,res)=>{
   const [ui,rows]=await Promise.all([guildUi(req),query<any>(`SELECT feature_key,enabled,config,updated_at FROM feature_settings WHERE guild_id=$1`,[selectedGuildId(req)])]);
   const map=new Map<string,any>(rows.map(r=>[String(r.feature_key),r] as [string,any]));
-  res.render("control-settings",{user:req.session.user,...ui,modules:modules.map(m=>({...m,state:map.get(m.key)}))});
+  res.render("control-settings",{user:req.session.user,...ui,modules:modules.map(m=>({...m,state:map.get(m.key)})),botRemoved:req.query.botRemoved==="1"});
 });
 
 controlRouter.post("/control/settings/remove-bot",async(req:any,res)=>{
