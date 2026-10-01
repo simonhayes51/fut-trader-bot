@@ -163,7 +163,7 @@ controlRouter.post("/control/settings/remove-bot",async(req:any,res)=>{
   const details={guildId:guild.id,guildName:guild.name,requestedBy:actor.id};
   await audit(guild.id,actor.id,"bot.leave.requested",details);
   try{
-    await guild.leave(`Requested by ${actor.username} from the EAFC.Live bot dashboard`);
+    await guild.leave();
   }catch(err:any){
     await audit(guild.id,actor.id,"bot.leave.failed",{...details,error:String(err?.message||err).slice(0,300)}).catch(()=>{});
     console.error("Dashboard bot removal failed",guild.id,err);
