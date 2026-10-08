@@ -54,12 +54,16 @@ export const commandData=[
     .addStringOption(o=>o.setName("message").setDescription("Trader tip exactly as you want it posted").setRequired(true).setMaxLength(2000))
     .addStringOption(o=>o.setName("title").setDescription("Optional embed title").setMaxLength(100))
     .addStringOption(o=>o.setName("image_url").setDescription("Optional image URL").setMaxLength(500)),
-  new SlashCommandBuilder().setName("staffpay").setDescription("Create a FUTBank staff payout report")
+  new SlashCommandBuilder().setName("staffpay").setDescription("Create FUTBank staff reports")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .addSubcommand(sc=>sc.setName("report").setDescription("Split a payment pool by staff XP")
       .addRoleOption(o=>o.setName("role").setDescription("Staff/trader role to include").setRequired(true))
       .addIntegerOption(o=>o.setName("pool").setDescription("Payment pool in pounds").setRequired(true).setMinValue(0))
-      .addIntegerOption(o=>o.setName("days").setDescription("Days to include, default 30").setMinValue(1).setMaxValue(90))),
+      .addIntegerOption(o=>o.setName("days").setDescription("Days to include, default 30").setMinValue(1).setMaxValue(90)))
+    .addSubcommand(sc=>sc.setName("activity").setDescription("Count staff Discord posts from recent channel history")
+      .addRoleOption(o=>o.setName("role").setDescription("Staff role to include").setRequired(true))
+      .addIntegerOption(o=>o.setName("days").setDescription("Long period to include, default 14").setMinValue(7).setMaxValue(30))
+      .addBooleanOption(o=>o.setName("public").setDescription("Post the report publicly in this channel"))),
   new SlashCommandBuilder().setName("ping").setDescription("Check bot latency")
 ].map(c=>c.toJSON());
 
@@ -107,6 +111,74 @@ const trackerMemberXp:Record<string,number>={bought:3,watching:2,passed:1,sold:2
 
 function pounds(n:number){
   return `£${Math.max(0,n).toFixed(2)}`;
+}
+
+function discordTimestamp(date:Date,style:"d"|"f"|"R"="f"){
+  return `<t:${Math.floor(date.getTime()/1000)}:${style}>`;
+}
+
+type StaffActivityRow={id:string;messages7:number;messagesLong:number;channels:Map<string,number>};
+
+function canFetchMessages(channel:any,me:any){
+  if(!channel?.isTextBased?.()||!("messages" in channel))return false;
+  const permissions=channel.permissionsFor?.(me);
+  if(!permissions)return true;
+  return permissions.has(PermissionFlagsBits.ViewChannel)&&permissions.has(PermissionFlagsBits.ReadMessageHistory);
+}
+
+async function collectStaffMessageActivity(i:ChatInputCommandInteraction,role:any,days:number){
+  const guild=i.guild!;
+  await guild.channels.fetch().catch(()=>{});
+  await guild.members.fetch().catch(()=>{});
+  const staffIds=[...role.members.keys()].filter((id:string)=>{
+    const member=role.members.get(id);
+    return member&&!member.user?.bot;
+  });
+  const staffSet=new Set(staffIds);
+  const rows=new Map<string,StaffActivityRow>();
+  for(const id of staffIds)rows.set(id,{id,messages7:0,messagesLong:0,channels:new Map()});
+  const now=Date.now();
+  const cutoff7=now-7*24*60*60*1000;
+  const cutoffLong=now-days*24*60*60*1000;
+  let scannedChannels=0,skippedChannels=0,scannedMessages=0;
+  const channels=[...guild.channels.cache.values()].filter((channel:any)=>{
+    return [ChannelType.GuildText,ChannelType.GuildAnnouncement,ChannelType.PublicThread,ChannelType.PrivateThread,ChannelType.AnnouncementThread].includes(channel.type);
+  });
+
+  for(const channel of channels as any[]){
+    const me=guild.members.me||await guild.members.fetchMe().catch(()=>null);
+    if(!canFetchMessages(channel,me)){skippedChannels++;continue;}
+    scannedChannels++;
+    let before:string|undefined;
+    for(let page=0;page<250;page++){
+      const batch:any=await channel.messages.fetch({limit:100,before}).catch(()=>null);
+      if(!batch?.size)break;
+      scannedMessages+=batch.size;
+      let oldest=now;
+      for(const message of batch.values()){
+        const created=Number(message.createdTimestamp||0);
+        if(created<oldest)oldest=created;
+        if(created<cutoffLong)continue;
+        const authorId=String(message.author?.id||"");
+        if(!staffSet.has(authorId)||message.author?.bot)continue;
+        const row=rows.get(authorId);
+        if(!row)continue;
+        row.messagesLong++;
+        if(created>=cutoff7)row.messages7++;
+        row.channels.set(channel.id,(row.channels.get(channel.id)||0)+1);
+      }
+      before=batch.last()?.id;
+      if(!before||oldest<cutoffLong)break;
+    }
+  }
+
+  return {rows:[...rows.values()],scannedChannels,skippedChannels,scannedMessages,cutoff7:new Date(cutoff7),cutoffLong:new Date(cutoffLong)};
+}
+
+function staffActivityLine(row:StaffActivityRow,index:number){
+  const topChannels=[...row.channels.entries()].sort((a,b)=>b[1]-a[1]).slice(0,3).map(([id,count])=>`<#${id}> ${count}`).join(" | ");
+  return `${index}. <@${row.id}> — **${row.messages7}** in 7d | **${row.messagesLong}** in period${topChannels?`
+Top channels: ${topChannels}`:""}`;
 }
 
 async function refreshTradeTipMessage(client:Client,guildId:string,callId:number|string){
@@ -172,6 +244,37 @@ export async function handleCommand(client:Client,i:ChatInputCommandInteraction)
 
   if(i.commandName==="staffpay"){
     const sub=i.options.getSubcommand();
+    if(sub==="activity"){
+      const role:any=i.options.getRole("role",true);
+      const days=i.options.getInteger("days")||14;
+      const publicReport=Boolean(i.options.getBoolean("public")||false);
+      await i.deferReply({ephemeral:!publicReport});
+      const result=await collectStaffMessageActivity(i,role,days);
+      const rows=result.rows.sort((a,b)=>b.messagesLong-a.messagesLong||b.messages7-a.messages7);
+      if(!rows.length){
+        await i.editReply({content:"That role has no staff members to include."});
+        return;
+      }
+      const active=rows.filter(row=>row.messagesLong>0).length;
+      const total7=rows.reduce((sum,row)=>sum+row.messages7,0);
+      const totalLong=rows.reduce((sum,row)=>sum+row.messagesLong,0);
+      const body=rows.slice(0,20).map((row,index)=>staffActivityLine(row,index+1)).join("\n\n")||"No staff messages found.";
+      const embed=await guildEmbed(guildId,"FUTBank Staff Activity Report",`Role: ${role}
+Period: ${discordTimestamp(result.cutoffLong,"d")} to now | 7d since ${discordTimestamp(result.cutoff7,"d")}
+
+${body}`,BRAND.colours.primary);
+      embed.addFields(
+        {name:"Totals",value:`7d: **${total7}** posts
+${days}d: **${totalLong}** posts
+Active staff: **${active}/${rows.length}**`,inline:true},
+        {name:"Scan",value:`Channels: **${result.scannedChannels}** scanned, **${result.skippedChannels}** skipped
+Messages checked: **${result.scannedMessages.toLocaleString("en-GB")}**`,inline:true}
+      );
+      embed.setFooter({text:"Counts only include channels the bot can view and read history for. Use the public option if you want to post this report in-channel."});
+      await audit(guildId,i.user.id,"staffpay.activity",{roleId:role.id,days,publicReport,total7,totalLong,activeStaff:active,staffCount:rows.length,scannedChannels:result.scannedChannels,skippedChannels:result.skippedChannels});
+      await i.editReply({embeds:[embed]});
+      return;
+    }
     if(sub!=="report")return;
     const role:any=i.options.getRole("role",true);
     const pool=i.options.getInteger("pool",true);
