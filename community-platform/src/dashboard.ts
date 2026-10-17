@@ -107,7 +107,7 @@ app.use((req:any,res:any,next:any)=>{
         const user=options?.user||req.session?.user;
         output=output.replace(/<aside class="sidebar">[\s\S]*?<\/aside>/,dashboardSidebar(req.path,user?{...user,guilds:dashboardGuilds(req)}:user,selectedGuildId(req)));
         if(output.includes('/style.css')&&!output.includes('/polish.css')) output=output.replace("</head>",'<link rel="stylesheet" href="/polish.css"></head>');
-        if(!output.includes('/admin-refresh.css')) output=output.replace("</head>",'<link rel="stylesheet" href="/admin-refresh.css?v=7"></head>');
+        if(!output.includes('/admin-refresh.css')) output=output.replace("</head>",'<link rel="stylesheet" href="/admin-refresh.css?v=8"></head>');
       }
       if(callback)return callback(null,output);
       res.send(output);

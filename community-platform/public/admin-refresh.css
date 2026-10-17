@@ -68,6 +68,8 @@ input,select,textarea{background:#fff;border-color:#d4dde7;color:#1d2e43;box-sha
 
 /* Navigation groups stay closed until needed; the current section opens itself. */
 .sidebar nav .nav-collapsible{display:block;margin:2px 0 0;border:0}
+.sidebar nav details.nav-collapsible{background:transparent;border:0;border-radius:8px;box-shadow:none}
+.sidebar nav details.nav-collapsible[open]{background:transparent}
 .sidebar nav .nav-collapsible>summary{display:flex;align-items:center;justify-content:space-between;min-height:36px;padding:7px 10px;border:1px solid transparent;border-radius:8px;color:#536276;font-size:11px;font-weight:650;list-style:none;cursor:pointer}
 .sidebar nav .nav-collapsible>summary::-webkit-details-marker{display:none}
 .sidebar nav .nav-collapsible>summary:hover,.sidebar nav .nav-collapsible[open]>summary{background:#f4f7fa;color:#263a52}
