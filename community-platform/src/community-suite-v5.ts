@@ -142,7 +142,7 @@ async function finishOnboarding(i:any){
 
 function panelConfig(feature:any,panelId?:string){
   const panels=Array.isArray(feature?.config?.panels)?feature.config.panels:[];
-  const panel=panelId?panels.find((p:any)=>String(p.id||"")===panelId):null;
+  const panel=panelId?panels.find((p:any)=>String(p.id||"")===panelId):panels.find((p:any)=>p.enabled!==false&&p.panelChannelId&&p.categoryId&&p.staffRoleIds?.length);
   return panel ? {...feature.config,...panel} : feature.config;
 }
 

@@ -6,6 +6,7 @@ import {
 import { audit, getFeature, one, query } from "./db.js";
 import { clearGuildBrandCache, guildEmbed, guildSystemEmbed, BRAND } from "./brand.js";
 import { awardCurrency, recordEconomyEvent } from "./economy-core.js";
+import { moderationCommandAllowed, postModerationLog } from "./moderation-guard.js";
 
 export const commandData=[
   new SlashCommandBuilder().setName("kudos").setDescription("Give kudos to a member")
@@ -20,11 +21,11 @@ export const commandData=[
   new SlashCommandBuilder().setName("suggest").setDescription("Make a server suggestion")
     .addStringOption(o=>o.setName("suggestion").setDescription("Your suggestion").setRequired(true).setMaxLength(1000)),
   new SlashCommandBuilder().setName("warn").setDescription("Warn a member")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
+    .setDefaultMemberPermissions(null)
     .addUserOption(o=>o.setName("member").setDescription("Member").setRequired(true))
     .addStringOption(o=>o.setName("reason").setDescription("Reason").setRequired(true).setMaxLength(500)),
   new SlashCommandBuilder().setName("history").setDescription("View moderation history")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
+    .setDefaultMemberPermissions(null)
     .addUserOption(o=>o.setName("member").setDescription("Member").setRequired(true)),
   new SlashCommandBuilder().setName("ticket").setDescription("Open a private support ticket")
     .addStringOption(o=>o.setName("type").setDescription("Ticket type").setRequired(true).addChoices(
@@ -397,13 +398,16 @@ Messages checked: **${result.scannedMessages.toLocaleString("en-GB")}**`,inline:
   }
 
   if(i.commandName==="warn"){
+    if(!await moderationCommandAllowed(i))return;
     const user=i.options.getUser("member",true),reason=i.options.getString("reason",true);
     await query(`INSERT INTO warnings(guild_id,user_id,moderator_id,reason) VALUES($1,$2,$3,$4)`,[guildId,user.id,i.user.id,reason]);
     await audit(guildId,i.user.id,"moderation.warn",{userId:user.id,reason});
+    await postModerationLog(client,guildId,"Member warned",`Member: <@${user.id}>\nStaff: <@${i.user.id}>\nReason: ${reason}`);
     return i.reply({content:`⚠️ ${user} warned: ${reason}`,ephemeral:true});
   }
 
   if(i.commandName==="history"){
+    if(!await moderationCommandAllowed(i))return;
     const user=i.options.getUser("member",true);
     const rows=await query<any>(`SELECT moderator_id,reason,created_at FROM warnings WHERE guild_id=$1 AND user_id=$2 ORDER BY created_at DESC LIMIT 10`,[guildId,user.id]);
     const body=rows.length?rows.map((r,n)=>`${n+1}. ${new Date(r.created_at).toLocaleDateString("en-GB")} — ${r.reason}`).join("\n"):"No warnings.";
@@ -411,19 +415,22 @@ Messages checked: **${result.scannedMessages.toLocaleString("en-GB")}**`,inline:
   }
 
   if(i.commandName==="ticket"){
-    const feature=await getFeature(guildId,"tickets",{categoryId:"",staffRoleIds:[]});
+    const feature:any=await getFeature(guildId,"tickets",{categoryId:"",staffRoleIds:[]});
     if(!feature.enabled)return i.reply({content:"Tickets are disabled.",ephemeral:true});
     const type=i.options.getString("type",true);
+    const panel=Array.isArray(feature.config.panels)?feature.config.panels.find((p:any)=>p.enabled!==false&&p.types?.includes(type)&&p.panelChannelId&&p.categoryId&&p.staffRoleIds?.length)||feature.config.panels.find((p:any)=>p.enabled!==false&&p.panelChannelId&&p.categoryId&&p.staffRoleIds?.length):null;
+    const ticketConfig=panel?{...feature.config,...panel}:feature.config;
+    if(!ticketConfig.categoryId||!Array.isArray(ticketConfig.staffRoleIds)||!ticketConfig.staffRoleIds.length)return i.reply({content:"Tickets are switched on, but no complete ticket panel is ready. Ask a server admin to finish ticket setup.",ephemeral:true});
     const row=(await query<{id:number}>(`INSERT INTO tickets(guild_id,user_id,ticket_type) VALUES($1,$2,$3) RETURNING id`,[guildId,i.user.id,type]))[0]!;
     const overwrites:any[]=[
       {id:i.guild.roles.everyone.id,deny:[PermissionFlagsBits.ViewChannel]},
       {id:i.user.id,allow:[PermissionFlagsBits.ViewChannel,PermissionFlagsBits.SendMessages,PermissionFlagsBits.ReadMessageHistory]}
     ];
-    for(const roleId of (feature.config.staffRoleIds as string[]||[]))overwrites.push({id:roleId,allow:[PermissionFlagsBits.ViewChannel,PermissionFlagsBits.SendMessages,PermissionFlagsBits.ReadMessageHistory]});
+    for(const roleId of (ticketConfig.staffRoleIds as string[]||[]))overwrites.push({id:roleId,allow:[PermissionFlagsBits.ViewChannel,PermissionFlagsBits.SendMessages,PermissionFlagsBits.ReadMessageHistory]});
     const channel=await i.guild.channels.create({
       name:`ticket-${row.id}-${i.user.username}`.toLowerCase().replace(/[^a-z0-9-]/g,"").slice(0,90),
       type:ChannelType.GuildText,
-      parent:feature.config.categoryId?String(feature.config.categoryId):undefined,
+      parent:String(ticketConfig.categoryId),
       permissionOverwrites:overwrites
     });
     await query(`UPDATE tickets SET channel_id=$1 WHERE id=$2`,[channel.id,row.id]);

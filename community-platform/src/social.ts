@@ -72,7 +72,7 @@ async function pollX(feed:Feed) {
 }
 
 export async function pollSocialFeeds() {
-  const feeds=await query<Feed>(`SELECT * FROM social_feeds WHERE guild_id=$1 AND enabled=true AND provider <> 'webhook' ORDER BY id`,[config.targetGuildId]);
+  const feeds=await query<Feed>(`SELECT s.* FROM social_feeds s LEFT JOIN feature_settings f ON f.guild_id=s.guild_id AND f.feature_key='social_feeds' WHERE s.enabled=true AND COALESCE(f.enabled,true)=true AND s.provider <> 'webhook' ORDER BY s.guild_id,s.id`);
   for(const feed of feeds) {
     try {
       if(["rss","reddit","youtube"].includes(feed.provider)) await pollRss(feed);
@@ -95,18 +95,18 @@ function webhookItem(feed:Feed,payload:any) {
 }
 
 export async function deliverWebhookGroup(group:string,payload:any) {
-  const feeds=await query<Feed>(`SELECT * FROM social_feeds WHERE provider='webhook' AND enabled=true AND COALESCE(NULLIF(btrim(source),''),btrim(name))=$1 ORDER BY id`,[group.trim()]);
+  const feeds=await query<Feed>(`SELECT s.* FROM social_feeds s LEFT JOIN feature_settings f ON f.guild_id=s.guild_id AND f.feature_key='social_feeds' WHERE s.provider='webhook' AND s.enabled=true AND COALESCE(f.enabled,true)=true AND COALESCE(NULLIF(btrim(s.source),''),btrim(s.name))=$1 ORDER BY s.guild_id,s.id`,[group.trim()]);
   if(!feeds.length) return false;
   for(const feed of feeds) await post(feed,webhookItem(feed,payload));
   return true;
 }
 
 export async function deliverWebhook(secret:string,payload:any) {
-  const feed=await one<Feed>(`SELECT * FROM social_feeds WHERE secret_key=$1 AND enabled=true AND provider='webhook'`,[secret]);
+  const feed=await one<Feed>(`SELECT s.* FROM social_feeds s LEFT JOIN feature_settings f ON f.guild_id=s.guild_id AND f.feature_key='social_feeds' WHERE s.secret_key=$1 AND s.enabled=true AND s.provider='webhook' AND COALESCE(f.enabled,true)=true`,[secret]);
   if(!feed) return false;
   const webhookGroup=(feed.source||feed.name||"").trim();
   const feeds=webhookGroup
-    ? await query<Feed>(`SELECT * FROM social_feeds WHERE provider='webhook' AND enabled=true AND COALESCE(NULLIF(btrim(source),''),btrim(name))=$1 ORDER BY id`,[webhookGroup])
+    ? await query<Feed>(`SELECT s.* FROM social_feeds s LEFT JOIN feature_settings f ON f.guild_id=s.guild_id AND f.feature_key='social_feeds' WHERE s.provider='webhook' AND s.enabled=true AND COALESCE(f.enabled,true)=true AND COALESCE(NULLIF(btrim(s.source),''),btrim(s.name))=$1 ORDER BY s.guild_id,s.id`,[webhookGroup])
     : [feed];
   for(const target of feeds) await post(target,webhookItem(target,payload));
   return true;

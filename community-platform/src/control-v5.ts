@@ -17,12 +17,14 @@ const bool=(v:any)=>v==="on"||v==="true"||v===true;
 
 async function ui(req:any){
   const guild=client.guilds.cache.get(selectedGuildId(req));
-  if(!guild)return {guild:null,channels:[],roles:[],members:[]};
+  if(!guild)return {guild:null,channels:[],roles:[],allRoles:[],members:[]};
   const members=await guild.members.fetch().catch(()=>guild.members.cache),botHighest=guild.members.me?.roles.highest.position??0;
+  const allRoles=[...guild.roles.cache.values()].filter((r:any)=>r.id!==guild.id&&!r.managed).map((r:any)=>({id:r.id,name:r.name})).sort((a:any,b:any)=>a.name.localeCompare(b.name));
   return {
     guild,
     channels:[...guild.channels.cache.values()].filter((c:any)=>c.isTextBased()||c.type===2).map((c:any)=>({id:c.id,name:c.name,type:c.type})).sort((a,b)=>a.name.localeCompare(b.name)),
-    roles:[...guild.roles.cache.values()].filter((r:any)=>r.id!==guild.id&&!r.managed&&r.position<botHighest).map((r:any)=>({id:r.id,name:r.name})).sort((a,b)=>a.name.localeCompare(b.name)),
+    roles:allRoles.filter((r:any)=>(guild.roles.cache.get(r.id)?.position??Infinity)<botHighest),
+    allRoles,
     members:[...members.values()].filter((m:any)=>!m.user.bot).map((m:any)=>({id:m.id,name:m.displayName,username:m.user.username}))
   };
 }
@@ -168,7 +170,7 @@ v5ControlRouter.post("/control/growth/booster-milestone",async(req:any,res)=>{aw
 v5ControlRouter.get("/control/insights",async(req:any,res)=>{
   const gid=selectedGuildId(req),[base,funnel,engagement,premium,referrals,commands,features,widgets]=await Promise.all([
     ui(req),
-    one<any>(`SELECT count(*) joins,count(*) FILTER(WHERE verified_at IS NOT NULL) verified,count(*) FILTER(WHERE first_active_at IS NOT NULL) activated,count(*) FILTER(WHERE retained_1d) retained1,count(*) FILTER(WHERE retained_7d) retained7,count(*) FILTER(WHERE retained_30d) retained30 FROM member_funnel WHERE guild_id=$1`,[gid]),
+    one<any>(`SELECT count(*) records,count(*) joins,count(*) FILTER(WHERE verified_at IS NOT NULL) verified,count(*) FILTER(WHERE first_active_at IS NOT NULL) activated,count(*) FILTER(WHERE retained_1d) retained1,count(*) FILTER(WHERE retained_7d) retained7,count(*) FILTER(WHERE retained_30d) retained30 FROM member_funnel WHERE guild_id=$1`,[gid]),
     one<any>(`SELECT (SELECT count(*) FROM reputation_events WHERE guild_id=$1 AND created_at>=now()-interval '30 days') kudos,(SELECT count(*) FROM member_quest_progress WHERE guild_id=$1 AND rewarded_at>=now()-interval '30 days') quests,(SELECT count(*) FROM member_streaks WHERE guild_id=$1 AND current_streak>0) streaks,(SELECT count(*) FROM giveaway_entries ge JOIN giveaways g ON g.id=ge.giveaway_id WHERE g.guild_id=$1 AND ge.created_at>=now()-interval '30 days') giveaway_entries`,[gid]),
     one<any>(`SELECT count(*) FILTER(WHERE source='stripe') total,count(*) FILTER(WHERE source='stripe' AND status IN ('active','past_due')) active,count(*) FILTER(WHERE source='stripe' AND status IN ('canceled','revoked')) churned,count(*) FILTER(WHERE source='stripe' AND created_at>=now()-interval '30 days') conversions30 FROM billing_subscriptions WHERE guild_id=$1`,[gid]),
     one<any>(`SELECT count(*) codes,COALESCE(sum(clicks),0) clicks,COALESCE(sum(conversions),0) conversions FROM referral_codes WHERE guild_id=$1`,[gid]),

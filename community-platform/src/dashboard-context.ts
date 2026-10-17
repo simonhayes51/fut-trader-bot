@@ -102,13 +102,15 @@ export function requireSelectedGuild(req:any,res:any,next:any) {
 
 export async function guildUi(req:any) {
   const guild=selectedGuild(req);
-  if(!guild) return {guild:null,channels:[],roles:[],members:[]};
+  if(!guild) return {guild:null,channels:[],roles:[],allRoles:[],members:[]};
   const fetched=await guild.members.fetch().catch(()=>guild.members.cache);
   const botHighest=guild.members.me?.roles.highest.position??0;
+  const allRoles=[...guild.roles.cache.values()].filter(r=>r.id!==guild.id&&!r.managed).sort((a,b)=>b.position-a.position).map(r=>({id:r.id,name:r.name}));
   return {
     guild,
     channels:[...guild.channels.cache.values()].map((c:any)=>({id:c.id,name:c.name,type:c.type})).sort((a,b)=>a.name.localeCompare(b.name)),
-    roles:[...guild.roles.cache.values()].filter(r=>r.id!==guild.id&&!r.managed&&r.position<botHighest).sort((a,b)=>b.position-a.position).map(r=>({id:r.id,name:r.name})),
+    roles:allRoles.filter(r=>(guild.roles.cache.get(r.id)?.position??Infinity)<botHighest),
+    allRoles,
     members:[...fetched.values()].filter((m:any)=>!m.user.bot).sort((a,b)=>a.displayName.localeCompare(b.displayName)).map((m:any)=>({id:m.id,name:m.displayName,username:m.user.username,joinedAt:m.joinedAt}))
   };
 }

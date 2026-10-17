@@ -7,6 +7,8 @@ import { config } from "./config.js";
 import { grantComp, listPlans, refreshExpiredEntitlements, reconcileActiveEntitlementRoles } from "./billing.js";
 import { brandEmbed, BRAND } from "./brand.js";
 import { getEconomyProfile, levelFromXp, recordEconomyEvent } from "./economy-core.js";
+import { scheduleCronMatches, scheduleLocalTime } from "./schedule-time.js";
+import { moderationCommandAllowed, postModerationLog } from "./moderation-guard.js";
 
 const fmt=(n:number)=>Math.round(n).toLocaleString("en-GB");
 let lastEntitlementRoleSweep=0;
@@ -39,23 +41,23 @@ const slash:any[]=[
       .addIntegerOption(o=>o.setName("tenure_bonus_days").setDescription("Server days needed for tenure bonus").setMinValue(1))
       .addIntegerOption(o=>o.setName("tenure_bonus_entries").setDescription("Tenure bonus entries").setMinValue(0).setMaxValue(20)))
     .addSubcommand(s=>s.setName("reroll").setDescription("Reroll a finished giveaway").addIntegerOption(o=>o.setName("id").setDescription("Giveaway ID").setRequired(true))),
-  new SlashCommandBuilder().setName("note").setDescription("Add a private staff note").setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
+  new SlashCommandBuilder().setName("note").setDescription("Add a private staff note").setDefaultMemberPermissions(null)
     .addUserOption(o=>o.setName("member").setDescription("Member").setRequired(true)).addStringOption(o=>o.setName("note").setDescription("Note").setRequired(true)),
-  new SlashCommandBuilder().setName("timeout").setDescription("Timeout a member").setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
+  new SlashCommandBuilder().setName("timeout").setDescription("Timeout a member").setDefaultMemberPermissions(null)
     .addUserOption(o=>o.setName("member").setDescription("Member").setRequired(true)).addIntegerOption(o=>o.setName("minutes").setDescription("Minutes").setRequired(true).setMinValue(1).setMaxValue(40320)).addStringOption(o=>o.setName("reason").setDescription("Reason")),
-  new SlashCommandBuilder().setName("kick").setDescription("Kick a member").setDefaultMemberPermissions(PermissionFlagsBits.KickMembers)
+  new SlashCommandBuilder().setName("kick").setDescription("Kick a member").setDefaultMemberPermissions(null)
     .addUserOption(o=>o.setName("member").setDescription("Member").setRequired(true)).addStringOption(o=>o.setName("reason").setDescription("Reason")),
-  new SlashCommandBuilder().setName("ban").setDescription("Ban a member").setDefaultMemberPermissions(PermissionFlagsBits.BanMembers)
+  new SlashCommandBuilder().setName("ban").setDescription("Ban a member").setDefaultMemberPermissions(null)
     .addUserOption(o=>o.setName("member").setDescription("Member").setRequired(true)).addStringOption(o=>o.setName("reason").setDescription("Reason")),
-  new SlashCommandBuilder().setName("purge").setDescription("Delete recent messages").setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
+  new SlashCommandBuilder().setName("purge").setDescription("Delete recent messages").setDefaultMemberPermissions(null)
     .addIntegerOption(o=>o.setName("count").setDescription("Messages").setRequired(true).setMinValue(1).setMaxValue(100)),
-  new SlashCommandBuilder().setName("slowmode").setDescription("Set channel slowmode").setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+  new SlashCommandBuilder().setName("slowmode").setDescription("Set channel slowmode").setDefaultMemberPermissions(null)
     .addIntegerOption(o=>o.setName("seconds").setDescription("Seconds, 0 disables").setRequired(true).setMinValue(0).setMaxValue(21600)),
-  new SlashCommandBuilder().setName("lock").setDescription("Lock this channel").setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
-  new SlashCommandBuilder().setName("unlock").setDescription("Unlock this channel").setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
-  new SlashCommandBuilder().setName("nick").setDescription("Change a member nickname").setDefaultMemberPermissions(PermissionFlagsBits.ManageNicknames)
+  new SlashCommandBuilder().setName("lock").setDescription("Lock this channel").setDefaultMemberPermissions(null),
+  new SlashCommandBuilder().setName("unlock").setDescription("Unlock this channel").setDefaultMemberPermissions(null),
+  new SlashCommandBuilder().setName("nick").setDescription("Change a member nickname").setDefaultMemberPermissions(null)
     .addUserOption(o=>o.setName("member").setDescription("Member").setRequired(true)).addStringOption(o=>o.setName("nickname").setDescription("New nickname")),
-  new SlashCommandBuilder().setName("role").setDescription("Add or remove a member role").setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
+  new SlashCommandBuilder().setName("role").setDescription("Add or remove a member role").setDefaultMemberPermissions(null)
     .addUserOption(o=>o.setName("member").setDescription("Member").setRequired(true)).addRoleOption(o=>o.setName("role").setDescription("Role").setRequired(true))
     .addStringOption(o=>o.setName("action").setDescription("Action").setRequired(true).addChoices({name:"Add",value:"add"},{name:"Remove",value:"remove"})),
   new SlashCommandBuilder().setName("event").setDescription("Create a Discord scheduled event").setDefaultMemberPermissions(PermissionFlagsBits.ManageEvents)
@@ -105,6 +107,7 @@ export async function handleFeatureAutocomplete(_i:any){return false;}
 export async function handleFeatureCommand(client:Client,i:any){
   const names=new Set(slash.map(c=>c.name));if(!names.has(i.commandName)||!i.guildId||!i.guild)return false;
   if(!await commandAllowed(i))return true;
+  if(new Set(["timeout","kick","ban","purge","slowmode","lock","unlock","nick","role"]).has(i.commandName)&&!await moderationCommandAllowed(i))return true;
   const gid=i.guildId,uid=i.user.id;
 
   if(i.commandName==="rank"){
@@ -168,22 +171,22 @@ export async function handleFeatureCommand(client:Client,i:any){
 
   if(i.commandName==="note"){
     const u=i.options.getUser("member",true),note=i.options.getString("note",true);
-    await query(`INSERT INTO staff_notes(guild_id,user_id,staff_id,note) VALUES($1,$2,$3,$4)`,[gid,u.id,uid,note]);await audit(gid,uid,"moderation.note",{userId:u.id,note});await i.reply({content:"Staff note saved.",ephemeral:true});return true;
+    await query(`INSERT INTO staff_notes(guild_id,user_id,staff_id,note) VALUES($1,$2,$3,$4)`,[gid,u.id,uid,note]);await audit(gid,uid,"moderation.note",{userId:u.id,note});await postModerationLog(client,gid,"Staff note",`Member: <@${u.id}>\nStaff: <@${uid}>\nNote: ${note}`);await i.reply({content:"Staff note saved.",ephemeral:true});return true;
   }
 
   if(i.commandName==="timeout"){
     const u=i.options.getUser("member",true),minutes=i.options.getInteger("minutes",true),reason=i.options.getString("reason")||"Moderator action";const m=await i.guild.members.fetch(u.id);
-    await m.timeout(minutes*60000,reason);await audit(gid,uid,"moderation.timeout",{userId:u.id,minutes,reason});await i.reply({content:`${u} timed out for ${minutes} minutes.`,ephemeral:true});return true;
+    await m.timeout(minutes*60000,reason);await audit(gid,uid,"moderation.timeout",{userId:u.id,minutes,reason});await postModerationLog(client,gid,"Member timeout",`Member: <@${u.id}>\nStaff: <@${uid}>\nLength: ${minutes} minutes\nReason: ${reason}`);await i.reply({content:`${u} timed out for ${minutes} minutes.`,ephemeral:true});return true;
   }
 
-  if(i.commandName==="kick"){const u=i.options.getUser("member",true),reason=i.options.getString("reason")||"Moderator action";const m=await i.guild.members.fetch(u.id);await m.kick(reason);await audit(gid,uid,"moderation.kick",{userId:u.id,reason});await i.reply({content:`${u.username} kicked.`,ephemeral:true});return true;}
-  if(i.commandName==="ban"){const u=i.options.getUser("member",true),reason=i.options.getString("reason")||"Moderator action";await i.guild.members.ban(u.id,{reason});await audit(gid,uid,"moderation.ban",{userId:u.id,reason});await i.reply({content:`${u.username} banned.`,ephemeral:true});return true;}
+  if(i.commandName==="kick"){const u=i.options.getUser("member",true),reason=i.options.getString("reason")||"Moderator action";const m=await i.guild.members.fetch(u.id);await m.kick(reason);await audit(gid,uid,"moderation.kick",{userId:u.id,reason});await postModerationLog(client,gid,"Member kicked",`Member: <@${u.id}>\nStaff: <@${uid}>\nReason: ${reason}`);await i.reply({content:`${u.username} kicked.`,ephemeral:true});return true;}
+  if(i.commandName==="ban"){const u=i.options.getUser("member",true),reason=i.options.getString("reason")||"Moderator action";await i.guild.members.ban(u.id,{reason});await audit(gid,uid,"moderation.ban",{userId:u.id,reason});await postModerationLog(client,gid,"Member banned",`Member: <@${u.id}>\nStaff: <@${uid}>\nReason: ${reason}`);await i.reply({content:`${u.username} banned.`,ephemeral:true});return true;}
 
-  if(i.commandName==="purge"){const count=i.options.getInteger("count",true);if(!i.channel||!("bulkDelete" in i.channel)){await i.reply({content:"This channel doesn't support bulk delete.",ephemeral:true});return true;}const deleted=await (i.channel as any).bulkDelete(count,true);await audit(gid,uid,"moderation.purge",{channelId:i.channelId,count:deleted.size});await i.reply({content:`Deleted ${deleted.size} messages.`,ephemeral:true});return true;}
-  if(i.commandName==="slowmode"){const seconds=i.options.getInteger("seconds",true);if(!i.channel||!("setRateLimitPerUser" in i.channel)){await i.reply({content:"This channel doesn't support slowmode.",ephemeral:true});return true;}await (i.channel as any).setRateLimitPerUser(seconds);await audit(gid,uid,"moderation.slowmode",{channelId:i.channelId,seconds});await i.reply({content:`Slowmode set to ${seconds}s.`,ephemeral:true});return true;}
-  if(i.commandName==="lock"||i.commandName==="unlock"){if(!i.channel||!("permissionOverwrites" in i.channel)){await i.reply({content:"This channel can't be locked.",ephemeral:true});return true;}const lock=i.commandName==="lock";await (i.channel as any).permissionOverwrites.edit(i.guild.roles.everyone,{SendMessages:lock?false:null});await audit(gid,uid,`moderation.${i.commandName}`,{channelId:i.channelId});await i.reply({content:lock?"🔒 Channel locked.":"🔓 Channel unlocked.",ephemeral:true});return true;}
-  if(i.commandName==="nick"){const u=i.options.getUser("member",true),nickname=i.options.getString("nickname");const m=await i.guild.members.fetch(u.id);await m.setNickname(nickname||null);await audit(gid,uid,"moderation.nick",{userId:u.id,nickname});await i.reply({content:"Nickname updated.",ephemeral:true});return true;}
-  if(i.commandName==="role"){const u=i.options.getUser("member",true),role=i.options.getRole("role",true),action=i.options.getString("action",true),m=await i.guild.members.fetch(u.id);if(action==="add")await m.roles.add(role.id);else await m.roles.remove(role.id);await audit(gid,uid,"moderation.role",{userId:u.id,roleId:role.id,action});await i.reply({content:`${action==="add"?"Added":"Removed"} @${role.name} ${action==="add"?"to":"from"} ${u.username}.`,ephemeral:true});return true;}
+  if(i.commandName==="purge"){const count=i.options.getInteger("count",true);if(!i.channel||!("bulkDelete" in i.channel)){await i.reply({content:"This channel doesn't support bulk delete.",ephemeral:true});return true;}const deleted=await (i.channel as any).bulkDelete(count,true);await audit(gid,uid,"moderation.purge",{channelId:i.channelId,count:deleted.size});await postModerationLog(client,gid,"Messages removed",`Channel: <#${i.channelId}>\nStaff: <@${uid}>\nCount: ${deleted.size}`);await i.reply({content:`Deleted ${deleted.size} messages.`,ephemeral:true});return true;}
+  if(i.commandName==="slowmode"){const seconds=i.options.getInteger("seconds",true);if(!i.channel||!("setRateLimitPerUser" in i.channel)){await i.reply({content:"This channel doesn't support slowmode.",ephemeral:true});return true;}await (i.channel as any).setRateLimitPerUser(seconds);await audit(gid,uid,"moderation.slowmode",{channelId:i.channelId,seconds});await postModerationLog(client,gid,"Channel slowmode changed",`Channel: <#${i.channelId}>\nStaff: <@${uid}>\nSlowmode: ${seconds}s`);await i.reply({content:`Slowmode set to ${seconds}s.`,ephemeral:true});return true;}
+  if(i.commandName==="lock"||i.commandName==="unlock"){if(!i.channel||!("permissionOverwrites" in i.channel)){await i.reply({content:"This channel can't be locked.",ephemeral:true});return true;}const lock=i.commandName==="lock";await (i.channel as any).permissionOverwrites.edit(i.guild.roles.everyone,{SendMessages:lock?false:null});await audit(gid,uid,`moderation.${i.commandName}`,{channelId:i.channelId});await postModerationLog(client,gid,lock?"Channel locked":"Channel unlocked",`Channel: <#${i.channelId}>\nStaff: <@${uid}>`);await i.reply({content:lock?"🔒 Channel locked.":"🔓 Channel unlocked.",ephemeral:true});return true;}
+  if(i.commandName==="nick"){const u=i.options.getUser("member",true),nickname=i.options.getString("nickname");const m=await i.guild.members.fetch(u.id);await m.setNickname(nickname||null);await audit(gid,uid,"moderation.nick",{userId:u.id,nickname});await postModerationLog(client,gid,"Nickname changed",`Member: <@${u.id}>\nStaff: <@${uid}>\nNew nickname: ${nickname||"Cleared"}`);await i.reply({content:"Nickname updated.",ephemeral:true});return true;}
+  if(i.commandName==="role"){const u=i.options.getUser("member",true),role=i.options.getRole("role",true),action=i.options.getString("action",true),m=await i.guild.members.fetch(u.id);if(action==="add")await m.roles.add(role.id);else await m.roles.remove(role.id);await audit(gid,uid,"moderation.role",{userId:u.id,roleId:role.id,action});await postModerationLog(client,gid,"Member role changed",`Member: <@${u.id}>\nStaff: <@${uid}>\nRole: <@&${role.id}>\nAction: ${action}`);await i.reply({content:`${action==="add"?"Added":"Removed"} @${role.name} ${action==="add"?"to":"from"} ${u.username}.`,ephemeral:true});return true;}
 
   if(i.commandName==="event"){
     const name=i.options.getString("name",true),starts=i.options.getInteger("minutes_from_now",true),duration=i.options.getInteger("duration_minutes")||60,description=i.options.getString("description")||"";
@@ -290,16 +293,15 @@ export async function onMemberJoinLeave(guildId:string,type:"joins"|"leaves"){
   await query(`INSERT INTO server_metrics_daily(guild_id,metric_date,${type}) VALUES($1,current_date,1) ON CONFLICT(guild_id,metric_date) DO UPDATE SET ${type}=server_metrics_daily.${type}+1`,[guildId]);
 }
 
-function cronMatches(expr:string,d=new Date()){
-  const parts=expr.split(" ");const min=parts[0]||"*",hour=parts[1]||"*",dow=parts[4]||"*";const check=(part:string,value:number)=>part==="*"||part.split(",").map(Number).includes(value);
-  return check(min,d.getMinutes())&&check(hour,d.getHours())&&check(dow,d.getDay());
-}
-
 export async function runAutomationTick(client:Client){
-  const scheduled=await query<any>(`SELECT * FROM scheduled_messages WHERE enabled=true`);
-  const minuteKey=new Date().toISOString().slice(0,16);
+  const scheduled=await query<any>(`SELECT m.* FROM scheduled_messages m LEFT JOIN feature_settings f ON f.guild_id=m.guild_id AND f.feature_key='scheduled_messages' WHERE m.enabled=true AND COALESCE(f.enabled,true)=true`);
+  const now=new Date(),tzRows=await query<any>(`SELECT guild_id,config->>'timezone' timezone FROM feature_settings WHERE feature_key='scheduled_messages'`);
+  const timeZones=new Map(tzRows.map((r:any)=>[String(r.guild_id),String(r.timezone||"Europe/London")]));
   for(const s of scheduled){
-    if(!cronMatches(s.cron_expression))continue;
+    const timeZone=timeZones.get(String(s.guild_id))||"Europe/London";let local;
+    try{local=scheduleLocalTime(now,timeZone);}catch{local=scheduleLocalTime(now,"Europe/London");}
+    if(!scheduleCronMatches(s.cron_expression,local))continue;
+    const minuteKey=`${local.year}-${local.month}-${local.day}T${String(local.hour).padStart(2,"0")}:${String(local.minute).padStart(2,"0")}`;
     const key=`schedule:${s.id}:${minuteKey}`;const seen=await one<any>(`SELECT 1 FROM audit_log WHERE guild_id=$1 AND action='automation.schedule.sent' AND details->>'key'=$2 LIMIT 1`,[s.guild_id,key]);if(seen)continue;
     const ch=await client.channels.fetch(s.channel_id).catch(()=>null);if(ch?.isTextBased()){await (ch as TextChannel).send(s.content).catch(console.error);await audit(s.guild_id,"system","automation.schedule.sent",{key,scheduleId:s.id});}
   }

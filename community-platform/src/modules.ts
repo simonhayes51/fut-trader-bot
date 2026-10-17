@@ -178,3 +178,88 @@ export const modules:ModuleDefinition[]=[
 ];
 
 export const moduleMap=new Map(modules.map(m=>[m.key,m]));
+
+/** Validate editor payloads on the server; browser constraints are only hints. */
+export function validateModuleConfig(def:ModuleDefinition,cfg:any,guild:any,enabled:boolean):string[] {
+  const errors:string[]=[];
+  if(!cfg||typeof cfg!=="object"||Array.isArray(cfg)) return ["Settings must be an object."];
+  const channel=(id:any,category=false)=>{
+    if(!id)return true;
+    const item=guild?.channels?.cache?.get(String(id));
+    return Boolean(item&&(category?item.type===4:(item.isTextBased?.()||[0,5,announcementChannelType].includes(item.type))));
+  };
+  const announcementChannelType=5;
+  const role=(id:any)=>!id||Boolean(guild?.roles?.cache?.has(String(id))&&guild.roles.cache.get(String(id))?.id!==guild.id);
+  const assignableRole=(id:any)=>{const item=id&&guild?.roles?.cache?.get(String(id)),highest=guild?.members?.me?.roles?.highest?.position??0;return Boolean(role(id)&&item&&!item.managed&&item.position<highest);};
+  for(const field of def.fields){
+    const value=cfg[field.key];
+    if(value===undefined)continue;
+    if(field.type==="number"){
+      const n=Number(value);
+      if(!Number.isInteger(n)||(field.min!==undefined&&n<field.min)||(field.max!==undefined&&n>field.max)) errors.push(`${field.label} must be a whole number${field.min!==undefined?` from ${field.min}`:""}${field.max!==undefined?` to ${field.max}`:""}.`);
+    }else if(field.type==="toggle"&&typeof value!=="boolean")errors.push(`${field.label} must be on or off.`);
+    else if(["text","textarea","list"].includes(field.type)&&!Array.isArray(value)&&typeof value!=="string")errors.push(`${field.label} must be text.`);
+    else if(field.type==="text"&&String(value).length>256)errors.push(`${field.label} must be 256 characters or fewer.`);
+    else if(field.type==="textarea"&&String(value).length>2000)errors.push(`${field.label} must be 2,000 characters or fewer.`);
+    else if(field.type==="list"&&(!Array.isArray(value)||value.length>100||value.some((x:any)=>typeof x!=="string"||x.length>120)))errors.push(`${field.label} must contain up to 100 lines of 120 characters or fewer.`);
+    else if(["channel","channels"].includes(field.type)){
+      const ids=field.type==="channels"?(Array.isArray(value)?value:[]):[value];
+      if(!Array.isArray(value)&&field.type==="channels")errors.push(`${field.label} must be a list of channels.`);
+      else if(ids.some((id:any)=>id&&!channel(id)))errors.push(`${field.label} includes a channel that is missing or cannot receive messages.`);
+    }else if(field.type==="category"&& !channel(value,true))errors.push(`${field.label} must be a category in this server.`);
+    else if(field.type==="role"&&value&&!(def.key==="welcome"&&field.key==="autoRoleId"?assignableRole(value):role(value)))errors.push(`${field.label} must be a role this feature can use in this server.`);
+    else if(field.type==="roles"){
+      if(!Array.isArray(value)||value.some((id:any)=>!role(id)))errors.push(`${field.label} includes a role that is missing or unavailable.`);
+    }else if(field.type==="select"&&!(field.options||[]).some(option=>option.value===String(value)))errors.push(`Choose a valid option for ${field.label}.`);
+  }
+  for(const field of def.fields.filter(f=>f.key.toLowerCase().endsWith("url")||f.key==="url")){
+    const value=String(cfg[field.key]||"").trim();if(!value)continue;
+    try{const url=new URL(value);if(!["https:","http:"].includes(url.protocol))throw new Error();}catch{errors.push(`${field.label} must be a valid http or https URL.`);}
+  }
+  for(const field of def.fields.filter(f=>f.key.toLowerCase().includes("colour"))){const value=String(cfg[field.key]||"").trim();if(value&&!/^#[0-9a-f]{6}$/i.test(value))errors.push(`${field.label} must be a six-digit hex colour such as #22d3ee.`);}
+  if(def.key==="role_menus"&&Array.isArray(cfg.groups)){
+    if(cfg.groups.length>20)errors.push("Role menus can have up to 20 groups.");
+    for(const [i,g] of cfg.groups.entries())if(!g.name?.trim()||g.name.length>80||!Array.isArray(g.roleIds)||!g.roleIds.length||g.roleIds.length>25||g.roleIds.some((id:string)=>!assignableRole(id)))errors.push(`Role group ${i+1} needs a name and 1–25 roles the bot can assign.`);
+  }
+  if(def.key==="tickets"&&Array.isArray(cfg.panels)){
+    if(cfg.panels.length>20)errors.push("Tickets can have up to 20 panels.");
+    for(const [i,p] of cfg.panels.entries())if(p.enabled!==false&&(!p.name?.trim()||p.name.length>80||!channel(p.panelChannelId)||!channel(p.categoryId,true)||!Array.isArray(p.staffRoleIds)||!p.staffRoleIds.length||p.staffRoleIds.some((id:string)=>!role(id))||!Array.isArray(p.types)||!p.types.length||p.types.length>25||p.types.some((x:any)=>typeof x!=="string"||x.length>100)))errors.push(`Ticket panel ${i+1} needs a name, panel channel, ticket category, staff role and 1–25 request types (each up to 100 characters).`);
+  }
+  if(def.key==="levels"&&Array.isArray(cfg.rewards)){
+    if(cfg.rewards.some((r:any)=>!Number.isInteger(Number(r.xp))||Number(r.xp)<0||!assignableRole(r.roleId)))errors.push("Each level reward needs a whole-number XP value and a role the bot can assign.");
+    const levels=cfg.rewards.map((r:any)=>Number(r.xp));if(new Set(levels).size!==levels.length)errors.push("Each level reward must use a different XP amount.");
+  }
+  if(enabled){
+    const required:Record<string,string>={welcome:"channelId",suggestions:"channelId",starboard:"channelId",join_security:"alertChannelId"};
+    const key=required[def.key];if(key&&!cfg[key])errors.push(`Choose a destination channel before turning on ${def.name}.`);
+    if(def.key==="role_menus"&&(!cfg.channelId||!cfg.groups?.some((g:any)=>g.name&&g.roleIds?.length)))errors.push("Choose a channel and add at least one role group before turning on Roles & interests.");
+    if(def.key==="tickets"&&!(cfg.panels||[]).some((p:any)=>p.enabled!==false&&p.panelChannelId&&p.categoryId&&p.staffRoleIds?.length))errors.push("Enable and complete at least one ticket panel before turning on Tickets & reports.");
+    if(def.key==="mod_tools"&&(!cfg.staffRoleIds?.length||!cfg.modLogChannelId))errors.push("Choose at least one staff role and a moderation log channel before turning on Staff moderation.");
+  }
+  return [...new Set(errors)];
+}
+
+export function moduleSetupGaps(key:string,cfg:any={},hasSavedConfig=true):string[] {
+  const gaps:string[]=[];
+  if(!hasSavedConfig)return ["Open settings to check this feature before turning it on."];
+  if(key==="welcome"&&!cfg.channelId)gaps.push("Choose a welcome channel.");
+  if(key==="role_menus"){
+    if(!cfg.channelId)gaps.push("Choose a menu channel.");
+    if(!Array.isArray(cfg.groups)||!cfg.groups.some((g:any)=>g.name&&Array.isArray(g.roleIds)&&g.roleIds.length))gaps.push("Add a role group with at least one role.");
+  }
+  if(key==="suggestions"&&!cfg.channelId)gaps.push("Choose a suggestions channel.");
+  if(key==="starboard"&&!cfg.channelId)gaps.push("Choose a showcase channel.");
+  if(key==="giveaways"&&!cfg.channelId)gaps.push("Choose the default giveaway channel.");
+  if(key==="tickets"){
+    const panels=Array.isArray(cfg.panels)?cfg.panels:[];
+    if(!panels.some((p:any)=>p.enabled!==false&&p.panelChannelId&&p.categoryId&&Array.isArray(p.staffRoleIds)&&p.staffRoleIds.length))gaps.push("Complete one ticket panel with a channel, category and staff role.");
+  }
+  if(key==="mod_tools"){
+    if(!Array.isArray(cfg.staffRoleIds)||!cfg.staffRoleIds.length)gaps.push("Choose a moderation staff role.");
+    if(!cfg.modLogChannelId)gaps.push("Choose a moderation log channel.");
+  }
+  if(key==="join_security"&&!cfg.alertChannelId)gaps.push("Choose a security alert channel.");
+  if(key==="scheduled_messages")gaps.push("Add a post in Scheduled posts & feeds.");
+  if(key==="social_feeds")gaps.push("Add an active feed in Scheduled posts & feeds.");
+  return gaps;
+}

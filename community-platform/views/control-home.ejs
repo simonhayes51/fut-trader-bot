@@ -1,6 +1,6 @@
 <!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Overview • EAFC.Live</title><link rel="stylesheet" href="/control.css"></head><body><aside class="sidebar"></aside><main class="control overview-page">
 <% const selected=new Set(widgets||[]); const allMetrics=[
-  {key:'retention',label:'Tracked members',value:Number(metrics.tracked_members||0).toLocaleString('en-GB'),note:`${Number(metrics.active_7d||0).toLocaleString('en-GB')} active this week`},
+  {key:'retention',label:'Tracked members',value:Number(metrics.tracked_members||0)?Number(metrics.tracked_members).toLocaleString('en-GB'):'Not tracked',note:Number(metrics.tracked_members||0)?`${Number(metrics.active_7d||0).toLocaleString('en-GB')} active this week`:'Member activity tracking has no records yet'},
   {key:'premium',label:'Premium members',value:Number(metrics.premium_members||0).toLocaleString('en-GB'),note:'Current active access'},
   {key:'tickets',label:'Open support tickets',value:Number(metrics.open_tickets||0).toLocaleString('en-GB'),note:'Waiting for staff'},
   {key:'security',label:'Security findings',value:Number(metrics.health_findings||0).toLocaleString('en-GB'),note:`${Number(metrics.warnings_7d||0)} warnings this week`},
@@ -9,7 +9,7 @@
   {key:'giveaways',label:'Live giveaways',value:Number(metrics.live_giveaways||0).toLocaleString('en-GB'),note:'Currently running'},
   {key:'referrals',label:'Referral conversions',value:Number(metrics.referral_conversions||0).toLocaleString('en-GB'),note:'Premium sign-ups'},
   {key:'partners',label:'Active partners',value:Number(metrics.active_partners||0).toLocaleString('en-GB'),note:'Tracked partnerships'},
-  {key:'feature_usage',label:'Bot interactions',value:Number(metrics.feature_events_7d||0).toLocaleString('en-GB'),note:'Last 7 days'}
+  {key:'feature_usage',label:'Bot interactions',value:Number(metrics.feature_events_7d||0)?Number(metrics.feature_events_7d).toLocaleString('en-GB'):'No data',note:Number(metrics.feature_events_7d||0)?'Recorded in the last 7 days':'No interactions recorded; tracking may not cover every tool'}
 ]; const defaults=new Set(['retention','premium','tickets','security']); const shown=selected.size?allMetrics.filter(x=>selected.has(x.key)):allMetrics.filter(x=>defaults.has(x.key));
 const attention=[
   {title:'Support queue',detail:`${Number(metrics.open_tickets||0)} open tickets`,count:Number(metrics.open_tickets||0),href:'/control/safety',label:'Open support'},

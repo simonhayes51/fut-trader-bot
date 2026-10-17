@@ -6,7 +6,7 @@ import { PermissionFlagsBits } from "discord.js";
 import { client } from "./bot.js";
 import { config } from "./config.js";
 import { audit, one, query } from "./db.js";
-import { moduleMap, modules } from "./modules.js";
+import { moduleMap, modules, moduleSetupGaps, validateModuleConfig } from "./modules.js";
 import { createWebhookSecret, deliverWebhook, deliverWebhookGroup } from "./social.js";
 import { billingRouter } from "./billing-dashboard.js";
 import { PostgresSessionStore } from "./session-store.js";
@@ -47,13 +47,12 @@ function escapeHtml(value:unknown) {
   return String(value??"").replace(/[&<>"']/g,(character)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[character]!));
 }
 
-function dashboardSidebar(pathname:string,user?:{username?:string;avatar?:string;guilds?:DashboardGuild[]},selectedId?:string) {
+export function dashboardSidebar(pathname:string,user?:{username?:string;avatar?:string;guilds?:DashboardGuild[]},selectedId?:string) {
   const groups:Array<{label:string;items:Array<[string,string,string]>}>=[
-    {label:"Community",items:[["/control/onboarding","✧","Welcome & onboarding"],["/control/community","◈","Community tools"],["/control/kudos","✳","Engagement & levels"],["/economy","¤","Coins & rewards"]]},
-    {label:"Content",items:[["/control/studio","✦","Messages & role menus"],["/control/automation","↻","Scheduled posts & feeds"]]},
-    {label:"Growth",items:[["/control/growth","↗","Invites & partnerships"],["/billing","◆","Premium & billing"],["/control/insights","▦","Insights & reports"]]},
-    {label:"Safety",items:[["/control/safety","⊘","Tickets & moderation"],["/control/security","◉","Security & health"]]},
-    {label:"Server setup",items:[["/control/settings","⚙","Bot features"],["/discord","♢","Discord setup"],["/commands","⌘","Command access"],["/branding","◈","Server appearance"],["/audit","≡","Change log"],["/invite","+","Add the bot"]]}
+    {label:"Set up your server",items:[["/control/onboarding","✧","Welcome & onboarding"],["/control/community","◈","Community tools"],["/control/studio","✦","Messages & role menus"],["/control/automation","↻","Scheduled posts & feeds"],["/control/settings","⚙","All bot features"],["/discord","♢","Discord tools"],["/commands","⌘","Command access"]]},
+    {label:"Run your community",items:[["/control/kudos","✳","Engagement & levels"],["/economy","¤","Coins & rewards"],["/control/safety","⊘","Tickets & moderation"],["/control/security","◉","Security & health"]]},
+    {label:"Grow and review",items:[["/control/growth","↗","Invites & partnerships"],["/billing","◆","Premium & billing"],["/control/insights","▦","Insights & reports"],["/audit","≡","Admin activity"]]},
+    {label:"Server appearance",items:[["/branding","◈","Name, logo & colours"],["/invite","+","Add the bot"]]}
   ];
   const routeAliases:Record<string,string[]>={
     "/control/members":["/members"],
@@ -76,7 +75,7 @@ function dashboardSidebar(pathname:string,user?:{username?:string;avatar?:string
   const nav=groups.map(group=>{
     const links=group.items.map(([href,icon,label])=>`<a class="nav-link ${activeFor(href)?"active":""}" href="${href}"><span class="nav-icon">${icon}</span><span>${label}</span></a>`).join("");
     const expanded=group.items.some(([href])=>activeFor(href));
-    return `<details class="nav-group nav-collapsible" ${expanded?"open":""}><summary><span>${group.label}</span><span class="nav-group-meta">${group.items.length}<i aria-hidden="true">⌄</i></span></summary><div class="nav-group-items">${links}</div></details>`;
+    return `<section class="nav-group"><div class="nav-label">${group.label}</div><div class="nav-group-items">${links}</div></section>`;
   }).join("");
   const username=escapeHtml(user?.username||"Administrator");
   const initial=username.slice(0,1).toUpperCase();
@@ -259,17 +258,23 @@ app.get("/modules/:key",requireAuth,async(req,res)=>{
     const savedBrand=row?.settings?.brand||{};
     const discordIconUrl=ui.guild?.iconURL({extension:"png",size:512})||"";
     const current={...def.defaults,...brand,logoUrl:savedBrand.logoUrl||discordIconUrl,botNickname:savedBrand.botNickname||ui.guild?.members.me?.nickname||""};
-    return res.render("module",{user:req.session.user,def,enabled:true,current,saved:req.query.saved==="1",publishError:req.query.error?String(req.query.error):"",discordIconUrl,...ui});
+    return res.render("module",{user:req.session.user,def,enabled:true,current,saved:req.query.saved==="1",publishError:req.query.error?String(req.query.error):"",gaps:[],discordIconUrl,...ui});
   }
   const row=await one<any>(`SELECT enabled,config FROM feature_settings WHERE guild_id=$1 AND feature_key=$2`,[gid,def.key]);
   const ui=await guildUi(req);
-  res.render("module",{user:req.session.user,def,enabled:row?.enabled??true,current:{...def.defaults,...(row?.config||{})},saved:req.query.saved==="1",publishError:req.query.error?String(req.query.error):"",...ui});
+  const current={...def.defaults,...(row?.config||{})};
+  res.render("module",{user:req.session.user,def,enabled:row?.enabled??true,current,gaps:moduleSetupGaps(def.key,row?.config||{},Boolean(row)),saved:req.query.saved==="1",publishError:req.query.error?String(req.query.error):"",...ui});
 });
 app.post("/modules/:key",requireAuth,async(req,res)=>{
   const def=moduleMap.get(req.params.key);if(!def) return res.status(404).send("Unknown module");
   const gid=selectedGuildId(req);
-  let parsed:any;try{parsed=JSON.parse(req.body.config||"{}");}catch{return res.status(400).send("Config must be valid JSON.");}
+  let parsed:any;try{parsed=JSON.parse(req.body.config||"{}");}catch{return res.status(400).send("Settings could not be read. Reload the page and try again.");}
   const enabled=req.body.enabled==="on";
+  const validation=validateModuleConfig(def,parsed,selectedGuild(req),enabled);
+  if(validation.length){
+    const ui=await guildUi(req);
+    return res.status(422).render("module",{user:req.session.user,def,enabled:def.key==="server_branding"?true:enabled,current:{...def.defaults,...parsed},gaps:[],saved:false,publishError:"Fix the items below, then save again.",validationErrors:validation,...ui});
+  }
   if(def.key==="server_branding"){
     const clean={
       name:String(parsed.name||"").trim(),
@@ -286,6 +291,8 @@ app.post("/modules/:key",requireAuth,async(req,res)=>{
       neutralColour:String(parsed.neutralColour||"").trim(),
       coinsColour:String(parsed.coinsColour||"").trim()
     };
+    for(const key of ["primaryColour","premiumColour","successColour","warningColour","dangerColour","neutralColour","coinsColour"]){if(!/^#[0-9a-f]{6}$/i.test(clean[key as keyof typeof clean]))return res.status(422).render("module",{user:req.session.user,def,enabled:true,current:{...def.defaults,...parsed},saved:false,publishError:"Use a six-digit hex colour for every colour field, such as #22d3ee.",...await guildUi(req)});}
+    if(clean.url){try{const url=new URL(clean.url);if(!["http:","https:"].includes(url.protocol))throw new Error();}catch{return res.status(422).render("module",{user:req.session.user,def,enabled:true,current:{...def.defaults,...parsed},saved:false,publishError:"Website URL must begin with http:// or https://.",...await guildUi(req)});}}
     await query(`INSERT INTO guild_settings(guild_id,settings,updated_at) VALUES($1,jsonb_build_object('brand',$2::jsonb),now())
       ON CONFLICT(guild_id) DO UPDATE SET settings=jsonb_set(COALESCE(guild_settings.settings,'{}'::jsonb),'{brand}',$2::jsonb,true),updated_at=now()`,[gid,JSON.stringify(clean)]);
     clearGuildBrandCache(gid);
@@ -296,7 +303,7 @@ app.post("/modules/:key",requireAuth,async(req,res)=>{
         await guild?.members.me?.setNickname(clean.botNickname,`Branding updated by ${req.session.user!.username}`);
       }catch(err:any){
         console.error("Bot nickname update failed",err);
-        return res.redirect(`/modules/${def.key}?saved=1&error=${encodeURIComponent("Saved branding, but I could not change the bot nickname. Check the bot role has permission and sits high enough.")}`);
+      return res.redirect(`/modules/${def.key}?error=${encodeURIComponent("Brand settings were saved, but Discord rejected the bot nickname. Check the bot's role permissions and try again.")}`);
       }
     }
     return res.redirect(`/modules/${def.key}?saved=1`);
@@ -309,7 +316,7 @@ app.post("/modules/:key",requireAuth,async(req,res)=>{
       await audit(gid,req.session.user!.id,"role_menu.publish",{channelId:parsed.channelId,groups:Array.isArray(parsed.groups)?parsed.groups.length:0});
     }catch(err:any){
       console.error("Role menu publish failed",err);
-      return res.redirect(`/modules/${def.key}?error=${encodeURIComponent(err?.message||"Could not publish role menu")}`);
+      return res.redirect(`/modules/${def.key}?error=${encodeURIComponent(`Settings were saved, but the role menu was not published: ${err?.message||"Discord could not publish it."}`)}`);
     }
   }
   if(def.key==="tickets"&&enabled){
@@ -318,13 +325,13 @@ app.post("/modules/:key",requireAuth,async(req,res)=>{
       await audit(gid,req.session.user!.id,"ticket_panel.publish",{panels:posted});
     }catch(err:any){
       console.error("Ticket panel publish failed",err);
-      return res.redirect(`/modules/${def.key}?error=${encodeURIComponent(err?.message||"Could not publish ticket panel")}`);
+      return res.redirect(`/modules/${def.key}?error=${encodeURIComponent(`Settings were saved, but ticket panels were not fully published: ${err?.message||"Discord could not publish them."}`)}`);
     }
   }
   res.redirect(`/modules/${def.key}?saved=1`);
 });
 
-app.get("/social",requireAuth,async(req,res)=>{const gid=selectedGuildId(req);const feeds=await query<any>(`SELECT * FROM social_feeds WHERE guild_id=$1 ORDER BY id DESC`,[gid]);const ui=await guildUi(req);res.render("social",{user:req.session.user,feeds,...ui,baseUrl:config.baseUrl});});
+app.get("/social",requireAuth,(_req,res)=>res.redirect("/control/automation"));
 app.post("/social",requireAuth,async(req,res)=>{const gid=selectedGuildId(req);const selectedProvider=String(req.body.provider||"rss");const provider=selectedProvider==="eafc_leaks"?"webhook":selectedProvider;const source=selectedProvider==="eafc_leaks"?"EAFC.Live leaks":String(req.body.source||"");const name=selectedProvider==="eafc_leaks"?"EAFC.Live leak feed":String(req.body.name||"Feed");const secret=provider==="webhook"?createWebhookSecret():null;await query(`INSERT INTO social_feeds(guild_id,name,provider,source,channel_id,enabled,include_keywords,exclude_keywords,mention_role_id,secret_key) VALUES($1,$2,$3,$4,$5,true,$6,$7,$8,$9)`,[gid,name,provider,source,String(req.body.channelId||""),String(req.body.includeKeywords||"").split(",").map((s:string)=>s.trim()).filter(Boolean),String(req.body.excludeKeywords||"").split(",").map((s:string)=>s.trim()).filter(Boolean),req.body.mentionRoleId||null,secret]);await audit(gid,req.session.user!.id,"social.create",{provider:selectedProvider,name});res.redirect("/social");});
 app.post("/social/:id/toggle",requireAuth,async(req,res)=>{const gid=selectedGuildId(req);await query(`UPDATE social_feeds SET enabled=NOT enabled,updated_at=now() WHERE id=$1 AND guild_id=$2`,[req.params.id,gid]);res.redirect("/social");});
 app.post("/social/:id/delete",requireAuth,async(req,res)=>{const gid=selectedGuildId(req);await query(`DELETE FROM social_feeds WHERE id=$1 AND guild_id=$2`,[req.params.id,gid]);await audit(gid,req.session.user!.id,"social.delete",{id:req.params.id});res.redirect("/social");});
@@ -334,6 +341,17 @@ app.post("/hooks/social/eafc-leaks/:secret",async(req,res)=>{if(!config.socialWe
 app.get("/moderation",requireAuth,async(req,res)=>{const gid=selectedGuildId(req);const warnings=await query<any>(`SELECT * FROM warnings WHERE guild_id=$1 ORDER BY created_at DESC LIMIT 100`,[gid]);const auditRows=await query<any>(`SELECT * FROM audit_log WHERE guild_id=$1 ORDER BY created_at DESC LIMIT 100`,[gid]);res.render("moderation",{user:req.session.user,warnings,auditRows});});
 app.get("/trading",requireAuth,(_req,res)=>res.redirect("/control/engagement"));
 app.post("/trading/:id/status",requireAuth,async(req,res)=>{const gid=selectedGuildId(req);const status=String(req.body.status||"LIVE");if(!["LIVE","HIT","PROFIT","MISS","EXPIRED"].includes(status)) return res.status(400).send("Invalid status");await query(`UPDATE trade_calls SET status=$1,closed_at=CASE WHEN $1='LIVE' THEN NULL ELSE now() END WHERE id=$2 AND guild_id=$3`,[status,req.params.id,gid]);await audit(gid,req.session.user!.id,"trade.status",{id:req.params.id,status});res.redirect("/trading");});
-app.get("/tickets",requireAuth,async(req,res)=>{const gid=selectedGuildId(req);const tickets=await query<any>(`SELECT * FROM tickets WHERE guild_id=$1 ORDER BY created_at DESC LIMIT 100`,[gid]);res.render("tickets",{user:req.session.user,tickets});});
-app.post("/tickets/:id/close",requireAuth,async(req,res)=>{const gid=selectedGuildId(req);const ticket=await one<any>(`SELECT * FROM tickets WHERE id=$1 AND guild_id=$2`,[req.params.id,gid]);if(ticket?.channel_id){const ch=await client.channels.fetch(ticket.channel_id).catch(()=>null);if(ch) await (ch as any).delete(`Ticket closed from dashboard by ${req.session.user!.username}`).catch(()=>{});}await query(`UPDATE tickets SET status='CLOSED',closed_at=now() WHERE id=$1 AND guild_id=$2`,[req.params.id,gid]);await audit(gid,req.session.user!.id,"ticket.close",{id:req.params.id});res.redirect("/tickets");});
+app.get("/tickets",requireAuth,async(req,res)=>{const gid=selectedGuildId(req);const tickets=await query<any>(`SELECT * FROM tickets WHERE guild_id=$1 ORDER BY created_at DESC LIMIT 100`,[gid]);res.render("tickets",{user:req.session.user,tickets,error:String(req.query.error||""),closed:req.query.closed==="1"});});
+app.post("/tickets/:id/close",requireAuth,async(req,res)=>{
+  const gid=selectedGuildId(req),ticket=await one<any>(`SELECT * FROM tickets WHERE id=$1 AND guild_id=$2`,[req.params.id,gid]);
+  if(!ticket)return res.redirect("/tickets?error="+encodeURIComponent("This ticket could not be found in the selected server."));
+  if(ticket.status!=="OPEN")return res.redirect("/tickets?error="+encodeURIComponent("This ticket is already closed."));
+  if(ticket.channel_id){
+    const ch=await client.channels.fetch(ticket.channel_id).catch(()=>null);
+    if(ch)try{await (ch as any).delete(`Ticket closed from dashboard by ${req.session.user!.username}`);}catch(err){console.error("Dashboard ticket close failed",req.params.id,err);return res.redirect("/tickets?error="+encodeURIComponent("Discord could not delete the ticket channel, so its status was left open. Check the bot's permissions and try again."));}
+  }
+  const updated=await query<any>(`UPDATE tickets SET status='CLOSED',closed_at=now() WHERE id=$1 AND guild_id=$2 AND status='OPEN' RETURNING id`,[req.params.id,gid]);
+  if(!updated.length)return res.redirect("/tickets?error="+encodeURIComponent("The ticket changed before it could be closed. Reload the list and check its current status."));
+  await audit(gid,req.session.user!.id,"ticket.close",{id:req.params.id});res.redirect("/tickets?closed=1");
+});
 app.get("/audit",requireAuth,async(req,res)=>{const gid=selectedGuildId(req);const rows=await query<any>(`SELECT * FROM audit_log WHERE guild_id=$1 ORDER BY created_at DESC LIMIT 250`,[gid]);res.render("audit",{user:req.session.user,rows});});

@@ -47,13 +47,13 @@
                 </td>
                 <td><span class="access-badge <%= m.premium?'is-premium':'' %>"><i></i><%= m.premium?'Premium':'Member' %></span></td>
                 <td>
-                  <% if(m.tracked){ %><span class="table-primary-value"><%= m.messages.toLocaleString() %> messages</span><small class="table-secondary-value"><%= m.lastActive?'Last active '+new Date(m.lastActive).toLocaleDateString('en-GB'):'No recent activity' %></small>
+                  <% if(m.statsTracked){ %><span class="table-primary-value"><%= m.messages.toLocaleString() %> messages</span><small class="table-secondary-value"><%= m.lastActive?'Last active '+new Date(m.lastActive).toLocaleDateString('en-GB'):'No recent activity' %></small>
                   <% }else{ %><span class="not-tracked">Not tracked yet</span><small class="table-secondary-value">Activity appears after their first message.</small><% } %>
                 </td>
-                <td><% if(m.tracked){ %><span class="table-primary-value">Level <%= m.level %></span><small class="table-secondary-value"><%= m.xp.toLocaleString() %> XP</small><% }else{ %><span class="table-placeholder">—</span><% } %></td>
-                <td><span class="table-number"><%= m.tracked?m.kudos.toLocaleString():'—' %></span></td>
-                <td><span class="table-number"><%= m.tracked?m.coins.toLocaleString():'—' %></span></td>
-                <td><span class="table-number"><%= m.tracked?`${m.streak} days`:'—' %></span></td>
+                <td><% if(m.economyTracked){ %><span class="table-primary-value">Level <%= m.level %></span><small class="table-secondary-value"><%= m.xp.toLocaleString() %> XP</small><% }else{ %><span class="table-placeholder">—</span><% } %></td>
+                <td><span class="table-number"><%= m.statsTracked?m.kudos.toLocaleString():'—' %></span></td>
+                <td><span class="table-number"><%= m.economyTracked?m.coins.toLocaleString():'—' %></span></td>
+                <td><span class="table-number"><%= m.streakTracked?`${m.streak} days`:'—' %></span></td>
               </tr>
             <% }) %>
             <% if(!members.length){ %>
@@ -73,7 +73,7 @@
         </nav>
       <% } %>
     </section>
-    <p class="directory-footnote">Discord membership is live. Activity and reward figures are shown only when the bot has tracked that member.</p>
+    <p class="directory-footnote">Discord membership is live. Message activity, XP, wallet balance and streak values are shown only when each data source has a record for that member; a dash means that measure has not been tracked.</p>
   </main>
 </body>
 </html>
