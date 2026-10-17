@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChatInputCommandInteraction, Client, SlashCommandBuilder, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } from "discord.js";
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChatInputCommandInteraction, Client, MessageFlags, SlashCommandBuilder, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } from "discord.js";
 import { audit, db, one, query } from "./db.js";
 import { awardCurrency, getEconomyProfile, getEconomySettings, levelFromXp, recordEconomyEvent, xpForLevel } from "./economy-core.js";
 import { brandEmbed, BRAND, compactNumber, progressBar } from "./brand.js";
@@ -156,7 +156,7 @@ export async function handleEconomyCommand(client:Client,i:ChatInputCommandInter
     const u=i.options.getUser("member")||i.user;
     // Acknowledge before the permission and profile database reads so
     // Discord's 3-second reply deadline cannot expire while they run.
-    await i.deferReply();
+    await i.deferReply({flags:MessageFlags.Ephemeral});
     if(!await economyCommandAllowed(i))return true;
     await i.editReply({embeds:[await profileEmbed(gid,u)]});
     return true;
