@@ -152,7 +152,15 @@ export async function handleEconomyCommand(client:Client,i:ChatInputCommandInter
   if(!i.guildId||!["profile","wallet","daily","quests","shop","redeem","season","showcase"].includes(i.commandName))return false;
   if(!await economyCommandAllowed(i))return true;
   const gid=i.guildId,uid=i.user.id;
-  if(i.commandName==="profile"){const u=i.options.getUser("member")||i.user;await i.reply({embeds:[await profileEmbed(gid,u)]});return true;}
+  if(i.commandName==="profile"){
+    const u=i.options.getUser("member")||i.user;
+    // Profile assembly performs several database reads. Acknowledge the
+    // interaction before those reads so Discord's 3-second reply deadline
+    // cannot expire while the profile is being built.
+    await i.deferReply();
+    await i.editReply({embeds:[await profileEmbed(gid,u)]});
+    return true;
+  }
   if(i.commandName==="wallet"){const p=await getEconomyProfile(gid,uid),rows=await query<any>(`SELECT * FROM economy_ledger WHERE guild_id=$1 AND user_id=$2 AND currency='coins' ORDER BY created_at DESC LIMIT 8`,[gid,uid]);const e=brandEmbed("🪙 Your Live Coins",`**${compactNumber(p.eco.coins_balance)}** available\n${compactNumber(p.eco.lifetime_coins_earned)} earned • ${compactNumber(p.eco.lifetime_coins_spent)} spent`,BRAND.colours.coins);if(rows.length)e.addFields({name:"Recent activity",value:rows.map(r=>`${Number(r.amount)>0?"+":""}${compactNumber(r.amount)} • ${r.reason}`).join("\n")});await i.reply({embeds:[e],ephemeral:true});return true;}
   if(i.commandName==="daily"){try{const r=await claimDaily(gid,uid),e=brandEmbed("🔥 Daily reward claimed",`**+${compactNumber(r.coins)} Live Coins**\n${r.streak}-day streak${r.bonus?` • ${compactNumber(r.bonus)} streak bonus`:""}`,BRAND.colours.coins);await i.reply({embeds:[e]});}catch(err:any){await i.reply({embeds:[brandEmbed("Daily reward",String(err?.message||err),BRAND.colours.warning)],ephemeral:true});}return true;}
   if(i.commandName==="quests"){const rows=await questRows(gid,uid);const daily=rows.filter(r=>r.cadence==="daily"),weekly=rows.filter(r=>r.cadence==="weekly");const fmt=(r:any)=>`${r.rewarded?"✅":"▫️"} ${r.premium_only?"💎 ":""}**${r.name}** • ${Math.min(r.progress,r.target)}/${r.target}\n↳ ${r.xp_reward} XP + ${r.coin_reward} 🪙`;const e=brandEmbed("🎯 Quests","Complete useful activity to earn XP and Live Coins.").addFields({name:"Today",value:daily.map(fmt).join("\n")||"No daily quests.",inline:false},{name:"This week",value:weekly.map(fmt).join("\n")||"No weekly quests.",inline:false});await i.reply({embeds:[e],ephemeral:true});return true;}
