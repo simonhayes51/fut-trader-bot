@@ -2,9 +2,12 @@ import pg from "pg";
 import { config } from "./config.js";
 
 const { Pool } = pg;
+const useSsl = process.env.DATABASE_SSL === "true" ||
+  (process.env.DATABASE_SSL !== "false" && process.env.NODE_ENV === "production");
+
 export const db = new Pool({
   connectionString: config.databaseUrl,
-  ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : undefined
+  ssl: useSsl ? { rejectUnauthorized: false } : false
 });
 
 export async function query<T = any>(text: string, params: unknown[] = []): Promise<T[]> {
