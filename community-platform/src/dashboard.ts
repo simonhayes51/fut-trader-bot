@@ -43,30 +43,54 @@ app.use(async(req:any,_res:any,next:any)=>{
   next();
 });
 
+function escapeHtml(value:unknown) {
+  return String(value??"").replace(/[&<>"']/g,(character)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[character]!));
+}
+
 function dashboardSidebar(pathname:string,user?:{username?:string;avatar?:string;guilds?:DashboardGuild[]},selectedId?:string) {
-  const groups:Array<{label:string;items:Array<[string,string,string]>}>=[
-    {label:"Overview",items:[["/control","⌂","Home"],["/control/members","◎","Members"],["/control/insights","▦","Insights"]]},
-    {label:"Experience",items:[["/control/onboarding","◌","Onboarding"],["/control/community","◇","Community"],["/control/kudos","👏","Kudos & retention"],["/control/rewards","¤","Rewards"]]},
-    {label:"Content & growth",items:[["/control/studio","✦","Message studio"],["/control/automation","↻","Automation"],["/control/growth","↗","Growth & partners"],["/discord","♢","Discord tools"]]},
-    {label:"Operations",items:[["/control/security","◉","Security & health"],["/control/safety","⊘","Safety & support"],["/billing","◆","Premium"]]},
-    {label:"Configuration",items:[["/branding","◈","Branding"],["/control/settings","⚙","Features"],["/commands","⌘","Command access"],["/audit","≡","Audit log"],["/invite","+","Add bot"]]}
+  const groups:Array<{label:string;items:Array<[string,string,string]>;collapsed?:boolean}>=[
+    {label:"Community",collapsed:true,items:[["/control/onboarding","◌","Onboarding"],["/control/community","◇","Community tools"],["/control/kudos","✳","Engagement"],["/economy","¤","Economy & rewards"]]},
+    {label:"Publishing",collapsed:true,items:[["/control/studio","✦","Message studio"],["/control/automation","↻","Automation & feeds"]]},
+    {label:"Growth",collapsed:true,items:[["/control/insights","▦","Insights"],["/control/growth","↗","Invites & partners"],["/billing","◆","Premium & billing"]]},
+    {label:"Safety & operations",collapsed:true,items:[["/control/safety","⊘","Safety & support"],["/control/security","◉","Security & health"]]},
+    {label:"Configuration",collapsed:true,items:[["/control/settings","⚙","Bot features"],["/discord","♢","Discord tools"],["/commands","⌘","Command access"],["/branding","◈","Branding"],["/audit","≡","Audit log"],["/invite","+","Add bot"]]}
   ];
-  const activeFor=(href:string)=>href==="/control"?pathname==="/control":href==="/branding"?pathname==="/branding"||pathname==="/modules/server_branding":pathname===href||pathname.startsWith(`${href}/`);
-  const nav=groups.map(group=>`<div class="nav-group"><div class="nav-label">${group.label}</div>${group.items.map(([href,icon,label])=>`<a class="${activeFor(href)?"active":""}" href="${href}"><span class="nav-icon">${icon}</span><span>${label}</span></a>`).join("")}</div>`).join("");
-  const initial=(user?.username||"A").slice(0,1).toUpperCase();
+  const routeAliases:Record<string,string[]>={
+    "/control/members":["/members"],
+    "/control/insights":["/analytics"],
+    "/control/automation":["/automation","/social"],
+    "/control/kudos":["/control/engagement"],
+    "/economy":["/control/rewards"],
+    "/control/safety":["/tickets","/moderation"],
+    "/control/security":["/setup"]
+  };
+  const activeFor=(href:string)=>{
+    if(href==="/control") return pathname==="/control";
+    if(href==="/branding"&&(pathname==="/branding"||pathname==="/modules/server_branding")) return true;
+    return [href,...(routeAliases[href]||[])].some(route=>pathname===route||pathname.startsWith(`${route}/`));
+  };
+  const direct=[ ["/control","⌂","Overview"], ["/control/members","◎","Members"] ] as Array<[string,string,string]>;
+  const directNav=direct.map(([href,icon,label])=>`<a class="${activeFor(href)?"active":""}" href="${href}"><span class="nav-icon">${icon}</span><span>${label}</span></a>`).join("");
+  const nav=groups.map(group=>{
+    const links=group.items.map(([href,icon,label])=>`<a class="${activeFor(href)?"active":""}" href="${href}"><span class="nav-icon">${icon}</span><span>${label}</span></a>`).join("");
+    if(group.collapsed){const open=group.items.some(([href])=>activeFor(href));return `<details class="nav-group nav-collapsible" ${open?"open":""}><summary class="nav-label"><span>${group.label}</span><span class="nav-caret">⌄</span></summary><div class="nav-group-items">${links}</div></details>`;}
+    return `<div class="nav-group"><div class="nav-label">${group.label}</div>${links}</div>`;
+  }).join("");
+  const username=escapeHtml(user?.username||"Administrator");
+  const initial=username.slice(0,1).toUpperCase();
   const guilds=user?.guilds||[];
   const onlyGuild=guilds[0];
   const addServerLink=`<a class="server-add-link" href="/invite">Add bot to another server</a>`;
   const selector=guilds.length>1?`<form class="server-switcher" method="post" action="/servers/select">
       <label>Server</label>
-      <select name="guildId" onchange="this.form.submit()">${guilds.map(g=>`<option value="${g.id}" ${g.id===selectedId?"selected":""}>${g.name}</option>`).join("")}</select>
+      <select name="guildId" onchange="this.form.submit()">${guilds.map(g=>`<option value="${escapeHtml(g.id)}" ${g.id===selectedId?"selected":""}>${escapeHtml(g.name)}</option>`).join("")}</select>
       ${addServerLink}
-    </form>`:onlyGuild?`<div class="server-switcher readonly"><label>Server</label><strong>${onlyGuild.name}</strong>${addServerLink}</div>`:`<div class="server-switcher readonly"><label>Server</label>${addServerLink}</div>`;
+    </form>`:onlyGuild?`<div class="server-switcher readonly"><label>Server</label><strong>${escapeHtml(onlyGuild.name)}</strong>${addServerLink}</div>`:`<div class="server-switcher readonly"><label>Server</label>${addServerLink}</div>`;
   return `<aside class="sidebar">
     <a class="brand" href="/control"><span class="brand-mark">E</span><span class="brand-copy"><b>EAFC.Live</b><small>Discord Control</small></span></a>
     ${selector}
-    <nav>${nav}</nav>
-    <div class="sidebar-footer"><div class="admin-chip"><span class="admin-avatar">${initial}</span><span><b>${user?.username||"Administrator"}</b><small>Administrator</small></span></div><form method="post" action="/logout"><button class="icon-button" title="Log out">↪</button></form></div>
+    <nav><div class="nav-section-label">Workspace</div>${directNav}<div class="nav-section-label nav-tools-label">Manage</div>${nav}</nav>
+    <div class="sidebar-footer"><div class="admin-chip"><span class="admin-avatar">${initial}</span><span><b>${username}</b><small>Administrator</small></span></div><form method="post" action="/logout"><button class="icon-button" title="Log out">↪</button></form></div>
   </aside>`;
 }
 
@@ -81,6 +105,7 @@ app.use((req:any,res:any,next:any)=>{
         const user=options?.user||req.session?.user;
         output=output.replace(/<aside class="sidebar">[\s\S]*?<\/aside>/,dashboardSidebar(req.path,user?{...user,guilds:dashboardGuilds(req)}:user,selectedGuildId(req)));
         if(output.includes('/style.css')&&!output.includes('/polish.css')) output=output.replace("</head>",'<link rel="stylesheet" href="/polish.css"></head>');
+        if(!output.includes('/admin-refresh.css')) output=output.replace("</head>",'<link rel="stylesheet" href="/admin-refresh.css?v=5"></head>');
       }
       if(callback)return callback(null,output);
       res.send(output);

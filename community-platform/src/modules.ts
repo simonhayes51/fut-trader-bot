@@ -50,11 +50,11 @@ export const modules:ModuleDefinition[]=[
     ]
   },
   {
-    key:"role_menus",name:"Roles & interests",description:"Let members choose platform, interests and notification roles themselves.",category:"Community",
+    key:"role_menus",name:"Roles & interests",description:"Post a menu in Discord so members can give themselves the roles you choose.",category:"Community",
     defaults:{channelId:"",messageId:"",groups:[]},
     fields:[
-      {key:"channelId",label:"Role selection channel",help:"Where the role selector is published.",type:"channel"},
-      {key:"groups",label:"Role groups",help:"Create groups such as Platform, Interests and Notifications.",type:"roleGroups"}
+      {key:"channelId",label:"Post the role menu in",help:"Members go to this Discord channel to choose roles. Pick a text channel they can see, and make sure the bot can send messages there.",type:"channel"},
+      {key:"groups",label:"Role groups",help:"Each group is a set of choices, like Platform or Interests. Add the Discord roles members should be able to choose.",type:"roleGroups"}
     ]
   },
   {

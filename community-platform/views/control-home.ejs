@@ -1,35 +1,61 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Control • EAFC.Live</title><link rel="stylesheet" href="/control.css"></head><body><aside class="sidebar"></aside><main class="control">
-<% const chosen=new Set(widgets||[]); const show=k=>!chosen.size||chosen.has(k); %>
-<section class="topbar"><div><div class="crumb">EAFC.Live / Discord Control</div><h1><%= guild?.name||'Community' %></h1><p>Your Discord community operating system. Trading intelligence stays in the EAFC.Live app bot.</p></div><div class="top-actions"><a class="btn-secondary" href="/control/insights">Customise dashboard</a><a class="btn" href="/control/security">Server health</a></div></section>
-<section class="grid metrics">
-<% if(show('retention')){ %><div class="metric"><span>Tracked members</span><strong><%= Number(metrics.tracked_members||0).toLocaleString() %></strong><small><%= Number(metrics.active_7d||0) %> active in 7 days</small></div><% } %>
-<% if(show('kudos')){ %><div class="metric"><span>Kudos this week</span><strong><%= Number(metrics.kudos_7d||0).toLocaleString() %></strong><small>Member recognition</small></div><% } %>
-<% if(show('premium')){ %><div class="metric"><span>Premium</span><strong><%= Number(metrics.premium_members||0).toLocaleString() %></strong><small>Active access</small></div><% } %>
-<% if(show('tickets')){ %><div class="metric"><span>Open tickets</span><strong><%= Number(metrics.open_tickets||0) %></strong><small>Support queue</small></div><% } %>
-<% if(show('economy')){ %><div class="metric"><span>Live Coins</span><strong><%= Number(metrics.coins_circulating||0).toLocaleString() %></strong><small>Circulating balance</small></div><% } %>
-<% if(show('giveaways')){ %><div class="metric"><span>Live giveaways</span><strong><%= Number(metrics.live_giveaways||0) %></strong><small>Community rewards</small></div><% } %>
-<% if(show('referrals')){ %><div class="metric"><span>Referral conversions</span><strong><%= Number(metrics.referral_conversions||0) %></strong><small>Premium referrals</small></div><% } %>
-<% if(show('partners')){ %><div class="metric"><span>Active partners</span><strong><%= Number(metrics.active_partners||0) %></strong><small>Tracked partnerships</small></div><% } %>
-<% if(show('security')){ %><div class="metric"><span>Health findings</span><strong><%= Number(metrics.health_findings||0) %></strong><small><%= Number(metrics.warnings_7d||0) %> warnings this week</small></div><% } %>
-<% if(show('feature_usage')){ %><div class="metric"><span>Bot interactions</span><strong><%= Number(metrics.feature_events_7d||0).toLocaleString() %></strong><small>Last 7 days</small></div><% } %>
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Overview • EAFC.Live</title><link rel="stylesheet" href="/control.css"></head><body><aside class="sidebar"></aside><main class="control overview-page">
+<% const selected=new Set(widgets||[]); const allMetrics=[
+  {key:'retention',label:'Tracked members',value:Number(metrics.tracked_members||0).toLocaleString('en-GB'),note:`${Number(metrics.active_7d||0).toLocaleString('en-GB')} active this week`},
+  {key:'premium',label:'Premium members',value:Number(metrics.premium_members||0).toLocaleString('en-GB'),note:'Current active access'},
+  {key:'tickets',label:'Open support tickets',value:Number(metrics.open_tickets||0).toLocaleString('en-GB'),note:'Waiting for staff'},
+  {key:'security',label:'Security findings',value:Number(metrics.health_findings||0).toLocaleString('en-GB'),note:`${Number(metrics.warnings_7d||0)} warnings this week`},
+  {key:'kudos',label:'Kudos this week',value:Number(metrics.kudos_7d||0).toLocaleString('en-GB'),note:'Member recognition'},
+  {key:'economy',label:'Live Coins in circulation',value:Number(metrics.coins_circulating||0).toLocaleString('en-GB'),note:'Community balance'},
+  {key:'giveaways',label:'Live giveaways',value:Number(metrics.live_giveaways||0).toLocaleString('en-GB'),note:'Currently running'},
+  {key:'referrals',label:'Referral conversions',value:Number(metrics.referral_conversions||0).toLocaleString('en-GB'),note:'Premium sign-ups'},
+  {key:'partners',label:'Active partners',value:Number(metrics.active_partners||0).toLocaleString('en-GB'),note:'Tracked partnerships'},
+  {key:'feature_usage',label:'Bot interactions',value:Number(metrics.feature_events_7d||0).toLocaleString('en-GB'),note:'Last 7 days'}
+]; const defaults=new Set(['retention','premium','tickets','security']); const shown=selected.size?allMetrics.filter(x=>selected.has(x.key)):allMetrics.filter(x=>defaults.has(x.key));
+const attention=[
+  {title:'Support queue',detail:`${Number(metrics.open_tickets||0)} open tickets`,count:Number(metrics.open_tickets||0),href:'/control/safety',label:'Open support'},
+  {title:'Server health',detail:`${Number(metrics.health_findings||0)} active findings`,count:Number(metrics.health_findings||0),href:'/control/security',label:'Review health'},
+  {title:'Recent moderation',detail:`${Number(metrics.warnings_7d||0)} warnings this week`,count:Number(metrics.warnings_7d||0),href:'/control/safety',label:'Review safety'}
+].filter(x=>x.count>0);
+%>
+<section class="overview-header"><div><div class="crumb"><%= guild?.name||'Discord server' %> / Overview</div><h1>Server overview</h1><p>Start with anything that needs attention, then jump straight to the tools you use most.</p></div><div class="top-actions"><a class="btn-secondary" href="/control/insights">View insights</a><a class="btn" href="/control/security">Server health</a></div></section>
+
+<section class="overview-metrics" aria-label="Key server metrics">
+  <% shown.slice(0,6).forEach(m=>{ %><article class="overview-metric"><span><%= m.label %></span><strong><%= m.value %></strong><small><%= m.note %></small></article><% }) %>
 </section>
 
-<section class="grid two"><div class="panel"><div class="panel-head"><div><h2>Community operations</h2><p>What deserves attention now.</p></div></div><div class="list">
-<a class="row" href="/control/security"><span class="row-main"><strong>Server health</strong><small><%= metrics.health_findings||0 %> active findings</small></span><span class="pill <%= Number(metrics.health_findings||0)?'warn':'good' %>"><%= Number(metrics.health_findings||0)?'Review':'Healthy' %></span></a>
-<a class="row" href="/control/safety"><span class="row-main"><strong>Support queue</strong><small><%= metrics.open_tickets||0 %> open tickets</small></span><span class="pill <%= Number(metrics.open_tickets||0)?'warn':'good' %>"><%= Number(metrics.open_tickets||0)?'Review':'Clear' %></span></a>
-<a class="row" href="/control/automation"><span class="row-main"><strong>Automation</strong><small><%= metrics.schedules||0 %> schedules • <%= metrics.feeds||0 %> feeds</small></span><span class="pill good">Running</span></a>
-<a class="row" href="/control/onboarding"><span class="row-main"><strong>Onboarding</strong><small>Verification, roles and identity</small></span><span class="pill good">Manage</span></a></div></div>
-<div class="panel"><div class="panel-head"><div><h2>Kudos leaderboard</h2><p>Recognition, not trade tracking.</p></div><a class="pill" href="/control/kudos">Open Kudos</a></div><div><% kudos.forEach((k,n)=>{ %><div class="kudos-rank"><b>#<%= n+1 %></b><span><strong><%= k.name %></strong><small>Community recognition</small></span><strong><%= Number(k.thanks_received||0) %></strong></div><% }) %><% if(!kudos.length){ %><div class="empty">No kudos yet.</div><% } %></div></div></section>
+<section class="overview-columns">
+  <div class="overview-main-column">
+    <section class="overview-panel attention-panel">
+      <header class="overview-panel-head"><div><span class="section-kicker">PRIORITY</span><h2>Needs attention</h2><p>Open items that may need a staff response.</p></div><span class="attention-count <%= attention.length?'has-items':'clear' %>"><%= attention.length?`${attention.length} to review`:'All clear' %></span></header>
+      <% if(attention.length){ %><div class="attention-list"><% attention.forEach(item=>{ %><a class="attention-item" href="<%= item.href %>"><span class="attention-icon">!</span><span class="attention-copy"><strong><%= item.title %></strong><small><%= item.detail %></small></span><span class="attention-link"><%= item.label %> <b>→</b></span></a><% }) %></div><% } else { %><div class="clear-state"><span class="clear-check">✓</span><span><strong>You’re up to date</strong><small>No open support tickets or active server health findings.</small></span></div><% } %>
+    </section>
 
-<section class="grid three" style="margin-top:11px">
-<a class="feature-card" href="/control/onboarding"><h3>Onboarding & identity</h3><p>Verification, profiles, birthdays, counting and server counters.</p><div class="meta"><span class="pill">Experience</span><span>→</span></div></a>
-<a class="feature-card" href="/control/studio"><h3>Message studio</h3><p>Embeds, templates, buttons, dropdowns and role panels.</p><div class="meta"><span class="pill">Content</span><span>→</span></div></a>
-<a class="feature-card" href="/control/kudos"><h3>Kudos & retention</h3><p>Recognition, milestones, recaps and level workflows.</p><div class="meta"><span class="pill">Retention</span><span>→</span></div></a>
-<a class="feature-card" href="/control/rewards"><h3>Rewards</h3><p>Seasonal store, cosmetics, stock limits and flash drops.</p><div class="meta"><span class="pill">Economy</span><span>→</span></div></a>
-<a class="feature-card" href="/control/growth"><h3>Growth & partners</h3><p>Invites, retained growth, partnerships and booster milestones.</p><div class="meta"><span class="pill">Growth</span><span>→</span></div></a>
-<a class="feature-card" href="/control/insights"><h3>Insights</h3><p>Retention funnel, Premium, referrals and feature usage.</p><div class="meta"><span class="pill">Analytics</span><span>→</span></div></a>
+    <section class="overview-panel recent-panel">
+      <header class="overview-panel-head"><div><span class="section-kicker">LATEST CHANGES</span><h2>Recent admin activity</h2><p>Changes made to this server’s setup.</p></div><a class="panel-link" href="/audit">Full audit log <b>→</b></a></header>
+      <% if(recent.length){ %><div class="recent-list"><% recent.slice(0,5).forEach(r=>{ %><div class="recent-item"><span class="recent-dot"></span><span class="recent-copy"><strong><%= String(r.action).replaceAll('.',' › ') %></strong><small><%= new Date(r.created_at).toLocaleString('en-GB',{dateStyle:'medium',timeStyle:'short'}) %></small></span></div><% }) %></div><% } else { %><div class="quiet-empty">Admin changes will appear here.</div><% } %>
+    </section>
+  </div>
+
+  <aside class="overview-side-column">
+    <section class="overview-panel quick-panel">
+      <header class="overview-panel-head"><div><span class="section-kicker">SHORTCUTS</span><h2>Quick actions</h2><p>Common tasks, one click away.</p></div></header>
+      <div class="quick-action-list">
+        <a class="quick-action" href="/control/onboarding"><span class="quick-action-icon violet">＋</span><span><strong>Set up onboarding</strong><small>Welcome, verification and roles</small></span><b>→</b></a>
+        <a class="quick-action" href="/control/studio"><span class="quick-action-icon blue">✦</span><span><strong>Build a Discord message</strong><small>Embeds, buttons and role panels</small></span><b>→</b></a>
+        <a class="quick-action" href="/control/automation"><span class="quick-action-icon green">↻</span><span><strong>Schedule a post</strong><small>Recurring posts and content feeds</small></span><b>→</b></a>
+        <a class="quick-action" href="/economy"><span class="quick-action-icon amber">¤</span><span><strong>Manage economy & rewards</strong><small>Live Coins, quests and redemptions</small></span><b>→</b></a>
+      </div>
+    </section>
+
+    <section class="overview-panel pulse-panel">
+      <header class="overview-panel-head"><div><span class="section-kicker">SERVER SNAPSHOT</span><h2>Community activity</h2></div><a class="panel-link" href="/control/insights">Insights <b>→</b></a></header>
+      <div class="snapshot-list">
+        <div><span>Active this week</span><strong><%= Number(metrics.active_7d||0).toLocaleString('en-GB') %></strong></div>
+        <div><span>Scheduled posts</span><strong><%= Number(metrics.schedules||0).toLocaleString('en-GB') %></strong></div>
+        <div><span>Content feeds</span><strong><%= Number(metrics.feeds||0).toLocaleString('en-GB') %></strong></div>
+        <div><span>Live giveaways</span><strong><%= Number(metrics.live_giveaways||0).toLocaleString('en-GB') %></strong></div>
+      </div>
+    </section>
+  </aside>
 </section>
-
-<section class="grid two" style="margin-top:11px"><div class="panel"><div class="panel-head"><div><h2><%= season?.name||'Community season' %></h2><p>Current progression cycle.</p></div><a class="pill" href="/control/rewards">Rewards</a></div><% if(season){ const total=Math.max(1,new Date(season.ends_at).getTime()-new Date(season.starts_at).getTime()); const elapsed=Math.max(0,Date.now()-new Date(season.starts_at).getTime()); const pct=Math.min(100,Math.round(elapsed/total*100)); %><div class="row"><span class="row-main"><strong>Season in progress</strong><small>Ends <%= new Date(season.ends_at).toLocaleDateString('en-GB') %></small></span><span class="pill good">Live</span></div><div class="statbar"><i style="width:<%= pct %>%"></i></div><% }else{ %><div class="empty">No active season.</div><% } %></div>
-<div class="panel"><div class="panel-head"><div><h2>Recent admin activity</h2><p>Latest control changes.</p></div><a class="pill" href="/audit">Audit log</a></div><div class="list"><% recent.forEach(r=>{ %><div class="row"><span class="row-main"><strong><%= String(r.action).replaceAll('.',' › ') %></strong><small><%= new Date(r.created_at).toLocaleString('en-GB') %></small></span></div><% }) %><% if(!recent.length){ %><div class="empty">No recent changes.</div><% } %></div></div></section>
 </main></body></html>
