@@ -48,14 +48,29 @@ The social system is intentionally provider-based so the server is not dependent
 
 ## Dashboard
 
-Routes:
-- `/dashboard` overview + every feature module
-- `/modules/:key` enable/disable and edit complete JSON configuration
-- `/social` add, filter, pause and delete feeds
-- `/trading` review trade calls
-- `/tickets` review/close tickets
-- `/moderation` warnings and automod activity
-- `/audit` configuration/admin history
+Use the task pages in the sidebar as the normal way into the control panel:
+
+| Owner task | Page | What it manages |
+| --- | --- | --- |
+| See server status and what needs attention | `/control` | Overview, recent activity and next steps |
+| Set up new members | `/control/onboarding` | Verification, member roles, birthdays, counting and live counters |
+| Configure member-facing community tools | `/control/community` | Welcome tools, suggestions, tickets, starboard, custom replies and sticky reminders |
+| Build Discord messages and role menus | `/control/studio` | Message templates, interactive role panels and reaction roles |
+| Schedule posts and connect content feeds | `/control/automation` | Recurring messages, RSS/social/webhook feeds and giveaways |
+| Find a specific member | `/control/members` | Searchable server directory and member profile |
+| Configure individual bot features | `/control/settings` → select a feature | Feature status, setup gaps and settings |
+| Manage kudos and progression | `/control/kudos` | Recognition, levels, milestones and recaps |
+| Manage coins and rewards | `/economy` | Economy settings, shop, seasons, quests and redemptions |
+| Review tickets and moderation | `/control/safety` | Support queue, warnings, reports and safety tools |
+| Protect the server | `/control/security` | Security policy, health findings and permission inspection |
+| Manage invitations and partners | `/control/growth` | Invite and booster rewards, partners and milestones |
+| Configure memberships | `/billing` | Stripe plans, subscriptions, referrals and complimentary access |
+| Review activity and metrics | `/control/insights` | Funnel, engagement, feature use and dashboard widgets |
+| Review administrator changes | `/audit` | Server audit history |
+| Create Discord-native tools | `/discord` | Forums, polls, events and Discord onboarding sync |
+| Restrict bot commands | `/commands` | Command access by role and channel |
+
+`/modules/:key` opens a feature’s focused setup editor. Older bookmarks such as `/dashboard`, `/social`, `/trading`, `/analytics` and `/members` remain supported as redirects to their current task page.
 
 ## Daily activity engine
 

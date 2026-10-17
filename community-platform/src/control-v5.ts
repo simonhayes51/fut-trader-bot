@@ -2,6 +2,7 @@ import { Router } from "express";
 import { client } from "./bot.js";
 import { selectedGuildId } from "./dashboard-context.js";
 import { audit, getFeature, one, query } from "./db.js";
+import { validateBirthdayInput, validateCountingInput, validateDashboardWidgets, validateOnboardingInput, validateReactionRole, validateRolePanel, validateSecurityPolicy, validateServerCounterInput, validateStudioTemplate } from "./admin-validation.js";
 import {
   applyHealthFix, inspectMemberPermission, publishDailyPanel, publishFlashDrop, publishOnboardingPanel,
   publishRolePanel, publishTemplate, scanHealth
@@ -14,6 +15,26 @@ v5ControlRouter.use(auth);
 const arr=(v:any)=>Array.isArray(v)?v:v?[v]:[];
 const num=(v:any,fallback=0)=>Number.isFinite(Number(v))?Number(v):fallback;
 const bool=(v:any)=>v==="on"||v==="true"||v===true;
+
+async function onboardingPageData(req:any,overrides:any={}){
+  const gid=selectedGuildId(req),[base,storedOnboarding,birthday,storedCounting,counters]=await Promise.all([
+    ui(req),one<any>(`SELECT * FROM onboarding_configs WHERE guild_id=$1`,[gid]),
+    getFeature(gid,"birthdays",{channelId:"",roleId:"",xpReward:50,coinReward:100}),
+    one<any>(`SELECT * FROM counting_configs WHERE guild_id=$1`,[gid]),
+    query<any>(`SELECT * FROM server_counters WHERE guild_id=$1 ORDER BY id`,[gid])
+  ]);
+  const body=overrides.body;
+  let onboarding=storedOnboarding||{},birthdayState=birthday,counting=storedCounting||{};
+  if(body?.kind==="onboarding"){
+    const platform_roles:any={},interest_roles:any={},notification_roles:any={};
+    const mappings:Array<[string,string]>=[["platform_PlayStation","PlayStation"],["platform_Xbox","Xbox"],["platform_PC","PC"],["interest_EAFCLive","EAFC.Live"],["interest_UltimateTeam","Ultimate Team"],["interest_SBCsObjectives","SBCs & Objectives"],["interest_Gameplay","Gameplay"],["interest_Community","Community"],["notification_Announcements","Announcements"],["notification_Giveaways","Giveaways"],["notification_Events","Events"],["notification_Premium","Premium"]];
+    for(const [field,label] of mappings) if(body[field]) (field.startsWith("platform_")?platform_roles:field.startsWith("interest_")?interest_roles:notification_roles)[label]=body[field];
+    onboarding={...onboarding,channel_id:body.channelId,verified_role_id:body.verifiedRoleId,quarantine_role_id:body.quarantineRoleId,platform_roles,interest_roles,notification_roles,min_account_age_hours:body.minAccountAgeHours,welcome_title:body.welcomeTitle,welcome_body:body.welcomeBody,questions:String(body.questions||"").split(/\r?\n/).map((label:string)=>label.trim()).filter(Boolean).map((label:string)=>({label}))};
+  }
+  if(body?.kind==="birthday") birthdayState={...birthday,enabled:bool(body.enabled),config:{channelId:body.channelId,roleId:body.roleId,xpReward:body.xpReward,coinReward:body.coinReward}};
+  if(body?.kind==="counting") counting={...counting,enabled:bool(body.enabled),channel_id:body.channelId,next_number:body.nextNumber,reward_every:body.rewardEvery};
+  return {user:req.session.user,...base,onboarding,birthday:birthdayState,counting,counters,counterDraft:overrides.body?.kind==="counter"?overrides.body:{},saved:req.query.saved==="1",published:req.query.published==="1",error:overrides.error||String(req.query.error||"")};
+}
 
 async function ui(req:any){
   const guild=client.guilds.cache.get(selectedGuildId(req));
@@ -29,17 +50,26 @@ async function ui(req:any){
   };
 }
 
-v5ControlRouter.get("/control/onboarding",async(req:any,res)=>{
-  const gid=selectedGuildId(req),[base,onboarding,birthday,counting,counters]=await Promise.all([
-    ui(req),one<any>(`SELECT * FROM onboarding_configs WHERE guild_id=$1`,[gid]),
-    getFeature(gid,"birthdays",{channelId:"",roleId:"",xpReward:50,coinReward:100}),
-    one<any>(`SELECT * FROM counting_configs WHERE guild_id=$1`,[gid]),
-    query<any>(`SELECT * FROM server_counters WHERE guild_id=$1 ORDER BY id`,[gid])
+async function securityPageData(req:any,overrides:any={}){
+  const gid=selectedGuildId(req),base=await ui(req),storedFeature=await getFeature(gid,"security_suite",{antiAlt:true,minAccountAgeHours:24,antiRaid:true,joinsPerMinute:8,quarantineOnRaid:true,antiNuke:true,actionWindowSeconds:60,maxDestructiveActions:4,trustedRoleIds:[],trustedUserIds:[]});
+  const [findings,events,healthScan]=await Promise.all([
+    query<any>(`SELECT * FROM health_findings WHERE guild_id=$1 AND active=true ORDER BY CASE severity WHEN 'critical' THEN 1 WHEN 'warning' THEN 2 ELSE 3 END,id`,[gid]),
+    query<any>(`SELECT * FROM security_events WHERE guild_id=$1 ORDER BY created_at DESC LIMIT 50`,[gid]),
+    one<any>(`SELECT scanned_at,finding_count FROM health_scan_state WHERE guild_id=$1`,[gid])
   ]);
-  res.render("control-onboarding",{user:req.session.user,...base,onboarding:onboarding||{},birthday,counting:counting||{},counters,saved:req.query.saved==="1"});
+  let inspector:any=null;if(req.query.memberId&&req.query.channelId)try{inspector=await inspectMemberPermission(gid,String(req.query.memberId),String(req.query.channelId));}catch(e:any){inspector={error:e.message};}
+  const feature=overrides.body?{...storedFeature,config:{...storedFeature.config,...overrides.body,trustedRoleIds:arr(overrides.body.trustedRoleIds)}}:storedFeature;
+  const score=healthScan?Math.max(0,100-findings.reduce((n:any,f:any)=>n+(f.severity==="critical"?20:f.severity==="warning"?8:2),0)):null;
+  return {user:req.session.user,...base,feature,findings,events,inspector,score,healthScan,requestedMember:String(req.query.memberId||""),requestedChannel:String(req.query.channelId||""),saved:req.query.saved==="1",error:overrides.error||String(req.query.error||"")};
+}
+
+v5ControlRouter.get("/control/onboarding",async(req:any,res)=>{
+  res.render("control-onboarding",await onboardingPageData(req));
 });
 
 v5ControlRouter.post("/control/onboarding",async(req:any,res)=>{
+  const base=await ui(req),validation=validateOnboardingInput(req.body,base.channels,base.roles);
+  if(validation.length)return res.status(422).render("control-onboarding",await onboardingPageData(req,{body:{...req.body,kind:"onboarding"},error:validation.join(" ")}));
   const gid=selectedGuildId(req),platformRoles:any={},interestRoles:any={},notificationRoles:any={};
   for(const key of ["PlayStation","Xbox","PC"]){const v=req.body[`platform_${key.replace(/[^A-Za-z]/g,"")}`];if(v)platformRoles[key]=v;}
   for(const key of ["EAFC.Live","Ultimate Team","SBCs & Objectives","Gameplay","Community"]){const field=`interest_${key.replace(/[^A-Za-z]/g,"")}`,v=req.body[field];if(v)interestRoles[key]=v;}
@@ -48,26 +78,31 @@ v5ControlRouter.post("/control/onboarding",async(req:any,res)=>{
   await query(`INSERT INTO onboarding_configs(guild_id,enabled,channel_id,verified_role_id,quarantine_role_id,platform_roles,interest_roles,notification_roles,questions,min_account_age_hours,welcome_title,welcome_body)
     VALUES($1,true,$2,$3,$4,$5::jsonb,$6::jsonb,$7::jsonb,$8::jsonb,$9,$10,$11)
     ON CONFLICT(guild_id) DO UPDATE SET enabled=true,channel_id=$2,verified_role_id=$3,quarantine_role_id=$4,platform_roles=$5::jsonb,interest_roles=$6::jsonb,notification_roles=$7::jsonb,questions=$8::jsonb,min_account_age_hours=$9,welcome_title=$10,welcome_body=$11,updated_at=now()`,
-    [gid,req.body.channelId||null,req.body.verifiedRoleId||null,req.body.quarantineRoleId||null,JSON.stringify(platformRoles),JSON.stringify(interestRoles),JSON.stringify(notificationRoles),JSON.stringify(questions),Math.max(0,num(req.body.minAccountAgeHours,24)),String(req.body.welcomeTitle||"Welcome to EAFC.Live"),String(req.body.welcomeBody||"Verify your account, choose your platform and personalise your community experience.")]);
+    [gid,req.body.channelId||null,req.body.verifiedRoleId||null,req.body.quarantineRoleId||null,JSON.stringify(platformRoles),JSON.stringify(interestRoles),JSON.stringify(notificationRoles),JSON.stringify(questions),Number(req.body.minAccountAgeHours??24),String(req.body.welcomeTitle||"Welcome to EAFC.Live"),String(req.body.welcomeBody||"Verify your account, choose your platform and personalise your community experience.")]);
   await audit(gid,req.session.user.id,"onboarding.settings.update",{channelId:req.body.channelId});res.redirect("/control/onboarding?saved=1");
 });
 
-v5ControlRouter.post("/control/onboarding/publish",async(req:any,res)=>{try{await publishOnboardingPanel(selectedGuildId(req),String(req.body.channelId||""));await audit(selectedGuildId(req),req.session.user.id,"onboarding.panel.publish",{channelId:req.body.channelId});res.redirect("/control/onboarding?saved=1");}catch(e:any){res.status(400).send(e.message);}});
+v5ControlRouter.post("/control/onboarding/publish",async(req:any,res)=>{try{await publishOnboardingPanel(selectedGuildId(req),String(req.body.channelId||""));await audit(selectedGuildId(req),req.session.user.id,"onboarding.panel.publish",{channelId:req.body.channelId});res.redirect("/control/onboarding?published=1");}catch(e:any){res.redirect("/control/onboarding?error="+encodeURIComponent(e?.message||"Could not publish the onboarding panel."));}});
 
 v5ControlRouter.post("/control/onboarding/birthday",async(req:any,res)=>{
+  const base=await ui(req),validation=validateBirthdayInput(req.body,base.channels,base.roles);
+  if(validation.length)return res.status(422).render("control-onboarding",await onboardingPageData(req,{body:{...req.body,kind:"birthday"},error:validation.join(" ")}));
   const cfg={channelId:req.body.channelId||"",roleId:req.body.roleId||"",xpReward:Math.max(0,num(req.body.xpReward,50)),coinReward:Math.max(0,num(req.body.coinReward,100))};
   await query(`INSERT INTO feature_settings(guild_id,feature_key,enabled,config) VALUES($1,'birthdays',$2,$3::jsonb) ON CONFLICT(guild_id,feature_key) DO UPDATE SET enabled=$2,config=$3::jsonb,updated_at=now()`,[selectedGuildId(req),bool(req.body.enabled),JSON.stringify(cfg)]);
   res.redirect("/control/onboarding?saved=1");
 });
 
 v5ControlRouter.post("/control/onboarding/counting",async(req:any,res)=>{
-  await query(`INSERT INTO counting_configs(guild_id,channel_id,next_number,enabled,reward_every) VALUES($1,$2,$3,$4,$5) ON CONFLICT(guild_id) DO UPDATE SET channel_id=$2,next_number=$3,last_user_id=NULL,last_message_id=NULL,enabled=$4,reward_every=$5,updated_at=now()`,
+  const base=await ui(req),validation=validateCountingInput(req.body,base.channels);
+  if(validation.length)return res.status(422).render("control-onboarding",await onboardingPageData(req,{body:{...req.body,kind:"counting"},error:validation.join(" ")}));
+  await query(`INSERT INTO counting_configs(guild_id,channel_id,next_number,enabled,reward_every) VALUES($1,$2,$3,$4,$5) ON CONFLICT(guild_id) DO UPDATE SET channel_id=$2,next_number=$3,enabled=$4,reward_every=$5,updated_at=now()`,
     [selectedGuildId(req),req.body.channelId||null,Math.max(1,num(req.body.nextNumber,1)),bool(req.body.enabled),Math.max(0,num(req.body.rewardEvery,100))]);
   res.redirect("/control/onboarding?saved=1");
 });
 
 v5ControlRouter.post("/control/onboarding/counters",async(req:any,res)=>{
-  if(!req.body.channelId)return res.redirect("/control/onboarding");
+  const base=await ui(req),validation=validateServerCounterInput(req.body,base.channels);
+  if(validation.length)return res.status(422).render("control-onboarding",await onboardingPageData(req,{body:{...req.body,kind:"counter"},error:validation.join(" ")}));
   await query(`INSERT INTO server_counters(guild_id,channel_id,metric,label,enabled) VALUES($1,$2,$3,$4,true) ON CONFLICT(guild_id,channel_id) DO UPDATE SET metric=$3,label=$4,enabled=true,updated_at=now()`,
     [selectedGuildId(req),req.body.channelId,String(req.body.metric||"members"),String(req.body.label||"Members: {count}")]);
   res.redirect("/control/onboarding?saved=1");
@@ -75,15 +110,12 @@ v5ControlRouter.post("/control/onboarding/counters",async(req:any,res)=>{
 v5ControlRouter.post("/control/onboarding/counters/:id/delete",async(req:any,res)=>{await query(`DELETE FROM server_counters WHERE id=$1 AND guild_id=$2`,[req.params.id,selectedGuildId(req)]);res.redirect("/control/onboarding");});
 
 v5ControlRouter.get("/control/security",async(req:any,res)=>{
-  const gid=selectedGuildId(req),base=await ui(req),feature=await getFeature(gid,"security_suite",{antiAlt:true,minAccountAgeHours:24,antiRaid:true,joinsPerMinute:8,quarantineOnRaid:true,antiNuke:true,actionWindowSeconds:60,maxDestructiveActions:4,trustedRoleIds:[],trustedUserIds:[]});
-  const findings=await query<any>(`SELECT * FROM health_findings WHERE guild_id=$1 AND active=true ORDER BY CASE severity WHEN 'critical' THEN 1 WHEN 'warning' THEN 2 ELSE 3 END,id`,[gid]);
-  const events=await query<any>(`SELECT * FROM security_events WHERE guild_id=$1 ORDER BY created_at DESC LIMIT 50`,[gid]);
-  let inspector:any=null;if(req.query.memberId&&req.query.channelId)try{inspector=await inspectMemberPermission(gid,String(req.query.memberId),String(req.query.channelId));}catch(e:any){inspector={error:e.message};}
-  const score=Math.max(0,100-findings.reduce((n:any,f:any)=>n+(f.severity==="critical"?20:f.severity==="warning"?8:2),0));
-  res.render("control-security",{user:req.session.user,...base,feature,findings,events,inspector,score,requestedMember:String(req.query.memberId||""),requestedChannel:String(req.query.channelId||""),saved:req.query.saved==="1"});
+  res.render("control-security",await securityPageData(req));
 });
 
 v5ControlRouter.post("/control/security",async(req:any,res)=>{
+  const base=await ui(req),validation=validateSecurityPolicy(req.body,base.allRoles,base.members);
+  if(validation.length)return res.status(422).render("control-security",await securityPageData(req,{body:{...req.body,antiAlt:bool(req.body.antiAlt),antiRaid:bool(req.body.antiRaid),quarantineOnRaid:bool(req.body.quarantineOnRaid),antiNuke:bool(req.body.antiNuke),trustedRoleIds:arr(req.body.trustedRoleIds),trustedUserIds:arr(req.body.trustedUserIds)},error:validation.join(" ")}));
   const cfg={antiAlt:bool(req.body.antiAlt),minAccountAgeHours:Math.max(0,num(req.body.minAccountAgeHours,24)),antiRaid:bool(req.body.antiRaid),joinsPerMinute:Math.max(2,num(req.body.joinsPerMinute,8)),quarantineOnRaid:bool(req.body.quarantineOnRaid),antiNuke:bool(req.body.antiNuke),actionWindowSeconds:Math.max(10,num(req.body.actionWindowSeconds,60)),maxDestructiveActions:Math.max(1,num(req.body.maxDestructiveActions,4)),trustedRoleIds:arr(req.body.trustedRoleIds),trustedUserIds:arr(req.body.trustedUserIds)};
   await query(`INSERT INTO feature_settings(guild_id,feature_key,enabled,config) VALUES($1,'security_suite',true,$2::jsonb) ON CONFLICT(guild_id,feature_key) DO UPDATE SET enabled=true,config=$2::jsonb,updated_at=now()`,[selectedGuildId(req),JSON.stringify(cfg)]);
   await audit(selectedGuildId(req),req.session.user.id,"security.settings.update",cfg);res.redirect("/control/security?saved=1");
@@ -91,35 +123,46 @@ v5ControlRouter.post("/control/security",async(req:any,res)=>{
 v5ControlRouter.post("/control/security/rescan",async(req:any,res)=>{await scanHealth(client,selectedGuildId(req));res.redirect("/control/security");});
 v5ControlRouter.post("/control/security/fix/:id",async(req:any,res)=>{try{await applyHealthFix(selectedGuildId(req),Number(req.params.id));res.redirect("/control/security");}catch(e:any){res.status(400).send(e.message);}});
 
-v5ControlRouter.get("/control/studio",async(req:any,res)=>{
+async function studioPageData(req:any,overrides:any={}){
   const [base,templates,panels,reactions]=await Promise.all([ui(req),query<any>(`SELECT * FROM message_templates WHERE guild_id=$1 ORDER BY updated_at DESC`,[selectedGuildId(req)]),query<any>(`SELECT * FROM role_panels WHERE guild_id=$1 ORDER BY updated_at DESC`,[selectedGuildId(req)]),query<any>(`SELECT * FROM reaction_roles WHERE guild_id=$1 ORDER BY message_id,emoji`,[selectedGuildId(req)])]);
-  res.render("control-studio",{user:req.session.user,...base,templates,panels,reactions,saved:req.query.saved==="1"});
-});
+  return {user:req.session.user,...base,templates,panels,reactions,saved:req.query.saved==="1",error:overrides.error||String(req.query.error||""),draft:overrides.draft||{},draftForm:overrides.draftForm||""};
+}
+
+v5ControlRouter.get("/control/studio",async(req:any,res)=>res.render("control-studio",await studioPageData(req)));
 
 v5ControlRouter.post("/control/studio/templates",async(req:any,res)=>{
+  const base=await ui(req),validation=validateStudioTemplate(req.body,base.allRoles);
+  if(validation.length)return res.status(422).render("control-studio",await studioPageData(req,{draft:req.body,draftForm:"studio-form",error:validation.join(" ")}));
   const buttons:any[]=[];for(let i=1;i<=5;i++){const label=String(req.body[`button${i}Label`]||"").trim();if(!label)continue;const url=String(req.body[`button${i}Url`]||"").trim(),roleId=String(req.body[`button${i}Role`]||"").trim();buttons.push({label,url:url||undefined,roleId:roleId||undefined});}
   const opts:any[]=[];for(let i=1;i<=5;i++){const label=String(req.body[`option${i}Label`]||"").trim();if(!label)continue;opts.push({label,value:`option-${i}`,roleId:req.body[`option${i}Role`]||undefined,response:req.body[`option${i}Response`]||undefined});}
   const select=opts.length?{placeholder:String(req.body.selectPlaceholder||"Choose an option"),options:opts}:{};
   await query(`INSERT INTO message_templates(guild_id,name,template_type,title,body,colour,image_url,thumbnail_url,mention_role_id,button_config,select_config,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,$12)`,
     [selectedGuildId(req),String(req.body.name||"Announcement"),String(req.body.templateType||"announcement"),req.body.title||null,String(req.body.body||""),req.body.colour?parseInt(String(req.body.colour).replace("#",""),16)||null:null,req.body.imageUrl||null,req.body.thumbnailUrl||null,req.body.mentionRoleId||null,JSON.stringify(buttons),JSON.stringify(select),req.session.user.id]);
+  await recordStudioAudit(req,"studio.template.create",{name:String(req.body.name||"Announcement"),templateType:String(req.body.templateType||"announcement")});
   res.redirect("/control/studio?saved=1");
 });
-v5ControlRouter.post("/control/studio/templates/:id/publish",async(req:any,res)=>{try{await publishTemplate(client,selectedGuildId(req),Number(req.params.id),String(req.body.channelId||""));await recordStudioAudit(req,"studio.template.publish",{id:req.params.id,channelId:req.body.channelId});res.redirect("/control/studio?saved=1");}catch(e:any){res.status(400).send(e.message);}});
-v5ControlRouter.post("/control/studio/templates/:id/delete",async(req:any,res)=>{await query(`DELETE FROM message_templates WHERE id=$1 AND guild_id=$2`,[req.params.id,selectedGuildId(req)]);res.redirect("/control/studio");});
+v5ControlRouter.post("/control/studio/templates/:id/publish",async(req:any,res)=>{try{await publishTemplate(client,selectedGuildId(req),Number(req.params.id),String(req.body.channelId||""));await recordStudioAudit(req,"studio.template.publish",{id:req.params.id,channelId:req.body.channelId});res.redirect("/control/studio?saved=1");}catch(e:any){res.redirect("/control/studio?error="+encodeURIComponent(e?.message||"Template could not be published."));}});
+v5ControlRouter.post("/control/studio/templates/:id/delete",async(req:any,res)=>{const deleted=await query<any>(`DELETE FROM message_templates WHERE id=$1 AND guild_id=$2 RETURNING id,name`,[req.params.id,selectedGuildId(req)]);if(deleted.length)await recordStudioAudit(req,"studio.template.delete",{id:deleted[0].id,name:deleted[0].name});res.redirect("/control/studio");});
 
 v5ControlRouter.post("/control/studio/panels",async(req:any,res)=>{
+  const base=await ui(req),validation=validateRolePanel(req.body,base.channels,base.roles,bool(req.body.publishNow));
+  if(validation.length)return res.status(422).render("control-studio",await studioPageData(req,{draft:req.body,draftForm:"role-panel-form",error:validation.join(" ")}));
   const roles:any[]=[];for(let i=1;i<=10;i++){const roleId=String(req.body[`role${i}Id`]||"");if(roleId)roles.push({roleId,label:String(req.body[`role${i}Label`]||"Role")});}
   const row=(await query<any>(`INSERT INTO role_panels(guild_id,name,channel_id,panel_type,roles,title,body) VALUES($1,$2,$3,$4,$5::jsonb,$6,$7) RETURNING id`,[selectedGuildId(req),String(req.body.name||"Role panel"),String(req.body.channelId||""),String(req.body.panelType||"buttons"),JSON.stringify(roles),String(req.body.title||"Choose your roles"),String(req.body.body||"Use the controls below to manage your roles.")]))[0];
-  if(bool(req.body.publishNow))await publishRolePanel(client,selectedGuildId(req),row.id);
+  await recordStudioAudit(req,"studio.role_panel.create",{id:row.id,name:String(req.body.name||"Role panel"),publishNow:bool(req.body.publishNow)});
+  if(bool(req.body.publishNow))try{await publishRolePanel(client,selectedGuildId(req),row.id);}catch(e:any){return res.redirect("/control/studio?error="+encodeURIComponent(`Panel saved as a draft, but Discord could not publish it: ${e?.message||"Check the selected channel and bot permissions."}`));}
   res.redirect("/control/studio?saved=1");
 });
-v5ControlRouter.post("/control/studio/panels/:id/publish",async(req:any,res)=>{try{await publishRolePanel(client,selectedGuildId(req),Number(req.params.id));res.redirect("/control/studio?saved=1");}catch(e:any){res.status(400).send(e.message);}});
+v5ControlRouter.post("/control/studio/panels/:id/publish",async(req:any,res)=>{try{await publishRolePanel(client,selectedGuildId(req),Number(req.params.id));await recordStudioAudit(req,"studio.role_panel.publish",{id:req.params.id});res.redirect("/control/studio?saved=1");}catch(e:any){res.redirect("/control/studio?error="+encodeURIComponent(e?.message||"Role panel could not be published."));}});
 
 v5ControlRouter.post("/control/studio/reaction-role",async(req:any,res)=>{
+  const base=await ui(req),validation=validateReactionRole(req.body,base.channels,base.roles);
+  if(validation.length)return res.status(422).render("control-studio",await studioPageData(req,{draft:req.body,draftForm:"reaction-role-form",error:validation.join(" ")}));
   await query(`INSERT INTO reaction_roles(guild_id,message_id,channel_id,emoji,role_id,enabled) VALUES($1,$2,$3,$4,$5,true) ON CONFLICT(guild_id,message_id,emoji) DO UPDATE SET role_id=$5,channel_id=$3,enabled=true`,[selectedGuildId(req),String(req.body.messageId||""),String(req.body.channelId||""),String(req.body.emoji||"⭐"),String(req.body.roleId||"")]);
+  await recordStudioAudit(req,"studio.reaction_role.save",{messageId:req.body.messageId,channelId:req.body.channelId,emoji:req.body.emoji,roleId:req.body.roleId});
   res.redirect("/control/studio?saved=1");
 });
-v5ControlRouter.post("/control/studio/reaction-role/delete",async(req:any,res)=>{await query(`DELETE FROM reaction_roles WHERE guild_id=$1 AND message_id=$2 AND emoji=$3`,[selectedGuildId(req),req.body.messageId,req.body.emoji]);res.redirect("/control/studio");});
+v5ControlRouter.post("/control/studio/reaction-role/delete",async(req:any,res)=>{const deleted=await query<any>(`DELETE FROM reaction_roles WHERE guild_id=$1 AND message_id=$2 AND emoji=$3 RETURNING role_id`,[selectedGuildId(req),req.body.messageId,req.body.emoji]);if(deleted.length)await recordStudioAudit(req,"studio.reaction_role.delete",{messageId:req.body.messageId,emoji:req.body.emoji,roleId:deleted[0].role_id});res.redirect("/control/studio");});
 
 async function recordStudioAudit(req:any,action:string,details:any){await audit(selectedGuildId(req),req.session.user.id,action,details);}
 
@@ -180,9 +223,9 @@ v5ControlRouter.get("/control/insights",async(req:any,res)=>{
   ]);
   const configured=await query<any>(`SELECT feature_key,enabled FROM feature_settings WHERE guild_id=$1 AND enabled=true`,[gid]),usageMap=new Map(features.map(x=>[x.feature_key,x]));
   const dead=configured.map(x=>({feature_key:x.feature_key,...(usageMap.get(x.feature_key)||{uses:0,last_used:null})})).filter(x=>Number(x.uses||0)===0);
-  res.render("control-insights",{user:req.session.user,...base,funnel:funnel||{},engagement:engagement||{},premium:premium||{},referrals:referrals||{},commands,features,dead,widgets,saved:req.query.saved==="1"});
+  res.render("control-insights",{user:req.session.user,...base,funnel:funnel||{},engagement:engagement||{},premium:premium||{},referrals:referrals||{},commands,features,dead,widgets,saved:req.query.saved==="1",error:String(req.query.error||"")});
 });
-v5ControlRouter.post("/control/insights/widgets",async(req:any,res)=>{await query(`DELETE FROM dashboard_widgets WHERE guild_id=$1 AND admin_user_id=$2`,[selectedGuildId(req),req.session.user.id]);let n=0;for(const key of arr(req.body.widgets))await query(`INSERT INTO dashboard_widgets(guild_id,admin_user_id,widget_key,sort_order) VALUES($1,$2,$3,$4)`,[selectedGuildId(req),req.session.user.id,key,n++]);res.redirect("/control/insights?saved=1");});
+v5ControlRouter.post("/control/insights/widgets",async(req:any,res)=>{if(!validateDashboardWidgets(req.body.widgets))return res.redirect("/control/insights?error="+encodeURIComponent("Choose only the dashboard widgets shown on this page."));await query(`DELETE FROM dashboard_widgets WHERE guild_id=$1 AND admin_user_id=$2`,[selectedGuildId(req),req.session.user.id]);let n=0;for(const key of [...new Set(arr(req.body.widgets).map(String))])await query(`INSERT INTO dashboard_widgets(guild_id,admin_user_id,widget_key,sort_order) VALUES($1,$2,$3,$4)`,[selectedGuildId(req),req.session.user.id,key,n++]);res.redirect("/control/insights?saved=1");});
 
 v5ControlRouter.get("/control/rewards",async(req:any,res)=>{
   const gid=selectedGuildId(req),[base,items,drops,season]=await Promise.all([ui(req),query<any>(`SELECT * FROM store_items WHERE guild_id=$1 ORDER BY active DESC,sort_order,name`,[gid]),query<any>(`SELECT d.*,(SELECT count(*) FROM flash_drop_claims c WHERE c.drop_id=d.id) claims FROM flash_drops d WHERE d.guild_id=$1 ORDER BY d.created_at DESC LIMIT 30`,[gid]),one<any>(`SELECT * FROM economy_seasons WHERE guild_id=$1 AND active=true ORDER BY starts_at DESC LIMIT 1`,[gid])]);

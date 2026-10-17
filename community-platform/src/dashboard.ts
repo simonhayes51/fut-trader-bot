@@ -14,6 +14,7 @@ import { clearGuildBrandCache, defaultGuildBrand } from "./brand.js";
 import { DashboardGuild, dashboardGuilds, guildUi, manageableGuildsFromDiscord, refreshDashboardGuilds, requireSelectedGuild, selectedGuild, selectedGuildId } from "./dashboard-context.js";
 import { publishRoleMenusForGuild } from "./role-menu-publisher.js";
 import { publishTicketPanelForGuild } from "./ticket-panel-publisher.js";
+import { dashboardSidebar } from "./admin-navigation.js";
 
 declare module "express-session" {
   interface SessionData { user?: { id:string; username:string; avatar?:string; permissions?:string; guilds?:DashboardGuild[] }; oauthState?: string; selectedGuildId?: string; guildRefreshAt?: number; }
@@ -42,58 +43,6 @@ app.use(async(req:any,_res:any,next:any)=>{
   catch(err) { console.error("Dashboard guild refresh failed",err); }
   next();
 });
-
-function escapeHtml(value:unknown) {
-  return String(value??"").replace(/[&<>"']/g,(character)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[character]!));
-}
-
-export function dashboardSidebar(pathname:string,user?:{username?:string;avatar?:string;guilds?:DashboardGuild[]},selectedId?:string) {
-  const groups:Array<{label:string;items:Array<[string,string,string]>}>=[
-    {label:"Set up your server",items:[["/control/onboarding","✧","Welcome & onboarding"],["/control/community","◈","Community tools"],["/control/studio","✦","Messages & role menus"],["/control/automation","↻","Scheduled posts & feeds"],["/control/settings","⚙","All bot features"],["/discord","♢","Discord tools"],["/commands","⌘","Command access"]]},
-    {label:"Run your community",items:[["/control/kudos","✳","Engagement & levels"],["/economy","¤","Coins & rewards"],["/control/safety","⊘","Tickets & moderation"],["/control/security","◉","Security & health"]]},
-    {label:"Grow and review",items:[["/control/growth","↗","Invites & partnerships"],["/billing","◆","Premium & billing"],["/control/insights","▦","Insights & reports"],["/audit","≡","Admin activity"]]},
-    {label:"Server appearance",items:[["/branding","◈","Name, logo & colours"],["/invite","+","Add the bot"]]}
-  ];
-  const routeAliases:Record<string,string[]>={
-    "/control/members":["/members"],
-    "/control/community":["/modules/welcome","/modules/role_menus","/modules/suggestions","/modules/tickets","/modules/starboard"],
-    "/control/insights":["/analytics"],
-    "/control/automation":["/automation","/social","/modules/scheduled_messages","/modules/social_feeds"],
-    "/control/kudos":["/control/engagement","/modules/reputation","/modules/levels","/modules/giveaways"],
-    "/economy":["/control/rewards"],
-    "/control/safety":["/tickets","/moderation","/modules/automod","/modules/mod_tools","/modules/join_security"],
-    "/control/security":["/setup"],
-    "/billing":["/modules/premium_billing"]
-  };
-  const activeFor=(href:string)=>{
-    if(href==="/control") return pathname==="/control";
-    if(href==="/branding"&&(pathname==="/branding"||pathname==="/modules/server_branding")) return true;
-    return [href,...(routeAliases[href]||[])].some(route=>pathname===route||pathname.startsWith(`${route}/`));
-  };
-  const direct=[ ["/control","⌂","Overview"], ["/control/members","◎","Members"] ] as Array<[string,string,string]>;
-  const directNav=direct.map(([href,icon,label])=>`<a class="nav-link nav-direct ${activeFor(href)?"active":""}" href="${href}"><span class="nav-icon">${icon}</span><span>${label}</span></a>`).join("");
-  const nav=groups.map(group=>{
-    const links=group.items.map(([href,icon,label])=>`<a class="nav-link ${activeFor(href)?"active":""}" href="${href}"><span class="nav-icon">${icon}</span><span>${label}</span></a>`).join("");
-    const expanded=group.items.some(([href])=>activeFor(href));
-    return `<section class="nav-group"><div class="nav-label">${group.label}</div><div class="nav-group-items">${links}</div></section>`;
-  }).join("");
-  const username=escapeHtml(user?.username||"Administrator");
-  const initial=username.slice(0,1).toUpperCase();
-  const guilds=user?.guilds||[];
-  const onlyGuild=guilds[0];
-  const addServerLink=`<a class="server-add-link" href="/invite">Add bot to another server</a>`;
-  const selector=guilds.length>1?`<form class="server-switcher" method="post" action="/servers/select">
-      <label>Server</label>
-      <select name="guildId" onchange="this.form.submit()">${guilds.map(g=>`<option value="${escapeHtml(g.id)}" ${g.id===selectedId?"selected":""}>${escapeHtml(g.name)}</option>`).join("")}</select>
-      ${addServerLink}
-    </form>`:onlyGuild?`<div class="server-switcher readonly"><label>Server</label><strong>${escapeHtml(onlyGuild.name)}</strong>${addServerLink}</div>`:`<div class="server-switcher readonly"><label>Server</label>${addServerLink}</div>`;
-  return `<aside class="sidebar">
-    <a class="brand" href="/control"><span class="brand-mark">E</span><span class="brand-copy"><b>EAFC.Live</b><small>Discord Control</small></span></a>
-    ${selector}
-    <nav aria-label="Server administration"><div class="nav-label nav-home-label">Workspace</div>${directNav}${nav}</nav>
-    <div class="sidebar-footer"><div class="admin-chip"><span class="admin-avatar">${initial}</span><span><b>${username}</b><small>Administrator</small></span></div><form method="post" action="/logout"><button class="icon-button" title="Log out">↪</button></form></div>
-  </aside>`;
-}
 
 app.use((req:any,res:any,next:any)=>{
   const originalRender=res.render.bind(res);

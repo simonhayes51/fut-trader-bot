@@ -4,12 +4,15 @@ import { selectedGuildId, guildUi } from "./dashboard-context.js";
 import { audit, one, query } from "./db.js";
 import { awardCurrency } from "./economy-core.js";
 import { refundStoreRedemption, runEconomyTick } from "./economy.js";
+import { validateEconomyQuest } from "./admin-validation.js";
 
 export const economyRouter=Router();
 const auth=(req:any,res:any,next:any)=>req.session?.user?next():res.redirect("/login");
 economyRouter.use(auth);
 
 function int(v:any,min=0,max=1_000_000){const n=Math.trunc(Number(v||0));return Number.isFinite(n)?Math.max(min,Math.min(max,n)):min;}
+function wholeNumber(v:any,min:number,max:number){const raw=String(v??"").trim();if(!/^\d+$/.test(raw))return null;const n=Number(raw);return Number.isSafeInteger(n)&&n>=min&&n<=max?n:null;}
+function safeRedirectError(res:any,message:string){return res.redirect(`/economy?error=${encodeURIComponent(message)}`);}
 
 export async function renderEconomyDashboard(req:any,res:any){
   const gid=selectedGuildId(req);
@@ -38,6 +41,8 @@ economyRouter.get("/economy",renderEconomyDashboard);
 
 economyRouter.post("/economy/settings",async(req:any,res)=>{
   const gid=selectedGuildId(req);
+  const fields:[string,number,number,string][]=[["xp_per_message",0,1000,"XP per message"],["coins_per_message",0,1000,"Coins per message"],["message_cooldown_seconds",10,3600,"Message cooldown"],["daily_message_xp_cap",0,100000,"Daily XP cap"],["daily_message_coin_cap",0,100000,"Daily coin cap"],["daily_claim_coins",0,100000,"Daily claim"],["streak_bonus_per_day",0,100000,"Streak bonus"],["streak_bonus_cap",0,100000,"Streak bonus cap"],["helpful_xp",0,100000,"Helpful XP"],["helpful_coins",0,100000,"Helpful coins"],["referral_xp",0,100000,"Referral XP"],["referral_coins",0,100000,"Referral coins"],["trade_xp",0,100000,"Trade XP"],["trade_coins",0,100000,"Trade coins"],["join_xp",0,100000,"Join XP"],["join_coins",0,100000,"Join coins"]];
+  for(const [key,min,max,label] of fields)if(wholeNumber(req.body[key],min,max)===null)return safeRedirectError(res,`${label} must be a whole number from ${min.toLocaleString("en-GB")} to ${max.toLocaleString("en-GB")}.`);
   await query(`INSERT INTO economy_settings(guild_id,enabled,xp_per_message,coins_per_message,message_cooldown_seconds,daily_message_xp_cap,daily_message_coin_cap,daily_claim_coins,streak_bonus_per_day,streak_bonus_cap,helpful_xp,helpful_coins,referral_xp,referral_coins,trade_xp,trade_coins,join_xp,join_coins,updated_at)
     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,now())
     ON CONFLICT(guild_id) DO UPDATE SET enabled=$2,xp_per_message=$3,coins_per_message=$4,message_cooldown_seconds=$5,daily_message_xp_cap=$6,daily_message_coin_cap=$7,daily_claim_coins=$8,streak_bonus_per_day=$9,streak_bonus_cap=$10,helpful_xp=$11,helpful_coins=$12,referral_xp=$13,referral_coins=$14,trade_xp=$15,trade_coins=$16,join_xp=$17,join_coins=$18,updated_at=now()`,[
@@ -47,8 +52,11 @@ economyRouter.post("/economy/settings",async(req:any,res)=>{
 });
 
 economyRouter.post("/economy/store",async(req:any,res)=>{
-  const gid=selectedGuildId(req),key=String(req.body.item_key||"").trim().toLowerCase().replace(/[^a-z0-9_-]+/g,"-").replace(/^-+|-+$/g,"");if(!key||!req.body.name)return res.redirect("/economy?error=Store+item+needs+a+key+and+name");
+  const gid=selectedGuildId(req),key=String(req.body.item_key||"").trim().toLowerCase().replace(/[^a-z0-9_-]+/g,"-").replace(/^-+|-+$/g,""),name=String(req.body.name||"").trim(),description=String(req.body.description||"").trim();if(!key||key.length>60||!name||name.length>100||description.length>1000)return safeRedirectError(res,"Add a key (up to 60 characters), a name (up to 100) and a description no longer than 1,000 characters.");
   const type=String(req.body.fulfillment_type||"custom");if(!["discord_premium","eafc_live","role","badge","custom"].includes(type))return res.redirect("/economy?error=Invalid+fulfilment+type");
+  for(const [field,min,max,label] of [["cost_coins",0,10000000,"Cost"],["stock",0,1000000,"Stock"],["per_user_limit",1,10000,"Per-member limit"],["duration_days",1,3650,"Duration"],["sort_order",0,10000,"Sort order"]] as const){const value=req.body[field];if(value!==undefined&&value!==""&&wholeNumber(value,min,max)===null)return safeRedirectError(res,`${label} is outside its allowed whole-number range.`);}
+  if((type==="role")!==Boolean(String(req.body.role_id||"")))return safeRedirectError(res,type==="role"?"Choose a Discord role for this reward.":"Choose the Discord role fulfilment type only when assigning a role.");
+  if(req.body.role_id&&!/^\d{15,22}$/.test(String(req.body.role_id)))return safeRedirectError(res,"Choose a valid Discord role.");
   await query(`INSERT INTO store_items(guild_id,item_key,name,description,emoji,cost_coins,active,stock,per_user_limit,fulfillment_type,duration_days,role_id,billing_plan_slug,sort_order,updated_at)
     VALUES($1,$2,$3,$4,$5,$6,true,$7,$8,$9,$10,$11,$12,$13,now())
     ON CONFLICT(guild_id,item_key) DO UPDATE SET name=$3,description=$4,emoji=$5,cost_coins=$6,stock=$7,per_user_limit=$8,fulfillment_type=$9,duration_days=$10,role_id=$11,billing_plan_slug=$12,sort_order=$13,updated_at=now()`,[
@@ -61,6 +69,7 @@ economyRouter.post("/economy/store/:id/toggle",async(req:any,res)=>{await query(
 
 economyRouter.post("/economy/quests",async(req:any,res)=>{
   const gid=selectedGuildId(req),key=String(req.body.quest_key||"").trim().toLowerCase().replace(/[^a-z0-9_-]+/g,"-").replace(/^-+|-+$/g,"");const cadence=String(req.body.cadence||"daily");if(!key||!req.body.name||!["daily","weekly","season","lifetime"].includes(cadence))return res.redirect("/economy?error=Invalid+quest");
+  const errors=validateEconomyQuest({...req.body,quest_key:key,cadence});if(errors.length)return safeRedirectError(res,errors.join(" "));
   await query(`INSERT INTO quest_definitions(guild_id,quest_key,name,description,cadence,event_type,target,xp_reward,coin_reward,premium_only,active,sort_order,updated_at)
     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,true,$11,now())
     ON CONFLICT(guild_id,quest_key) DO UPDATE SET name=$3,description=$4,cadence=$5,event_type=$6,target=$7,xp_reward=$8,coin_reward=$9,premium_only=$10,sort_order=$11,updated_at=now()`,[
@@ -72,20 +81,24 @@ economyRouter.post("/economy/quests",async(req:any,res)=>{
 economyRouter.post("/economy/quests/:id/toggle",async(req:any,res)=>{await query(`UPDATE quest_definitions SET active=NOT active,updated_at=now() WHERE id=$1 AND guild_id=$2`,[req.params.id,selectedGuildId(req)]);res.redirect("/economy");});
 
 economyRouter.post("/economy/grant",async(req:any,res)=>{
-  const gid=selectedGuildId(req),userId=String(req.body.user_id||"").trim(),currency=String(req.body.currency||"coins") as "coins"|"xp",amount=Math.trunc(Number(req.body.amount||0)),reason=String(req.body.reason||"Admin adjustment").trim();if(!userId||!['coins','xp'].includes(currency)||!Number.isFinite(amount)||amount===0)return res.redirect("/economy?error=Invalid+adjustment");
+  const gid=selectedGuildId(req),userId=String(req.body.user_id||"").trim(),currency=String(req.body.currency||"coins") as "coins"|"xp",rawAmount=String(req.body.amount??"").trim(),amount=Number(rawAmount),reason=String(req.body.reason||"Admin adjustment").trim();if(!/^\d{15,22}$/.test(userId)||!['coins','xp'].includes(currency)||!/^[-]?\d+$/.test(rawAmount)||!Number.isSafeInteger(amount)||amount===0||Math.abs(amount)>10000000||!reason||reason.length>200)return safeRedirectError(res,"Choose a server member, a whole-number adjustment from −10,000,000 to 10,000,000 (not zero), and a reason up to 200 characters.");
   try{await awardCurrency({guildId:gid,userId,currency,amount,reason,sourceType:"admin",sourceId:req.session.user.id,idempotencyKey:`admin:${Date.now()}:${req.session.user.id}:${userId}:${currency}`});await audit(gid,req.session.user.id,"economy.admin.grant",{userId,currency,amount,reason});res.redirect("/economy?saved=1");}catch(err:any){res.redirect(`/economy?error=${encodeURIComponent(err?.message||"Adjustment failed")}`);}
 });
 
 economyRouter.post("/economy/redemptions/:id/fulfill",async(req:any,res)=>{
-  const row=await one<any>(`SELECT * FROM store_redemptions WHERE id=$1 AND guild_id=$2`,[req.params.id,selectedGuildId(req)]);if(!row||row.status!=="PENDING")return res.redirect("/economy?error=Redemption+is+not+pending");
-  await query(`UPDATE store_redemptions SET status='FULFILLED',fulfilled_by=$2,fulfilled_at=now(),fulfillment_notes=$3,updated_at=now() WHERE id=$1`,[req.params.id,req.session.user.id,String(req.body.notes||"Fulfilled manually")]);await audit(selectedGuildId(req),req.session.user.id,"economy.redemption.fulfill",{id:req.params.id,userId:row.user_id});res.redirect("/economy?saved=1");
+  const gid=selectedGuildId(req),notes=String(req.body.notes||"Fulfilled manually").trim();if(notes.length>1000)return safeRedirectError(res,"Fulfilment note must be 1,000 characters or fewer.");
+  const updated=await query<any>(`UPDATE store_redemptions SET status='FULFILLED',fulfilled_by=$3,fulfilled_at=now(),fulfillment_notes=$4,updated_at=now() WHERE id=$1 AND guild_id=$2 AND status='PENDING' RETURNING user_id`,[req.params.id,gid,req.session.user.id,notes]);
+  if(!updated.length)return safeRedirectError(res,"This reward is no longer pending. Refresh the page to see its current status.");
+  await audit(gid,req.session.user.id,"economy.redemption.fulfill",{id:req.params.id,userId:updated[0].user_id});res.redirect("/economy?saved=1");
 });
 
 economyRouter.post("/economy/redemptions/:id/refund",async(req:any,res)=>{try{await refundStoreRedemption(Number(req.params.id),req.session.user.id);res.redirect("/economy?saved=1");}catch(err:any){res.redirect(`/economy?error=${encodeURIComponent(err?.message||"Refund failed")}`);}});
 
 economyRouter.post("/economy/season",async(req:any,res)=>{
-  const gid=selectedGuildId(req),name=String(req.body.name||"").trim()||"FC27 Season",days=int(req.body.days,1,365);
-  const rewards={"1":int(req.body.first_reward,0,10_000_000),"2":int(req.body.second_reward,0,10_000_000),"3":int(req.body.third_reward,0,10_000_000)};
+  const gid=selectedGuildId(req),name=String(req.body.name||"").trim()||"FC27 Season",days=wholeNumber(req.body.days,1,365);
+  const first=wholeNumber(req.body.first_reward,0,10_000_000),second=wholeNumber(req.body.second_reward,0,10_000_000),third=wholeNumber(req.body.third_reward,0,10_000_000);
+  if(name.length>80||days===null||first===null||second===null||third===null)return safeRedirectError(res,"Season name must be 80 characters or fewer; duration must be 1–365 days and each reward 0–10,000,000 coins.");
+  const rewards={"1":first,"2":second,"3":third};
   const current=await one<any>(`SELECT id,name FROM economy_seasons WHERE guild_id=$1 AND active=true ORDER BY starts_at DESC LIMIT 1`,[gid]);
   if(current){await query(`UPDATE economy_seasons SET ends_at=now() WHERE id=$1`,[current.id]);await runEconomyTick(client);}
   const next=await one<any>(`SELECT id FROM economy_seasons WHERE guild_id=$1 AND active=true ORDER BY starts_at DESC LIMIT 1`,[gid]);

@@ -137,7 +137,7 @@ controlRouter.get("/control/automation",async(req:any,res)=>{
 controlRouter.post("/control/automation/scheduled",async(req:any,res)=>{
   const days=Array.isArray(req.body.days)?req.body.days:req.body.days?[req.body.days]:[];
   const name=String(req.body.name||"").trim(),channelId=String(req.body.channelId||""),content=String(req.body.content||"").trim(),hour=Number(req.body.hour),minute=Number(req.body.minute);
-  const allowedDays=new Set(["0","1","2","3","4","5","6"]),available=new Set((await guildUi(req)).channels.filter((c:any)=>c.type!==4).map((c:any)=>c.id));
+  const allowedDays=new Set(["0","1","2","3","4","5","6"]),available=new Set((await guildUi(req)).channels.filter((c:any)=>c.type===0||c.type===5).map((c:any)=>c.id));
   if(!name||name.length>80||!available.has(channelId)||!content||content.length>2000||!Number.isInteger(hour)||hour<0||hour>23||!Number.isInteger(minute)||minute<0||minute>59||days.some((d:string)=>!allowedDays.has(String(d))))return res.redirect("/control/automation?error="+encodeURIComponent("Enter a name (up to 80 characters), a valid text channel, a message (up to 2,000 characters), a time and valid days."));
   const dow=days.length?[...new Set(days.map(String))].join(","):"*";
   await query(`INSERT INTO scheduled_messages(guild_id,name,channel_id,cron_expression,content,enabled) VALUES($1,$2,$3,$4,$5,true)`,[selectedGuildId(req),name,channelId,`${minute} ${hour} * * ${dow}`,content]);
@@ -151,7 +151,7 @@ controlRouter.post("/control/automation/feeds",async(req:any,res)=>{
   const allowedProviders=new Set(["eafc_leaks","rss","reddit","youtube","x","webhook"]);
   const available=await guildUi(req),channelId=String(req.body.channelId||""),mentionRoleId=String(req.body.mentionRoleId||"");
   const sourceInput=String(req.body.source||"").trim(),nameInput=String(req.body.name||"").trim();
-  if(!allowedProviders.has(selectedProvider)||!available.channels.some((c:any)=>c.id===channelId)||!nameInput||nameInput.length>80||(mentionRoleId&&!available.roles.some((r:any)=>r.id===mentionRoleId)))return res.redirect("/control/automation?error="+encodeURIComponent("Choose a valid feed type, name, available destination channel and optional role."));
+  if(!allowedProviders.has(selectedProvider)||!available.channels.some((c:any)=>c.id===channelId&&(c.type===0||c.type===5))||!nameInput||nameInput.length>80||(mentionRoleId&&!available.roles.some((r:any)=>r.id===mentionRoleId)))return res.redirect("/control/automation?error="+encodeURIComponent("Choose a valid feed type, name, text destination channel and optional role."));
   if(selectedProvider!=="eafc_leaks"&&selectedProvider!=="webhook"&&!sourceInput)return res.redirect("/control/automation?error="+encodeURIComponent("Enter the account or feed URL for this source."));
   if(["rss","reddit","youtube"].includes(selectedProvider)){
     try{const url=new URL(sourceInput);if(!["http:","https:"].includes(url.protocol))throw new Error();}catch{return res.redirect("/control/automation?error="+encodeURIComponent("Feed source must be a valid http or https URL."));}
