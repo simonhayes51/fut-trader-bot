@@ -75,7 +75,8 @@ function dashboardSidebar(pathname:string,user?:{username?:string;avatar?:string
   const directNav=direct.map(([href,icon,label])=>`<a class="nav-link nav-direct ${activeFor(href)?"active":""}" href="${href}"><span class="nav-icon">${icon}</span><span>${label}</span></a>`).join("");
   const nav=groups.map(group=>{
     const links=group.items.map(([href,icon,label])=>`<a class="nav-link ${activeFor(href)?"active":""}" href="${href}"><span class="nav-icon">${icon}</span><span>${label}</span></a>`).join("");
-    return `<div class="nav-group"><div class="nav-label">${group.label}</div>${links}</div>`;
+    const expanded=group.items.some(([href])=>activeFor(href));
+    return `<details class="nav-group nav-collapsible" ${expanded?"open":""}><summary><span>${group.label}</span><span class="nav-group-meta">${group.items.length}<i aria-hidden="true">⌄</i></span></summary><div class="nav-group-items">${links}</div></details>`;
   }).join("");
   const username=escapeHtml(user?.username||"Administrator");
   const initial=username.slice(0,1).toUpperCase();
@@ -106,7 +107,7 @@ app.use((req:any,res:any,next:any)=>{
         const user=options?.user||req.session?.user;
         output=output.replace(/<aside class="sidebar">[\s\S]*?<\/aside>/,dashboardSidebar(req.path,user?{...user,guilds:dashboardGuilds(req)}:user,selectedGuildId(req)));
         if(output.includes('/style.css')&&!output.includes('/polish.css')) output=output.replace("</head>",'<link rel="stylesheet" href="/polish.css"></head>');
-        if(!output.includes('/admin-refresh.css')) output=output.replace("</head>",'<link rel="stylesheet" href="/admin-refresh.css?v=6"></head>');
+        if(!output.includes('/admin-refresh.css')) output=output.replace("</head>",'<link rel="stylesheet" href="/admin-refresh.css?v=7"></head>');
       }
       if(callback)return callback(null,output);
       res.send(output);

@@ -1,4 +1,67 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Features • EAFC.Live</title><link rel="stylesheet" href="/control.css"></head><body><aside class="sidebar"></aside><main class="control"><section class="topbar"><div><div class="crumb">Discord Control / Features</div><h1>Features</h1><p>Everything this bot owns. Trading and market tools are intentionally excluded.</p></div><div class="top-actions"><a class="btn" href="/branding">Branding</a><a class="btn-secondary" href="/commands">Command access</a></div></section><section class="feature-grid"><% modules.forEach(m=>{ const on=m.state?.enabled!==false; %><a class="feature-card" href="/modules/<%= m.key %>"><div class="meta"><span class="pill"><%= m.category %></span><span class="pill <%= on?'good':'bad' %>"><%= on?'Active':'Off' %></span></div><h3><%= m.name %></h3><p><%= m.description %></p><div class="meta"><span><%= m.fields.length %> settings</span><span>Configure →</span></div></a><% }) %></section>
-<% if (botRemoved) { %><section class="panel" style="margin-top:18px;border-color:var(--green,#22c55e)"><strong>Bot removed from the selected server.</strong><p>The bot left that server. Channels, messages, and saved configuration were not deleted, and the bot remains available to other servers.</p></section><% } %>
-<% if (guild) { %><section class="panel" style="margin-top:18px;border-color:var(--red,#ef4444)"><div class="panel-head"><div><span class="pill bad">Server access</span><h2>Remove EAFC.Live from <%= guild.name %></h2><p>This makes the command bot leave this server only. It does not delete channels, messages, or saved settings, and does not affect other servers.</p></div></div><form method="post" action="/control/settings/remove-bot" onsubmit="return confirm('Make EAFC.Live leave this server? No server content will be deleted.');"><input type="hidden" name="guildId" value="<%= guild.id %>"><label style="display:block;margin:12px 0">Type <strong><%= guild.name %></strong> to confirm<input name="confirmation" required autocomplete="off" placeholder="Server name" style="display:block;width:100%;max-width:420px;margin-top:6px"></label><button class="btn-danger" type="submit">Remove bot from server</button></form></section><% } %>
-</main></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bot features · EAFC.Live</title>
+  <link rel="stylesheet" href="/control.css">
+</head>
+<body>
+  <aside class="sidebar"></aside>
+  <main class="control features-page">
+    <% const featureGroups=[
+      {title:'Community',description:'Welcome people, give them a way to choose roles and handle requests.',keys:['welcome','role_menus','suggestions','tickets']},
+      {title:'Engagement & rewards',description:'Give members reasons to take part and recognise helpful contributions.',keys:['reputation','levels','giveaways','starboard']},
+      {title:'Safety & moderation',description:'Set server rules, staff permissions and alerts for suspicious activity.',keys:['automod','mod_tools','join_security']},
+      {title:'Posts & automation',description:'Publish recurring messages and route outside content into Discord.',keys:['scheduled_messages','social_feeds']},
+      {title:'Server & memberships',description:'Set the bot’s appearance and manage Premium access.',keys:['server_branding','premium_billing']}
+    ]; const featureByKey=new Map(modules.map(m=>[m.key,m])); const needsSetup=modules.filter(m=>m.status==='Needs setup').length; const featuresOn=modules.filter(m=>m.status==='On').length; const featuresOff=modules.filter(m=>m.status==='Off').length; %>
+    <header class="topbar features-heading">
+      <div>
+        <div class="crumb">Server setup <span aria-hidden="true">/</span> Bot features</div>
+        <h1>Bot features</h1>
+        <p>Choose an area to set up. Each feature explains what it does and what it needs before it can work.</p>
+      </div>
+      <div class="top-actions">
+        <a class="btn-secondary" href="/commands">Command access</a>
+        <a class="btn-secondary" href="/branding">Server appearance</a>
+      </div>
+    </header>
+
+    <% if(botRemoved){ %><div class="notice settings-notice"><strong>The bot has left this server.</strong><span>Server content and saved settings were not deleted.</span></div><% } %>
+
+    <section class="feature-summary" aria-label="Feature status summary">
+      <div class="feature-summary-copy"><span class="feature-summary-icon" aria-hidden="true">✓</span><div><strong>Know what is ready</strong><small><%= needsSetup %> need setup · <%= featuresOn %> on · <%= featuresOff %> off</small></div></div>
+      <a href="/control/onboarding">Open setup checklist <span aria-hidden="true">→</span></a>
+    </section>
+
+    <div class="feature-groups">
+      <% featureGroups.forEach(group=>{ const groupModules=group.keys.map(key=>featureByKey.get(key)).filter(Boolean); %>
+        <section class="feature-group">
+          <header class="feature-group-heading"><div><h2><%= group.title %></h2><p><%= group.description %></p></div><span><%= groupModules.length %> features</span></header>
+          <div class="feature-list">
+            <% groupModules.forEach(m=>{ const stateClass=m.status==='On'?'is-on':m.status==='Off'?'is-off':'is-setup'; %>
+              <a class="feature-row" href="/modules/<%= m.key %>">
+                <span class="feature-row-copy"><strong><%= m.name %></strong><small><%= m.description %></small></span>
+                <span class="feature-status <%= stateClass %>"><i aria-hidden="true"></i><%= m.status %></span>
+                <span class="feature-row-action">Set up <span aria-hidden="true">→</span></span>
+              </a>
+            <% }) %>
+          </div>
+        </section>
+      <% }) %>
+    </div>
+
+    <% if(guild){ %>
+      <details class="danger-zone">
+        <summary><span><strong>Remove the bot from this server</strong><small>This only disconnects EAFC.Live from <%= guild.name %>. It does not delete server content.</small></span><i aria-hidden="true">⌄</i></summary>
+        <form method="post" action="/control/settings/remove-bot" onsubmit="return confirm('Make EAFC.Live leave this server? No server content will be deleted.');">
+          <input type="hidden" name="guildId" value="<%= guild.id %>">
+          <label>Type <strong><%= guild.name %></strong> to confirm<input name="confirmation" required autocomplete="off" placeholder="Server name"></label>
+          <button class="btn-danger" type="submit">Remove bot from server</button>
+        </form>
+      </details>
+    <% } %>
+  </main>
+</body>
+</html>

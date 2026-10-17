@@ -10,6 +10,21 @@ export const controlRouter=Router();
 const auth=(req:any,res:any,next:any)=>req.session?.user?next():res.redirect("/login");
 controlRouter.use(auth);
 
+function featureNeedsSetup(key:string,cfg:any={}) {
+  if(key==="welcome")return !cfg.channelId;
+  if(key==="role_menus")return !cfg.channelId||!Array.isArray(cfg.groups)||!cfg.groups.some((g:any)=>g.name&&Array.isArray(g.roleIds)&&g.roleIds.length);
+  if(key==="suggestions"||key==="starboard")return !cfg.channelId;
+  if(key==="tickets"){
+    const panels=Array.isArray(cfg.panels)?cfg.panels:[];
+    const panelReady=panels.some((p:any)=>p.enabled!==false&&p.panelChannelId&&p.categoryId&&Array.isArray(p.staffRoleIds)&&p.staffRoleIds.length);
+    const legacyReady=cfg.panelChannelId&&cfg.categoryId&&Array.isArray(cfg.staffRoleIds)&&cfg.staffRoleIds.length;
+    return !panelReady&&!legacyReady;
+  }
+  if(key==="mod_tools")return !Array.isArray(cfg.staffRoleIds)||!cfg.staffRoleIds.length||!cfg.modLogChannelId;
+  if(key==="join_security")return !cfg.alertChannelId;
+  return false;
+}
+
 controlRouter.get("/control",async(req:any,res)=>{
   const gid=selectedGuildId(req);
   const [ui,metrics,recent,kudos,season,features,widgets]=await Promise.all([
@@ -41,7 +56,10 @@ controlRouter.get("/control",async(req:any,res)=>{
 
 controlRouter.get("/control/members",async(req:any,res)=>{
   const gid=selectedGuildId(req),q=String(req.query.q||"").trim().toLowerCase(),ui=await guildUi(req);
-  let members=ui.members.filter(m=>!q||m.name.toLowerCase().includes(q)||m.username.toLowerCase().includes(q)).slice(0,150);
+  const matching=ui.members.filter(m=>!q||m.name.toLowerCase().includes(q)||m.username.toLowerCase().includes(q));
+  const pageSize=50,pageCount=Math.max(1,Math.ceil(matching.length/pageSize));
+  const page=Math.min(pageCount,Math.max(1,Number.parseInt(String(req.query.page||"1"),10)||1));
+  let members=matching.slice((page-1)*pageSize,page*pageSize);
   const ids=members.map(m=>m.id);
   const [stats,economy,streaks,premium]=await Promise.all([
     ids.length?query<any>(`SELECT * FROM member_stats WHERE guild_id=$1 AND user_id=ANY($2::text[])`,[gid,ids]):[],
@@ -50,8 +68,8 @@ controlRouter.get("/control/members",async(req:any,res)=>{
     ids.length?query<any>(`SELECT discord_user_id FROM entitlements WHERE guild_id=$1 AND active=true AND (expires_at IS NULL OR expires_at>now()) AND discord_user_id=ANY($2::text[])`,[gid,ids]):[]
   ]);
   const premiumSet=new Set(premium.map(p=>p.discord_user_id));
-  members=members.map(m=>{const e=economy.find(x=>x.user_id===m.id),st=stats.find(x=>x.user_id===m.id),sk=streaks.find(x=>x.user_id===m.id);return {...m,xp:Number(e?.xp_total||0),coins:Number(e?.coins_balance||0),level:levelFromXp(Number(e?.xp_total||0)),kudos:Number(st?.thanks_received||0),messages:Number(st?.messages||0),streak:Number(sk?.current_streak||0),premium:premiumSet.has(m.id),lastActive:st?.last_message_at||null};});
-  res.render("control-members",{user:req.session.user,...ui,members,q});
+  members=members.map(m=>{const e=economy.find(x=>x.user_id===m.id),st=stats.find(x=>x.user_id===m.id),sk=streaks.find(x=>x.user_id===m.id);return {...m,xp:Number(e?.xp_total||0),coins:Number(e?.coins_balance||0),level:levelFromXp(Number(e?.xp_total||0)),kudos:Number(st?.thanks_received||0),messages:Number(st?.messages||0),streak:Number(sk?.current_streak||0),premium:premiumSet.has(m.id),lastActive:st?.last_message_at||null,tracked:Boolean(e||st||sk)};});
+  res.render("control-members",{user:req.session.user,...ui,members,q,page,pageSize,pageCount,totalMembers:matching.length});
 });
 
 controlRouter.get("/control/engagement",async(req:any,res)=>{
@@ -149,7 +167,12 @@ controlRouter.get("/control/safety",async(req:any,res)=>{
 controlRouter.get("/control/settings",async(req:any,res)=>{
   const [ui,rows]=await Promise.all([guildUi(req),query<any>(`SELECT feature_key,enabled,config,updated_at FROM feature_settings WHERE guild_id=$1`,[selectedGuildId(req)])]);
   const map=new Map<string,any>(rows.map(r=>[String(r.feature_key),r] as [string,any]));
-  res.render("control-settings",{user:req.session.user,...ui,modules:modules.map(m=>({...m,state:map.get(m.key)})),botRemoved:req.query.botRemoved==="1"});
+  const featureRows=modules.map(m=>{
+    const state=map.get(m.key),enabled=state?.enabled!==false;
+    const status=!enabled?"Off":featureNeedsSetup(m.key,state?.config||{})?"Needs setup":"On";
+    return {...m,state,status};
+  });
+  res.render("control-settings",{user:req.session.user,...ui,modules:featureRows,botRemoved:req.query.botRemoved==="1"});
 });
 
 controlRouter.post("/control/settings/remove-bot",async(req:any,res)=>{
