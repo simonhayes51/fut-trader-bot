@@ -2,39 +2,30 @@
 <aside class="sidebar"><a class="brand" href="/dashboard"><span>EAFC.Live</span> Control</a><nav><a href="/dashboard">Overview</a><a href="/trading">Trade calls</a><a href="/tickets">Tickets</a><a href="/social">Social feeds</a><a href="/billing">Premium</a><a href="/moderation">Moderation</a><a href="/audit">Audit log</a></nav></aside>
 <main class="content saas-page module-workspace">
   <a class="back" href="/dashboard">← Back to overview</a>
-  <section class="page-hero compact"><div><div class="eyebrow">SYSTEM / <%= def.category.toUpperCase() %></div><h1><%= def.name %></h1><p><%= def.description %></p></div><div class="hero-actions"><span class="pill <%= enabled?'on':'off' %>"><%= enabled?'Active':'Disabled' %></span></div></section>
+  <section class="page-hero compact"><div><div class="eyebrow"><a href="/control/settings">BOT FEATURES</a> / <%= def.category.toUpperCase() %></div><h1>Set up <%= def.name %></h1><p><%= def.description %></p></div></section>
   <% if (typeof saved !== 'undefined' && saved) { %><div class="notice">✓ <%= ['role_menus','tickets'].includes(def.key) ? 'Saved & published to Discord' : 'Saved' %></div><% } %>
   <% if (typeof publishError !== 'undefined' && publishError) { %><div class="notice error-notice">⚠ <%= publishError %></div><% } %>
 
   <form method="post" class="panel setup-panel module-config-card" id="module-form">
-    <label class="toggle-row module-master"><div><strong>Turn this feature on</strong><small>Switch it off to pause it. Your settings will stay saved.</small></div><input type="checkbox" name="enabled" <%= enabled?'checked':'' %>></label>
-    <hr>
-    <aside class="module-live-preview" aria-label="Live feature preview">
-      <div class="preview-heading"><span><span class="preview-step">03</span><span class="preview-title-wrap"><strong>See what members see</strong><small>Preview it before you publish.</small></span></span><span class="pill good" id="preview-status"><%= enabled?'Ready':'Paused' %></span></div>
-      <div class="discord-preview" id="discord-preview" style="--preview-accent:<%= /^#[0-9a-f]{6}$/i.test(current.primaryColour||'')?current.primaryColour:'#8f67ee' %>">
-        <div class="discord-preview-brand"><span class="preview-avatar">E</span><span><strong id="preview-brand"><%= current.name||guild?.name||'EAFC.Live' %></strong><small>BOT · COMMUNITY</small></span></div>
-        <div class="discord-preview-body"><span class="preview-category"><%= def.category %></span><h3 id="preview-title"><%= def.name %></h3><p id="preview-message"><%= current.message||def.description %></p>
-          <% if(def.key==='role_menus'){ %><div class="preview-role-list" id="preview-role-list"><% (current.groups||[]).slice(0,3).forEach(group=>{ %><span><%= group.name||'Role group' %><b>›</b></span><% }) %><% if(!(current.groups||[]).length){ %><span>Role groups appear here<b>›</b></span><% } %></div><% } else if(def.key==='welcome'){ %><div class="preview-placeholder">👋 &nbsp; Welcome {user} to {server}!</div><% } else if(def.key==='server_branding'){ %><div class="preview-brand-strip"></div><% } else { %><div class="preview-placeholder"><span class="preview-dot"></span><%= def.category %> feature is ready to configure</div><% } %>
-        </div>
-        <div class="preview-footer">EAFC.Live · Discord community</div>
-      </div>
-      <div class="preview-destination"><span class="destination-icon">#</span><span><small>ROLE MENU CHANNEL</small><strong id="preview-channel"><%= current.channelId ? '# '+(channels.find(c=>c.id===current.channelId)?.name||'Selected channel') : 'Choose a channel above' %></strong></span></div>
-      <p class="preview-hint">This is the message members will use. Changes appear here as you edit.</p>
-      <div class="preview-checklist"><span><i>✓</i> Bot connected</span><span><i class="<%= enabled?'':'paused-check' %>"><%= enabled?'✓':'Ⅱ' %></i> <%= enabled?'Feature enabled':'Feature paused' %></span></div>
+    <label class="toggle-row module-master"><div><strong>Feature status</strong><small><%= enabled?'This feature is on for your server.':'This feature is off. Your saved settings are kept.' %></small></div><span class="master-state <%= enabled?'is-on':'is-off' %>"><%= enabled?'On':'Off' %></span><input type="checkbox" name="enabled" <%= enabled?'checked':'' %> aria-label="Turn <%= def.name %> on"></label>
+    <section class="editor-pane feature-setup-form">
+      <div class="editor-pane-heading"><span class="editor-step">1</span><span><strong>Set up <%= def.name %></strong><small><%= def.description %></small></span></div>
+      <div class="settings-grid"><%- include('partials/module-fields',{fields:def.fields,current,def,channels,roles,discordIconUrl:typeof discordIconUrl!=='undefined'?discordIconUrl:null}) %></div>
+    </section>
+    <aside class="module-help-panel">
+      <span class="section-kicker">BEFORE YOU SAVE</span>
+      <h2>What happens next?</h2>
+      <% if(['role_menus','tickets'].includes(def.key)){ %>
+        <p>Saving also posts the member controls into the Discord channel you choose above.</p>
+        <ul><li>Check the channel is visible to the bot.</li><li>Make sure the bot can send messages there.</li><li>For role menus, the bot role must be above the roles members can choose.</li></ul>
+      <% }else{ %>
+        <p>Your choices are saved for <strong><%= guild?.name||'this server' %></strong>. The bot will use them the next time this feature runs.</p>
+        <ul><li>Choose a Discord channel or role where asked.</li><li>Leave optional fields blank if you do not need them.</li><li>Use the switch above to pause the feature without deleting its settings.</li></ul>
+      <% } %>
+      <div class="help-note"><strong>Need to change something later?</strong><span>Come back to this page. Your current settings will be filled in for you.</span></div>
     </aside>
-    <% const settingTypes=new Set(['channel','category','role','select','number','toggle']); const settingsFields=def.fields.filter(field=>settingTypes.has(field.type)); const builderFields=def.fields.filter(field=>!settingTypes.has(field.type)); %>
-    <div class="module-editor-layout">
-      <section class="editor-pane settings-pane">
-        <div class="editor-pane-heading"><span class="editor-step">01</span><span><strong><%= def.key==='role_menus'?'Choose where members find it':def.key==='tickets'?'Choose where tickets go':def.key==='welcome'?'Choose where welcomes go':'Set the rules for this feature' %></strong><small><%= def.key==='role_menus'?'Pick the Discord channel where your role menu will appear.':def.key==='tickets'?'Choose where members open tickets and where staff see logs.':def.key==='welcome'?'Choose the channel and role used for new members.':'Choose the channels, roles and limits this feature should use.' %></small></span></div>
-        <div class="settings-grid"><% if(settingsFields.length){ %><%- include('partials/module-fields',{fields:settingsFields,current,def,channels,roles,discordIconUrl:typeof discordIconUrl!=='undefined'?discordIconUrl:null}) %><% }else{ %><div class="editor-empty">This feature has no server destination or thresholds. Its controls are in the builder.</div><% } %></div>
-      </section>
-      <section class="editor-pane builder-pane">
-        <div class="editor-pane-heading"><span class="editor-step">02</span><span><strong><%= def.key==='role_menus'?'Build the role menu':def.key==='tickets'?'Build your ticket panels':def.key==='welcome'?'Write the welcome message':def.key==='server_branding'?'Set your server branding':'Set up this feature' %></strong><small><%= def.key==='role_menus'?'Add groups, then choose which Discord roles belong in each group.':def.key==='tickets'?'Create the buttons and choices members use to contact your team.':def.key==='welcome'?'Write what new members will see when they join.':def.key==='server_branding'?'Choose the name, colours and images used by the bot.':'Fill in these options to decide how this feature works.' %></small></span></div>
-        <div class="settings-grid"><% if(builderFields.length){ %><%- include('partials/module-fields',{fields:builderFields,current,def,channels,roles,discordIconUrl:typeof discordIconUrl!=='undefined'?discordIconUrl:null}) %><% }else{ %><div class="editor-empty">This feature uses settings only. There is no message or panel to build.</div><% } %></div>
-      </section>
-    </div>
     <textarea name="config" id="config-output" hidden></textarea>
-    <div class="form-actions sticky-save"><span class="save-caption" id="save-caption"><%= def.key==='role_menus'?'Saving will publish this menu to '+(current.channelId?'# '+(channels.find(c=>c.id===current.channelId)?.name||'your selected channel'):'the channel you choose above')+'.':'Changes apply to '+(guild?.name||'the selected server')+'.' %></span><button class="button" id="save-button" type="submit"><%= ['role_menus','tickets'].includes(def.key) ? 'Save & publish' : 'Save changes' %></button></div>
+    <div class="form-actions sticky-save"><span class="save-caption" id="save-caption"><%= ['role_menus','tickets'].includes(def.key)?'Save and publish these controls to Discord.':`Changes apply to ${guild?.name||'this server'}.` %></span><button class="button" id="save-button" type="submit"><%= ['role_menus','tickets'].includes(def.key) ? 'Save & publish' : 'Save changes' %></button></div>
   </form>
 </main>
 <template id="ticket-panel-template"><div class="repeater-row ticket-panel-row"><div class="row-head"><strong>New panel</strong><button type="button" class="danger mini remove-row">Remove</button></div><label class="toggle-row"><div><strong>Enabled</strong><small>Publish this panel when saving.</small></div><input class="tp-enabled" type="checkbox" checked></label><div class="form-grid"><label>Panel ID<input class="tp-id" placeholder="applications"></label><label>Panel name<input class="tp-name" placeholder="Staff Applications"></label><label>Post panel into<select class="tp-channel"><option value="">Choose channel</option><% channels.filter(c=>c.type!==4).forEach(c=>{ %><option value="<%= c.id %>"># <%= c.name %></option><% }) %></select></label><label>Ticket category<select class="tp-category"><option value="">Choose category</option><% channels.filter(c=>c.type===4).forEach(c=>{ %><option value="<%= c.id %>"><%= c.name %></option><% }) %></select></label></div><label><span>Dropdown options</span><small>One per line.</small><textarea class="tp-types" rows="4" placeholder="Support&#10;Question&#10;Other"></textarea></label><div><span>Ticket staff</span><div class="check-picker"><% roles.forEach(r=>{ %><label class="check-option"><input class="tp-staff" type="checkbox" value="<%= r.id %>"><span>@<%= r.name %></span></label><% }) %></div></div></div></template>

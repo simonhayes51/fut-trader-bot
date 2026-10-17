@@ -48,21 +48,23 @@ function escapeHtml(value:unknown) {
 }
 
 function dashboardSidebar(pathname:string,user?:{username?:string;avatar?:string;guilds?:DashboardGuild[]},selectedId?:string) {
-  const groups:Array<{label:string;items:Array<[string,string,string]>;collapsed?:boolean}>=[
-    {label:"Community",collapsed:true,items:[["/control/onboarding","◌","Onboarding"],["/control/community","◇","Community tools"],["/control/kudos","✳","Engagement"],["/economy","¤","Economy & rewards"]]},
-    {label:"Publishing",collapsed:true,items:[["/control/studio","✦","Message studio"],["/control/automation","↻","Automation & feeds"]]},
-    {label:"Growth",collapsed:true,items:[["/control/insights","▦","Insights"],["/control/growth","↗","Invites & partners"],["/billing","◆","Premium & billing"]]},
-    {label:"Safety & operations",collapsed:true,items:[["/control/safety","⊘","Safety & support"],["/control/security","◉","Security & health"]]},
-    {label:"Configuration",collapsed:true,items:[["/control/settings","⚙","Bot features"],["/discord","♢","Discord tools"],["/commands","⌘","Command access"],["/branding","◈","Branding"],["/audit","≡","Audit log"],["/invite","+","Add bot"]]}
+  const groups:Array<{label:string;items:Array<[string,string,string]>}>=[
+    {label:"Community",items:[["/control/onboarding","✧","Welcome & onboarding"],["/control/community","◈","Community tools"],["/control/kudos","✳","Engagement & levels"],["/economy","¤","Coins & rewards"]]},
+    {label:"Content",items:[["/control/studio","✦","Messages & role menus"],["/control/automation","↻","Scheduled posts & feeds"]]},
+    {label:"Growth",items:[["/control/growth","↗","Invites & partnerships"],["/billing","◆","Premium & billing"],["/control/insights","▦","Insights & reports"]]},
+    {label:"Safety",items:[["/control/safety","⊘","Tickets & moderation"],["/control/security","◉","Security & health"]]},
+    {label:"Server setup",items:[["/control/settings","⚙","Bot features"],["/discord","♢","Discord setup"],["/commands","⌘","Command access"],["/branding","◈","Server appearance"],["/audit","≡","Change log"],["/invite","+","Add the bot"]]}
   ];
   const routeAliases:Record<string,string[]>={
     "/control/members":["/members"],
+    "/control/community":["/modules/welcome","/modules/role_menus","/modules/suggestions","/modules/tickets","/modules/starboard"],
     "/control/insights":["/analytics"],
-    "/control/automation":["/automation","/social"],
-    "/control/kudos":["/control/engagement"],
+    "/control/automation":["/automation","/social","/modules/scheduled_messages","/modules/social_feeds"],
+    "/control/kudos":["/control/engagement","/modules/reputation","/modules/levels","/modules/giveaways"],
     "/economy":["/control/rewards"],
-    "/control/safety":["/tickets","/moderation"],
-    "/control/security":["/setup"]
+    "/control/safety":["/tickets","/moderation","/modules/automod","/modules/mod_tools","/modules/join_security"],
+    "/control/security":["/setup"],
+    "/billing":["/modules/premium_billing"]
   };
   const activeFor=(href:string)=>{
     if(href==="/control") return pathname==="/control";
@@ -70,10 +72,9 @@ function dashboardSidebar(pathname:string,user?:{username?:string;avatar?:string
     return [href,...(routeAliases[href]||[])].some(route=>pathname===route||pathname.startsWith(`${route}/`));
   };
   const direct=[ ["/control","⌂","Overview"], ["/control/members","◎","Members"] ] as Array<[string,string,string]>;
-  const directNav=direct.map(([href,icon,label])=>`<a class="${activeFor(href)?"active":""}" href="${href}"><span class="nav-icon">${icon}</span><span>${label}</span></a>`).join("");
+  const directNav=direct.map(([href,icon,label])=>`<a class="nav-link nav-direct ${activeFor(href)?"active":""}" href="${href}"><span class="nav-icon">${icon}</span><span>${label}</span></a>`).join("");
   const nav=groups.map(group=>{
-    const links=group.items.map(([href,icon,label])=>`<a class="${activeFor(href)?"active":""}" href="${href}"><span class="nav-icon">${icon}</span><span>${label}</span></a>`).join("");
-    if(group.collapsed){const open=group.items.some(([href])=>activeFor(href));return `<details class="nav-group nav-collapsible" ${open?"open":""}><summary class="nav-label"><span>${group.label}</span><span class="nav-caret">⌄</span></summary><div class="nav-group-items">${links}</div></details>`;}
+    const links=group.items.map(([href,icon,label])=>`<a class="nav-link ${activeFor(href)?"active":""}" href="${href}"><span class="nav-icon">${icon}</span><span>${label}</span></a>`).join("");
     return `<div class="nav-group"><div class="nav-label">${group.label}</div>${links}</div>`;
   }).join("");
   const username=escapeHtml(user?.username||"Administrator");
@@ -89,7 +90,7 @@ function dashboardSidebar(pathname:string,user?:{username?:string;avatar?:string
   return `<aside class="sidebar">
     <a class="brand" href="/control"><span class="brand-mark">E</span><span class="brand-copy"><b>EAFC.Live</b><small>Discord Control</small></span></a>
     ${selector}
-    <nav><div class="nav-section-label">Workspace</div>${directNav}<div class="nav-section-label nav-tools-label">Manage</div>${nav}</nav>
+    <nav aria-label="Server administration"><div class="nav-label nav-home-label">Workspace</div>${directNav}${nav}</nav>
     <div class="sidebar-footer"><div class="admin-chip"><span class="admin-avatar">${initial}</span><span><b>${username}</b><small>Administrator</small></span></div><form method="post" action="/logout"><button class="icon-button" title="Log out">↪</button></form></div>
   </aside>`;
 }
@@ -105,7 +106,7 @@ app.use((req:any,res:any,next:any)=>{
         const user=options?.user||req.session?.user;
         output=output.replace(/<aside class="sidebar">[\s\S]*?<\/aside>/,dashboardSidebar(req.path,user?{...user,guilds:dashboardGuilds(req)}:user,selectedGuildId(req)));
         if(output.includes('/style.css')&&!output.includes('/polish.css')) output=output.replace("</head>",'<link rel="stylesheet" href="/polish.css"></head>');
-        if(!output.includes('/admin-refresh.css')) output=output.replace("</head>",'<link rel="stylesheet" href="/admin-refresh.css?v=5"></head>');
+        if(!output.includes('/admin-refresh.css')) output=output.replace("</head>",'<link rel="stylesheet" href="/admin-refresh.css?v=6"></head>');
       }
       if(callback)return callback(null,output);
       res.send(output);
