@@ -151,11 +151,18 @@ async function createTicketChannel(client:Client,guild:any,user:any,type:string,
   if(!feature.enabled)throw new Error("Tickets are disabled.");
   const cfg=panelConfig(feature,panelId);
   const row=(await query<any>(`INSERT INTO tickets(guild_id,user_id,ticket_type) VALUES($1,$2,$3) RETURNING id`,[guild.id,user.id,type]))[0];
+  // PermissionOverwrites.resolve requires cached GuildMember/Role objects. Raw
+  // user/role ID strings fail with "Supplied parameter is not a cached User or Role".
+  const member=await guild.members.fetch(user.id).catch(()=>null);
+  if(!member)throw new Error("Couldn't find your server member. Please try opening the ticket again.");
   const overwrites:any[]=[
-    {id:guild.roles.everyone.id,deny:[PermissionFlagsBits.ViewChannel]},
-    {id:user.id,allow:[PermissionFlagsBits.ViewChannel,PermissionFlagsBits.SendMessages,PermissionFlagsBits.ReadMessageHistory]}
+    {id:guild.roles.everyone,deny:[PermissionFlagsBits.ViewChannel]},
+    {id:member,allow:[PermissionFlagsBits.ViewChannel,PermissionFlagsBits.SendMessages,PermissionFlagsBits.ReadMessageHistory]}
   ];
-  for(const roleId of cfg.staffRoleIds||[])overwrites.push({id:roleId,allow:[PermissionFlagsBits.ViewChannel,PermissionFlagsBits.SendMessages,PermissionFlagsBits.ReadMessageHistory]});
+  for(const roleId of cfg.staffRoleIds||[]){
+    const role=await guild.roles.fetch(String(roleId)).catch(()=>null);
+    if(role)overwrites.push({id:role,allow:[PermissionFlagsBits.ViewChannel,PermissionFlagsBits.SendMessages,PermissionFlagsBits.ReadMessageHistory]});
+  }
   const prefix=String(panelId||type||"ticket").toLowerCase().replace(/[^a-z0-9-]/g,"").slice(0,18)||"ticket";
   const ch=await guild.channels.create({name:`${prefix}-${row.id}-${user.username}`.toLowerCase().replace(/[^a-z0-9-]/g,"").slice(0,90),type:ChannelType.GuildText,parent:cfg.categoryId||undefined,permissionOverwrites:overwrites});
   await query(`UPDATE tickets SET channel_id=$1 WHERE id=$2`,[ch.id,row.id]);
